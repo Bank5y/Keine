@@ -14,6 +14,8 @@ export interface CourseSummary {
   uploaderId: number;
   isUploader: boolean;
   lessonCount: number;
+  doneCount: number;
+  enrolled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,3 +25,36 @@ export const COMPLETION_LABEL: Record<Completion, string> = { finished: '已完�
 export const PUBLISH_LABEL: Record<PublishState, string> = { unpublished: '未公开', pending: '审核中', rejected: '已驳回' };
 
 export const coverURL = (id: number) => `/api/courses/${id}/cover`;
+
+export type LessonState = 'unstarted' | 'studying' | 'done';
+export interface LessonItem { id: number; key: string; title: string; video: '' | 'file' | 'url'; duration: string; hasText: boolean; state: LessonState }
+export interface ChapterItem { id: number; key: string; title: string; done: number; lessons: LessonItem[] }
+export interface CourseDetail extends CourseSummary {
+  intro: string;
+  authorIntro: string;
+  chapters: ChapterItem[];
+  progress: { done: number; total: number; lastLessonId: number | null };
+  rejectReason?: string;
+  contributors: string[];
+}
+
+export interface UpdateRequest { id: number; state: 'pending' | 'approved' | 'rejected' | 'withdrawn'; reason: string; createdAt: string; decidedAt: string | null }
+
+export interface Review {
+  id: number;
+  kind: 'publish' | 'update';
+  course: CourseSummary;
+  requester: { id: number; username: string };
+  createdAt: string;
+  changes?: { added: string[]; removed: string[]; kept: number };
+  stale: boolean;
+}
+
+export const pad2 = (n: number) => String(n).padStart(2, '0');
+export const lessonURL = (courseId: number, lessonId: number) => `/courses/${courseId}/lessons/${lessonId}`;
+
+export interface LessonVideo { mode: 'player' | 'embed' | 'link'; src: string }
+export interface LessonText { id: number; key: string; title: string; chapterId: number; markdown: string; base: string; state: LessonState; position: number; video: LessonVideo | null }
+
+export const STATE_LABEL: Record<LessonState, string> = { unstarted: '未学习', studying: '学习中', done: '已学完' };
+export const percent = (done: number, total: number) => (total ? Math.round((done / total) * 100) : 0);

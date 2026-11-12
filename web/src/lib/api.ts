@@ -39,10 +39,10 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
 
 // upload posts a file as multipart form data and reports the upload progress
 // (0..1); fetch cannot observe request progress, XMLHttpRequest can.
-export function upload<T = any>(path: string, field: string, file: File, onProgress: (p: number) => void): Promise<T> {
+export function upload<T = any>(path: string, field: string, file: File, onProgress: (p: number) => void, method = 'POST'): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', path);
+    xhr.open(method, path);
     xhr.withCredentials = true;
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onerror = () => reject(new ApiError(0, 'network', '网络错误, 上传中断'));
