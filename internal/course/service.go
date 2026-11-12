@@ -269,6 +269,15 @@ func (s *Service) loadVisible(ctx context.Context, viewer auth.User, id int64, e
 	return sm, err
 }
 
+// loadToChange loads a course for an operation that changes it: admins
+// moderate every course, anyone else only reaches courses they can see.
+func (s *Service) loadToChange(ctx context.Context, viewer auth.User, id int64) (Summary, error) {
+	if viewer.IsAdmin() {
+		return s.load(ctx, viewer, id, "")
+	}
+	return s.loadVisible(ctx, viewer, id, "")
+}
+
 // load loads one course whoever may see it; admins moderate through it.
 func (s *Service) load(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
 	var sm Summary
@@ -426,13 +435,7 @@ func (s *Service) Cover(ctx context.Context, viewer auth.User, id int64) (rc io.
 // Delete removes a course and its files. The uploader may delete a private
 // course; admins may delete any course.
 func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error {
-	var sm Summary
-	var err error
-	if viewer.IsAdmin() {
-		sm, err = s.load(ctx, viewer, id, "")
-	} else {
-		sm, _, err = s.summary(ctx, viewer, id)
-	}
+	sm, err := s.loadToChange(ctx, viewer, id)
 	if err != nil {
 		return err
 	}

@@ -242,3 +242,16 @@ func TestUsersCannotModerate(t *testing.T) {
 	expectError(t, alice.do("POST", fmt.Sprintf("/api/admin/courses/%d/publish", id), nil), http.StatusForbidden, "forbidden")
 	expectError(t, alice.do("POST", "/api/admin/reviews/1/approve", nil), http.StatusForbidden, "forbidden")
 }
+
+func TestAdminEditsOnlyPublishedCourses(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	admin := a.admin()
+	id := uploadCourse(t, alice, columnFiles(columnManifest()))
+
+	expectError(t, admin.do("PATCH", fmt.Sprintf("/api/admin/courses/%d", id), map[string]any{"title": "偷偷改名"}), http.StatusConflict, "invalid_state")
+
+	if d := courseJSON(t, alice, id); d["title"] != "Agent 系统设计" {
+		t.Fatalf("a private course is the uploader's alone: %v", d["title"])
+	}
+}

@@ -236,7 +236,8 @@ func (s *Service) Publish(ctx context.Context, admin auth.User, id int64) error 
 }
 
 // Unpublish takes a course out of the library; it becomes the uploader's
-// private course again.
+// private course again. Pending update requests are turned down, since the
+// course is no longer anyone's but the uploader's to change.
 func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) error {
 	sm, err := s.load(ctx, admin, id, "")
 	if err != nil {
@@ -245,7 +246,26 @@ func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) erro
 	if sm.Visibility != Public {
 		return ErrInvalidState
 	}
-	_, err = s.db.Exec(ctx, "UPDATE courses SET visibility = 'private', publish_state = 'unpublished', updated_at = now() WHERE id = $1", id)
+	var dirs []string
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "UPDATE courses SET visibility = 'private', publish_state = 'unpublished', updated_at = now() WHERE id = $1", id); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `
+			UPDATE review_requests SET state = 'rejected', reason = '课程已从课程库下架', decided_at = now(), decided_by = $2
+			WHERE course_id = $1 AND kind = 'update' AND state = 'pending'
+			RETURNING coalesce(files_dir, '')`, id, admin.ID)
+		if err != nil {
+			return err
+		}
+		dirs, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		return err
+	})
+	for _, d := range dirs {
+		if d != "" {
+			s.dropFiles(ctx, id, d)
+		}
+	}
 	return err
 }
 
@@ -258,7 +278,7 @@ type Edit struct {
 	Completion  *string `json:"completion"`
 }
 
-// EditInfo lets an admin correct a course's information.
+// EditInfo lets an admin correct a published course's information.
 func (s *Service) EditInfo(ctx context.Context, admin auth.User, id int64, e Edit) error {
 	if e.Title != nil {
 		t := strings.TrimSpace(*e.Title)
@@ -270,10 +290,14 @@ func (s *Service) EditInfo(ctx context.Context, admin auth.User, id int64, e Edi
 	if e.Completion != nil && *e.Completion != Finished && *e.Completion != Ongoing && *e.Completion != Incomplete {
 		return ErrBadInput
 	}
-	if _, err := s.load(ctx, admin, id, ""); err != nil {
+	sm, err := s.load(ctx, admin, id, "")
+	if err != nil {
 		return err
 	}
-	_, err := s.db.Exec(ctx, `
+	if sm.Visibility != Public {
+		return ErrInvalidState // a private course is its uploader's alone
+	}
+	_, err = s.db.Exec(ctx, `
 		UPDATE courses SET
 			title = coalesce($2, title), intro = coalesce($3, intro), author_name = coalesce($4, author_name),
 			author_intro = coalesce($5, author_intro), completion = coalesce($6, completion), updated_at = now()

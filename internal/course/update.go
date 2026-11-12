@@ -21,16 +21,12 @@ var ErrUpdateRequestRequired = errors.New("public courses are updated through an
 // The new files are stored beside the old ones and the course switches over
 // in one transaction, so a failed update leaves the course as it was.
 func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zip.Reader) error {
-	var sm Summary
-	var err error
-	if viewer.IsAdmin() {
-		sm, err = s.load(ctx, viewer, id, "")
-	} else {
-		sm, err = s.loadVisible(ctx, viewer, id, "")
-		if err == nil && !sm.IsUploader {
+	sm, err := s.loadToChange(ctx, viewer, id)
+	if err == nil && !viewer.IsAdmin() {
+		switch {
+		case !sm.IsUploader:
 			err = ErrNotFound
-		}
-		if err == nil && sm.Visibility != Private {
+		case sm.Visibility != Private:
 			err = ErrUpdateRequestRequired
 		}
 	}

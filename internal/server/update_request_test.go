@@ -214,3 +214,24 @@ func TestAdminUpdatesAPublishedCourseDirectly(t *testing.T) {
 		t.Fatalf("admin updates apply at once: %v", d["title"])
 	}
 }
+
+func TestUnpublishingSettlesPendingUpdateRequests(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	admin := a.admin()
+	id := publishedWith(t, a, alice, func(m map[string]any) { m["completion"] = "incomplete" })
+	_, files := nextVersion()
+	bob.mustOK(submitUpdate(t, bob, id, files))
+
+	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/unpublish", id), nil))
+
+	if len(updateReviews(t, admin, id)) != 0 {
+		t.Fatal("updates to a course that left the library leave the queue")
+	}
+	for _, k := range a.storedKeys(fmt.Sprintf("courses/%d/", id)) {
+		if strings.HasSuffix(k, "03_plan.md") {
+			t.Fatalf("their files are removed, found %s", k)
+		}
+	}
+}
