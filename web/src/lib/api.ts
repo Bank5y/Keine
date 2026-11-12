@@ -10,12 +10,18 @@ export class ApiError extends Error {
   }
 }
 
+// onUnauthorized is told when the session is gone (expired, signed out
+// elsewhere, account disabled) so the app can return to the sign-in page.
+let onUnauthorized = () => {};
+export function setUnauthorizedHandler(f: () => void) { onUnauthorized = f; }
+
 async function parse(res: Response) {
   const text = await res.text();
   let body: any = null;
   try { body = text ? JSON.parse(text) : null; } catch { /* not json */ }
   if (!res.ok) {
     const e = body?.error;
+    if (res.status === 401 && e?.code === 'unauthenticated') onUnauthorized();
     throw new ApiError(res.status, e?.code || 'http_' + res.status, e?.message || `请求失败 (${res.status})`, e?.problems || []);
   }
   return body;

@@ -189,3 +189,35 @@ func hashToken(token string) []byte {
 	h := sha256.Sum256([]byte(token))
 	return h[:]
 }
+
+// ChangePassword replaces a user's password after checking the current one.
+func (s *Service) ChangePassword(ctx context.Context, userID int64, current, next string) error {
+	var hash string
+	err := s.db.QueryRow(ctx, "SELECT secret FROM identities WHERE user_id = $1 AND provider = $2", userID, passwordProvider).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrInvalidCredentials
+	}
+	if err != nil {
+		return err
+	}
+	if !checkPassword(hash, current) {
+		return ErrInvalidCredentials
+	}
+	return s.SetPassword(ctx, userID, next)
+}
+
+// SetPassword replaces a user's password without checking the old one.
+func (s *Service) SetPassword(ctx context.Context, userID int64, password string) error {
+	if err := validPassword(password); err != nil {
+		return err
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return err
+	}
+	tag, err := s.db.Exec(ctx, "UPDATE identities SET secret = $3 WHERE user_id = $1 AND provider = $2", userID, passwordProvider, hash)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}

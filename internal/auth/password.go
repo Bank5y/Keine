@@ -43,10 +43,14 @@ func (p *PasswordProvider) Authenticate(ctx context.Context, payload json.RawMes
 	if err != nil {
 		return 0, err
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
+	if !checkPassword(hash, in.Password) {
 		return 0, ErrInvalidCredentials
 	}
 	return id, nil
+}
+
+func checkPassword(hash, password string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("keine-dummy-password"), bcrypt.DefaultCost)

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, setUnauthorizedHandler } from '@/lib/api';
 
 export interface User { id: number; username: string; role: 'user' | 'admin'; disabled: boolean; createdAt: string }
 
@@ -30,5 +30,4 @@ export async function logout() {
   set(null);
 }
 
-// signedOut is called when any request finds the session gone.
-export function signedOut() { set(null); }
+setUnauthorizedHandler(() => { if (current) set(null); });
