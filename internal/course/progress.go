@@ -36,7 +36,8 @@ func (s *Service) lessonKey(ctx context.Context, viewer auth.User, courseID, les
 }
 
 // Visit records that the viewer opened a lesson: an unstarted lesson
-// becomes studying, and it becomes the course's last studied lesson.
+// becomes studying, it becomes the course's last studied lesson, and a
+// course not started yet is started.
 func (s *Service) Visit(ctx context.Context, viewer auth.User, courseID, lessonID int64) error {
 	key, err := s.lessonKey(ctx, viewer, courseID, lessonID)
 	if err != nil {
@@ -45,6 +46,9 @@ func (s *Service) Visit(ctx context.Context, viewer auth.User, courseID, lessonI
 	if _, err := s.db.Exec(ctx, `
 		INSERT INTO lesson_progress (user_id, course_id, lesson_key) VALUES ($1, $2, $3)
 		ON CONFLICT DO NOTHING`, viewer.ID, courseID, key); err != nil {
+		return err
+	}
+	if err := enroll(ctx, s, viewer, courseID); err != nil {
 		return err
 	}
 	return s.touch(ctx, viewer, courseID, key)

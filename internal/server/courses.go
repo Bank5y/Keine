@@ -339,3 +339,20 @@ func (s *Server) courseFile(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = io.Copy(w, rc)
 }
+
+func (s *Server) library(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	list, err := s.courses.Library(r.Context(), currentUser(r), course.LibraryFilter{Type: q.Get("type"), Completion: q.Get("completion"), Q: q.Get("q")})
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	if list == nil {
+		list = []course.Summary{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"courses": list})
+}
+
+func (s *Server) enroll(r *http.Request, id int64) error {
+	return s.courses.Enroll(r.Context(), currentUser(r), id)
+}

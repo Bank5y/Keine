@@ -42,6 +42,7 @@ export function CourseCard({ course, href, onDelete, showProgress }: { course: C
           <div className="book-cover">
             <Cover course={course} />
             {isPrivate ? <span className={cn('book-badge', course.publishState)}>{PUBLISH_LABEL[course.publishState]}</span> : null}
+            {!isPrivate && course.enrolled && !showProgress ? <span className="book-badge enrolled">学习中</span> : null}
             {course.completion !== 'finished' ? <span className={cn('book-flag', course.completion)}>{COMPLETION_LABEL[course.completion]}</span> : null}
           </div>
         </Go>

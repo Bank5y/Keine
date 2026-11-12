@@ -15,6 +15,7 @@ export interface CourseSummary {
   isUploader: boolean;
   lessonCount: number;
   doneCount: number;
+  enrolled: boolean;
   createdAt: string;
   updatedAt: string;
 }

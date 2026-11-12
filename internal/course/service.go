@@ -177,6 +177,8 @@ type Summary struct {
 	UploaderID   int64  `json:"uploaderId"`
 	IsUploader   bool   `json:"isUploader"`
 	LessonCount  int    `json:"lessonCount"`
+	// Enrolled tells whether the viewer has started learning the course.
+	Enrolled bool `json:"enrolled"`
 	// DoneCount is how many lessons the viewer has finished.
 	DoneCount int       `json:"doneCount"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -231,13 +233,14 @@ func summaryColumns(viewerParam string) string {
 	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id),
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
-	c.created_at, c.updated_at, c.files_version`
+	c.created_at, c.updated_at, c.files_version,
+	EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = ` + viewerParam + `)`
 }
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
 	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesVersion}
+		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesVersion, &s.Enrolled}
 }
 
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {

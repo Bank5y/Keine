@@ -88,6 +88,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/admin/courses/{id}/publish", s.adminOnly(s.courseAction(s.adminPublish)))
 	s.mux.HandleFunc("POST /api/admin/courses/{id}/unpublish", s.adminOnly(s.courseAction(s.adminUnpublish)))
 	s.mux.HandleFunc("PATCH /api/admin/courses/{id}", s.adminOnly(s.adminEditCourse))
+	s.mux.HandleFunc("GET /api/library", s.signedIn(s.library))
+	s.mux.HandleFunc("POST /api/courses/{id}/enroll", s.signedIn(s.courseAction(s.enroll)))
 	s.mux.HandleFunc("GET /api/my/courses", s.signedIn(s.myCourses))
 	s.mux.HandleFunc("GET /api/manifest/prompt", s.signedIn(s.manifestPrompt))
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

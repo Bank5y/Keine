@@ -3,6 +3,7 @@ import { ArrowLeft, BookOpen, PlayCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { CourseActions } from '@/components/course-actions';
+import { startLearning } from '@/components/peek';
 import { Highlight } from '@/components/highlight';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -29,7 +30,7 @@ export function CourseView({ id }: { id: number }) {
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
   return (
     <div className="page enter">
-      <BackLink />
+      <BackLink library={!!course && course.visibility === 'public' && !course.enrolled} />
       <div className="course">
         <aside className="colophon">{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</aside>
         <section>
@@ -56,6 +57,7 @@ export function CourseView({ id }: { id: number }) {
 
 // ContinueButton opens the lesson studied last, or the first lesson.
 function ContinueButton({ c }: { c: CourseDetail }) {
+  if (!c.enrolled) return <Button variant="default" size="block" onClick={() => void startLearning(c)}><BookOpen />开始学习</Button>;
   const first = c.chapters[0]?.lessons[0];
   const target = c.progress.lastLessonId ?? first?.id;
   if (!target) return null;
@@ -67,8 +69,8 @@ function ContinueButton({ c }: { c: CourseDetail }) {
   );
 }
 
-function BackLink() {
-  return <Link className="back" href="/mine"><ArrowLeft />我的课程</Link>;
+function BackLink({ library }: { library?: boolean }) {
+  return library ? <Link className="back" href="/library"><ArrowLeft />课程库</Link> : <Link className="back" href="/mine"><ArrowLeft />我的课程</Link>;
 }
 
 function Lines() {
