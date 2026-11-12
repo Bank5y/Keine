@@ -138,6 +138,14 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, http.StatusNotFound, "file_not_found", "文件不存在")
 	case errors.Is(err, course.ErrBadProgress):
 		writeError(w, http.StatusBadRequest, "bad_request", "学习进度不合法")
+	case errors.Is(err, course.ErrInvalidState):
+		writeError(w, http.StatusConflict, "invalid_state", "课程当前的状态不允许这个操作")
+	case errors.Is(err, course.ErrReasonRequired):
+		writeError(w, http.StatusBadRequest, "reason_required", "请填写驳回理由")
+	case errors.Is(err, course.ErrReviewNotFound):
+		writeError(w, http.StatusNotFound, "review_not_found", "申请不存在或已处理")
+	case errors.Is(err, course.ErrBadInput):
+		writeError(w, http.StatusBadRequest, "bad_request", "填写的内容不合法")
 	case errors.Is(err, course.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "没有权限进行这个操作")
 	default:

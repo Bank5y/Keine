@@ -515,5 +515,20 @@ a.rn:hover .t { color: var(--brand); }
 .video-link > span { display: flex; flex-direction: column; min-width: 0; }
 .video-link .u { color: var(--text-3); font-size: 12px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .video-link:hover { border-color: var(--brand); }
+
+/* ---------- publishing ---------- */
+.colophon .stack + .stack { margin-top: 10px; }
+.reject-note { border-left: 3px solid var(--danger); background: var(--danger-soft); padding: 10px 12px; font-size: 13px; color: var(--text); }
+.reject-note b { color: var(--danger); }
+.reject-note p { margin: 4px 0 0; white-space: pre-wrap; }
+.review-box { border: 1px solid var(--info); background: var(--info-soft); padding: 12px; font-size: 13px; }
+.review-box .t { margin-bottom: 10px; }
+.review-box .row { display: flex; gap: 8px; }
+.admin-tools { display: flex; gap: 16px; flex-wrap: wrap; padding-top: 6px; }
+.textarea, .select { width: 100%; border: 1px solid var(--input); border-radius: var(--radius); background: var(--surface); padding: 8px 12px; font: inherit; outline: none; }
+.textarea:focus, .select:focus { border-color: var(--text); }
+.select { height: 44px; }
+.review-row { grid-template-columns: 1fr 120px 170px auto; }
+.review-row .kind { font-family: var(--sans); font-size: 11px; font-weight: 500; color: var(--brand); border: 1px solid var(--brand); border-radius: 2px; padding: 0 5px; margin-right: 10px; vertical-align: 2px; }
 }
 

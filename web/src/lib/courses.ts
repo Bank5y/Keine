@@ -33,6 +33,15 @@ export interface CourseDetail extends CourseSummary {
   authorIntro: string;
   chapters: ChapterItem[];
   progress: { done: number; total: number; lastLessonId: number | null };
+  rejectReason?: string;
+}
+
+export interface Review {
+  id: number;
+  kind: 'publish' | 'update';
+  course: CourseSummary;
+  requester: { id: number; username: string };
+  createdAt: string;
 }
 
 export const pad2 = (n: number) => String(n).padStart(2, '0');

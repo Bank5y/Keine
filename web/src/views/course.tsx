@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, BookOpen, PlayCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
+import { CourseActions } from '@/components/course-actions';
 import { Highlight } from '@/components/highlight';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -21,7 +22,7 @@ export function useCourse(id: number) {
 }
 
 export function CourseView({ id }: { id: number }) {
-  const { course, err } = useCourse(id);
+  const { course, err, reload } = useCourse(id);
   const [tab, setTab] = useState<'toc' | 'intro'>('toc');
   const [q, setQ] = useState('');
 
@@ -30,7 +31,7 @@ export function CourseView({ id }: { id: number }) {
     <div className="page enter">
       <BackLink />
       <div className="course">
-        <aside className="colophon">{course ? <Colophon c={course} /> : <Skeleton className="aspect-[3/4] w-full" />}</aside>
+        <aside className="colophon">{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</aside>
         <section>
           <div className="toc-head">
             <div className="toc-tabs" role="tablist">
@@ -74,7 +75,7 @@ function Lines() {
   return <div className="mt-4 space-y-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-4" />)}</div>;
 }
 
-function Colophon({ c }: { c: CourseDetail }) {
+function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
   return (
     <>
       <div className="book-cover"><Cover course={c} /></div>
@@ -95,6 +96,7 @@ function Colophon({ c }: { c: CourseDetail }) {
           <ProgressBar done={c.progress.done} total={c.progress.total} />
         </div>
         <div className="stack"><ContinueButton c={c} /></div>
+        <CourseActions c={c} onChange={onChange} />
       </div>
     </>
   );

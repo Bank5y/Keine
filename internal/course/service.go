@@ -154,6 +154,9 @@ type Detail struct {
 	AuthorIntro string          `json:"authorIntro"`
 	Chapters    []ChapterDetail `json:"chapters"`
 	Progress    Progress        `json:"progress"`
+	// RejectReason explains the last rejected publish request, while the
+	// course is rejected.
+	RejectReason string `json:"rejectReason,omitempty"`
 }
 
 // Progress is the viewer's progress through a course.
@@ -210,6 +213,15 @@ func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
 // plus extraColumns into extra. Courses the viewer may not see are
 // ErrNotFound, so private courses do not reveal that they exist.
 func (s *Service) loadVisible(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
+	sm, err := s.load(ctx, viewer, id, extraColumns, extra...)
+	if err == nil && !canView(viewer, sm) {
+		return Summary{}, ErrNotFound
+	}
+	return sm, err
+}
+
+// load loads one course whoever may see it; admins moderate through it.
+func (s *Service) load(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
 	var sm Summary
 	row := s.db.QueryRow(ctx, "SELECT "+summaryColumns("$2")+extraColumns+" FROM courses c WHERE c.id = $1", id, viewer.ID)
 	err := row.Scan(append(summaryFields(&sm), extra...)...)
@@ -220,16 +232,14 @@ func (s *Service) loadVisible(ctx context.Context, viewer auth.User, id int64, e
 		return Summary{}, err
 	}
 	sm.IsUploader = sm.UploaderID == viewer.ID
-	if !canView(viewer, sm) {
-		return Summary{}, ErrNotFound
-	}
 	return sm, nil
 }
 
 // canView is the single rule for who may see a course: anyone signed in sees
-// public courses; a private course is seen by its uploader only.
+// public courses; a private course is seen by its uploader, and by admins
+// while it is under review.
 func canView(viewer auth.User, s Summary) bool {
-	return s.Visibility == Public || s.UploaderID == viewer.ID
+	return s.Visibility == Public || s.UploaderID == viewer.ID || (viewer.IsAdmin() && s.PublishState == Pending)
 }
 
 // Get returns a course with its chapters and lessons.
@@ -244,6 +254,13 @@ func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, 
 		return Detail{}, err
 	}
 	d.Progress = Progress{Done: sm.DoneCount, Total: sm.LessonCount}
+	if sm.PublishState == Rejected && sm.Visibility == Private {
+		if err := s.db.QueryRow(ctx, `
+			SELECT reason FROM review_requests WHERE course_id = $1 AND kind = 'publish' AND state = 'rejected'
+			ORDER BY decided_at DESC LIMIT 1`, id).Scan(&d.RejectReason); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return Detail{}, err
+		}
+	}
 	err = s.db.QueryRow(ctx, `
 		SELECT l.id FROM enrollments e JOIN lessons l ON l.course_id = e.course_id AND l.key = e.last_lesson_key
 		WHERE e.user_id = $1 AND e.course_id = $2`, viewer.ID, id).Scan(&d.Progress.LastLessonID)
@@ -330,7 +347,13 @@ func (s *Service) Cover(ctx context.Context, viewer auth.User, id int64) (rc io.
 // Delete removes a course and its files. The uploader may delete a private
 // course; admins may delete any course.
 func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error {
-	sm, _, err := s.summary(ctx, viewer, id)
+	var sm Summary
+	var err error
+	if viewer.IsAdmin() {
+		sm, err = s.load(ctx, viewer, id, "")
+	} else {
+		sm, _, err = s.summary(ctx, viewer, id)
+	}
 	if err != nil {
 		return err
 	}
