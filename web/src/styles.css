@@ -421,7 +421,6 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .author-card .role { color: var(--text-3); font-size: 13px; margin-left: 10px; }
 
 /* ---------- reader ---------- */
-.reader { max-width: 760px; margin: 0 auto; }
 .reader-doc { padding: 8px 0; }
 .reader-doc > h1 { font-family: var(--serif); font-size: 34px; line-height: 1.35; margin: 12px 0 14px; letter-spacing: .01em; }
 .reader-doc > .kicker { margin-bottom: 6px; }
@@ -439,5 +438,52 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .hljs-title, .hljs-section, .hljs-name, .hljs-function { color: var(--warn); }
 .hljs-deletion { color: var(--danger); }
 .hljs-meta { color: var(--text-3); }
+
+/* ---------- documentation layout: course toc | text | on this page ---------- */
+.main:has(> .contents > .docs) { max-width: 1400px; }
+.docs { display: grid; grid-template-columns: 250px minmax(0, 1fr) 210px; gap: 48px; align-items: start; }
+.docs-main { min-width: 0; max-width: 780px; width: 100%; justify-self: center; }
+.docs-side { position: sticky; top: 88px; max-height: calc(100vh - 110px); overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.docs-bar { display: none; gap: 8px; margin-bottom: 18px; }
+@media (max-width: 1180px) {
+  .docs { grid-template-columns: 240px minmax(0, 1fr); }
+  .docs-right { display: none; }
+  .docs-bar { display: flex; }
+}
+@media (max-width: 860px) {
+  .docs { grid-template-columns: minmax(0, 1fr); }
+  .docs-left { display: none; }
+}
+@media (min-width: 861px) { .docs-bar > :first-child { display: none; } }
+@media (min-width: 1181px) { .docs-bar { display: none; } }
+
+.side-title { font-family: var(--serif); font-weight: 700; font-size: 16px; line-height: 1.4; padding-bottom: 12px; border-bottom: 1.5px solid var(--text); }
+.side-ch { margin-top: 14px; }
+.side-ch-head { display: flex; gap: 8px; align-items: baseline; font-family: var(--serif); font-weight: 600; font-size: 14px; color: var(--text); padding: 4px 0; }
+.side-ch-head .no { font-family: var(--mono); font-size: 10px; color: var(--brand); }
+.side-l { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px 4px 10px; margin-left: 4px; border-left: 1px solid var(--rule); font-size: 13px; color: var(--text-2); line-height: 1.55; }
+.side-l .no { font-family: var(--mono); font-size: 10px; color: var(--text-3); flex-shrink: 0; width: 18px; }
+.side-l .t { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.side-l:hover { color: var(--brand); }
+.side-l.current { color: var(--brand); border-left: 2px solid var(--brand); padding-left: 9px; background: var(--brand-soft); font-weight: 600; }
+
+.on-page-title { font-size: 11px; letter-spacing: .18em; color: var(--text-3); margin-bottom: 10px; }
+.op-item { display: block; padding: 3px 0 3px 12px; border-left: 1px solid var(--rule); font-size: 13px; color: var(--text-2); line-height: 1.5; }
+.op-item.sub { padding-left: 24px; font-size: 12px; }
+.op-item:hover { color: var(--brand); }
+.op-item.active { color: var(--brand); border-left: 2px solid var(--brand); padding-left: 11px; }
+.op-item.sub.active { padding-left: 23px; }
+
+.reader-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 40px 0 20px; padding-top: 22px; border-top: 1px solid var(--rule); }
+.rn { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 2px; color: var(--text); min-width: 0; }
+.rn.next { text-align: right; align-items: flex-end; }
+.rn .lbl { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; letter-spacing: .12em; color: var(--brand); }
+.rn .lbl svg { width: 13px; height: 13px; }
+.rn .t { font-family: var(--serif); font-size: 15px; font-weight: 600; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+a.rn:hover { border-color: var(--brand); background: var(--surface); }
+a.rn:hover .t { color: var(--brand); }
+.rn.none { border-style: dashed; color: var(--text-3); }
+.rn.none .lbl { color: var(--text-3); }
+@media (max-width: 560px) { .reader-nav { grid-template-columns: 1fr; } }
 }
 

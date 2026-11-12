@@ -2,6 +2,7 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
+import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 import { cn } from '@/lib/utils';
@@ -23,7 +24,7 @@ export function Markdown({ text, base, className, components }: { text: string; 
     <div className={cn('prose', className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, rehypeSanitize, [rehypeHighlight, { detect: false, ignoreMissing: true }]]}
+        rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeSlug, [rehypeHighlight, { detect: false, ignoreMissing: true }]]}
         urlTransform={resolver(base)}
         components={{
           a: ({ node: _n, ...p }) => <a {...p} target={p.href?.startsWith('#') ? undefined : '_blank'} rel="noreferrer" />,
