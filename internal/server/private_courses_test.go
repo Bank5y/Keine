@@ -3,6 +3,7 @@ package server_test
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -82,4 +83,23 @@ func TestOthersCannotDeleteAPrivateCourse(t *testing.T) {
 
 	expectError(t, bob.do("DELETE", fmt.Sprintf("/api/courses/%d", id), nil), http.StatusNotFound, "course_not_found")
 	alice.mustOK(alice.do("GET", fmt.Sprintf("/api/courses/%d", id), nil))
+}
+
+// Course files come from users; served from our origin they must not run
+// scripts (an SVG cover can carry JavaScript).
+func TestCoverCannotRunScripts(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	m := columnManifest()
+	m["cover"] = "cover.svg"
+	files := columnFiles(m)
+	files["cover.svg"] = `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`
+	id := uploadCourse(t, alice, files)
+
+	r := alice.mustOK(alice.do("GET", fmt.Sprintf("/api/courses/%d/cover", id), nil))
+
+	csp := r.header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "script-src 'none'") {
+		t.Fatalf("cover should be served with a locked-down CSP, got %q", csp)
+	}
 }

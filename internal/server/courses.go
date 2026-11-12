@@ -155,7 +155,7 @@ func (s *Server) courseCover(w http.ResponseWriter, r *http.Request) {
 	if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	setUserFileHeaders(w)
 	w.Header().Set("Cache-Control", "private, max-age=300")
 	_, _ = io.Copy(w, rc)
 }
@@ -181,4 +181,12 @@ func (s *Server) manifestPrompt(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", a.ContentType)
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": a.Filename}))
 	_, _ = w.Write(a.Body)
+}
+
+// setUserFileHeaders guards responses that carry files uploaded by users:
+// they are served from our origin, so they must never run as a page (an SVG
+// or HTML file could carry scripts).
+func setUserFileHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; sandbox")
 }

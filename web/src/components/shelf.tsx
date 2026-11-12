@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { COMPLETION_LABEL, PUBLISH_LABEL, TYPE_LABEL, coverURL, type CourseSummary } from '@/lib/courses';
@@ -29,25 +29,28 @@ export function Cover({ course }: { course: Pick<CourseSummary, 'id' | 'title' |
   return <Plate title={course.title} />;
 }
 
-export function CourseCard({ course, onDelete }: { course: CourseSummary; onDelete?: (c: CourseSummary) => void }) {
+// href is where the card leads; without it the card does not navigate.
+export function CourseCard({ course, href, onDelete }: { course: CourseSummary; href?: string; onDelete?: (c: CourseSummary) => void }) {
   const isPrivate = course.visibility === 'private';
+  const Go = ({ className, children, tabIndex }: { className: string; children: ReactNode; tabIndex?: number }) =>
+    href ? <Link href={href} className={className} tabIndex={tabIndex}>{children}</Link> : <div className={className}>{children}</div>;
   return (
     <div className="book">
       <div className="book-cover-wrap">
-        <Link href={`/courses/${course.id}`} className="block" aria-label={course.title} tabIndex={-1}>
+        <Go className="block" tabIndex={-1}>
           <div className="book-cover">
             <Cover course={course} />
             {isPrivate ? <span className={cn('book-badge', course.publishState)}>{PUBLISH_LABEL[course.publishState]}</span> : null}
             {course.completion !== 'finished' ? <span className={cn('book-flag', course.completion)}>{COMPLETION_LABEL[course.completion]}</span> : null}
           </div>
-        </Link>
+        </Go>
         {onDelete && isPrivate && course.isUploader ? (
           <div className="book-tools">
             <Button variant="icon" size="icon" title="删除课程" aria-label={`删除 ${course.title}`} onClick={() => onDelete(course)}><Trash2 /></Button>
           </div>
         ) : null}
       </div>
-      <Link href={`/courses/${course.id}`} className="contents">
+      <Go className="contents">
         <div className="book-meta">
           <div className="book-kicker">
             <span>{TYPE_LABEL[course.type]}</span>
@@ -57,11 +60,12 @@ export function CourseCard({ course, onDelete }: { course: CourseSummary; onDele
           <h3 className="book-title" title={course.title}>{course.title}</h3>
           {course.authorName ? <div className="book-author">{course.authorName}</div> : null}
         </div>
-      </Link>
+      </Go>
     </div>
   );
 }
 
-export function Shelf({ courses, onDelete }: { courses: CourseSummary[]; onDelete?: (c: CourseSummary) => void }) {
-  return <div className="shelf">{courses.map((c) => <CourseCard key={c.id} course={c} onDelete={onDelete} />)}</div>;
+// hrefOf says where each card leads; course pages arrive with the course detail ticket.
+export function Shelf({ courses, hrefOf, onDelete }: { courses: CourseSummary[]; hrefOf?: (c: CourseSummary) => string; onDelete?: (c: CourseSummary) => void }) {
+  return <div className="shelf">{courses.map((c) => <CourseCard key={c.id} course={c} href={hrefOf?.(c)} onDelete={onDelete} />)}</div>;
 }
