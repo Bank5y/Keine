@@ -27,6 +27,10 @@ type LessonText struct {
 	// File is the package path of the text; images in it are relative to
 	// its folder.
 	File string `json:"-"`
+	// VideoFile (package path) or VideoURL (external link) is the
+	// lesson's video, if it has one.
+	VideoFile string `json:"-"`
+	VideoURL  string `json:"-"`
 	// State and Position are the viewer's progress in the lesson.
 	State    string  `json:"state"`
 	Position float64 `json:"position"`
@@ -40,11 +44,12 @@ func (s *Service) Lesson(ctx context.Context, viewer auth.User, courseID, lesson
 	var l LessonText
 	var file *string
 	err := s.db.QueryRow(ctx, `
-		SELECT l.id, l.key, l.title, l.chapter_id, l.file, `+lessonState+`, coalesce(p.position, 0)
+		SELECT l.id, l.key, l.title, l.chapter_id, l.file, coalesce(l.video_file, ''), coalesce(l.video_url, ''),
+		       `+lessonState+`, coalesce(p.position, 0)
 		FROM lessons l
 		LEFT JOIN lesson_progress p ON p.user_id = $3 AND p.course_id = l.course_id AND p.lesson_key = l.key
 		WHERE l.id = $1 AND l.course_id = $2`, lessonID, courseID, viewer.ID).
-		Scan(&l.ID, &l.Key, &l.Title, &l.ChapterID, &file, &l.State, &l.Position)
+		Scan(&l.ID, &l.Key, &l.Title, &l.ChapterID, &file, &l.VideoFile, &l.VideoURL, &l.State, &l.Position)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return LessonText{}, ErrLessonNotFound
 	}

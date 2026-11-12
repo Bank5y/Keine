@@ -38,7 +38,8 @@ export interface CourseDetail extends CourseSummary {
 export const pad2 = (n: number) => String(n).padStart(2, '0');
 export const lessonURL = (courseId: number, lessonId: number) => `/courses/${courseId}/lessons/${lessonId}`;
 
-export interface LessonText { id: number; key: string; title: string; chapterId: number; markdown: string; base: string; state: LessonState; position: number }
+export interface LessonVideo { mode: 'player' | 'embed' | 'link'; src: string }
+export interface LessonText { id: number; key: string; title: string; chapterId: number; markdown: string; base: string; state: LessonState; position: number; video: LessonVideo | null }
 
 export const STATE_LABEL: Record<LessonState, string> = { unstarted: '未学习', studying: '学习中', done: '已学完' };
 export const percent = (done: number, total: number) => (total ? Math.round((done / total) * 100) : 0);

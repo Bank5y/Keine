@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/Bank5y/keine/internal/course"
 )
@@ -201,7 +202,19 @@ func setUserFileHeaders(w http.ResponseWriter) {
 // relative links in its Markdown resolve against.
 type lessonBody struct {
 	course.LessonText
-	Base string `json:"base"`
+	Base  string     `json:"base"`
+	Video *videoBody `json:"video"`
+}
+
+// videoBody tells the reader how to play a lesson's video.
+type videoBody struct {
+	Mode string `json:"mode"` // player, embed or link
+	Src  string `json:"src"`
+}
+
+// filesURL is where a course's stored file is served.
+func filesURL(courseID int64, file string) string {
+	return fmt.Sprintf("/api/courses/%d/files/", courseID) + (&url.URL{Path: file}).EscapedPath()
 }
 
 // lessonParams reads the {id} and {lesson} path segments.
@@ -249,11 +262,18 @@ func (s *Server) getLesson(w http.ResponseWriter, r *http.Request) {
 	if !writeCourseError(w, r, err) {
 		return
 	}
-	base := fmt.Sprintf("/api/courses/%d/files/", id)
+	body := lessonBody{LessonText: l, Base: filesURL(id, "")}
 	if dir := path.Dir(l.File); l.File != "" && dir != "." {
-		base += (&url.URL{Path: dir}).EscapedPath() + "/"
+		body.Base = filesURL(id, dir) + "/"
 	}
-	writeJSON(w, http.StatusOK, lessonBody{LessonText: l, Base: base})
+	switch {
+	case l.VideoFile != "":
+		body.Video = &videoBody{Mode: course.VideoPlayer, Src: filesURL(id, l.VideoFile)}
+	case l.VideoURL != "":
+		mode, src := course.ClassifyVideoURL(l.VideoURL)
+		body.Video = &videoBody{Mode: mode, Src: src}
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) courseFile(w http.ResponseWriter, r *http.Request) {
@@ -272,5 +292,10 @@ func (s *Server) courseFile(w http.ResponseWriter, r *http.Request) {
 	}
 	setUserFileHeaders(w)
 	w.Header().Set("Cache-Control", "private, max-age=3600")
+	// seekable stores answer Range requests, so videos can be scrubbed
+	if rs, ok := rc.(io.ReadSeeker); ok {
+		http.ServeContent(w, r, name, time.Time{}, rs)
+		return
+	}
 	_, _ = io.Copy(w, rc)
 }

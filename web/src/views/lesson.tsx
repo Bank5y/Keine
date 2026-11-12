@@ -6,6 +6,7 @@ import { Drawer } from '@/components/drawer';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
+import { LessonVideoView } from '@/components/video';
 import { ImageZoom } from '@/components/zoom';
 import { api } from '@/lib/api';
 import { lessonURL, pad2, type CourseDetail, type LessonItem, type LessonState, type LessonText } from '@/lib/courses';
@@ -15,8 +16,10 @@ import { useHeadings, type Heading } from '@/lib/use-headings';
 import { cn } from '@/lib/utils';
 import { useCourse } from '@/views/course';
 
-// a text that opens with its own "# title" shows that instead of ours
+// a text that opens with its own "# title" shows that instead of ours; a
+// video lesson keeps our title above the player and drops the text's
 const opensWithTitle = (md: string) => /^\s*#\s/.test(md);
+const withoutTitle = (md: string) => md.replace(/^\s*#\s[^\n]*\n?/, '');
 
 // neighbours finds the lessons before and after one, across chapters.
 function neighbours(c: CourseDetail | null, lessonId: number) {
@@ -36,7 +39,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const doc = useRef<HTMLElement>(null);
   const { headings, active } = useHeadings(doc, lesson?.id);
   const { prev, next } = useMemo(() => neighbours(course, lessonId), [course, lessonId]);
-  const { state, setDone } = useReadingProgress(courseId, lesson, doc, reload);
+  const { state, setDone, autoDone, savePosition } = useReadingProgress(courseId, lesson, doc, reload);
 
   useEffect(() => {
     setLesson(null);
@@ -84,9 +87,10 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
         {lesson ? (
           <article className="reader-doc" ref={doc}>
             {course ? <div className="kicker">{course.title}</div> : null}
-            {opensWithTitle(lesson.markdown) ? null : <h1>{lesson.title}</h1>}
-            {lesson.markdown ? <LazyMarkdown text={lesson.markdown} base={lesson.base} className="reader-prose" />
-              : <p className="text-ink-3">这一讲没有文字内容。</p>}
+            {lesson.video || !opensWithTitle(lesson.markdown) ? <h1>{lesson.title}</h1> : null}
+            {lesson.video ? <LessonVideoView video={lesson.video} position={lesson.position} onPosition={savePosition} onNearlyDone={autoDone} /> : null}
+            {lesson.markdown ? <LazyMarkdown text={lesson.video ? withoutTitle(lesson.markdown) : lesson.markdown} base={lesson.base} className="reader-prose" />
+              : (lesson.video ? null : <p className="text-ink-3">这一讲没有文字内容。</p>)}
           </article>
         ) : null}
         {lesson ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
