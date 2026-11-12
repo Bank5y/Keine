@@ -25,6 +25,8 @@ type Store interface {
 	Delete(ctx context.Context, key string) error
 	// DeletePrefix removes every object whose key starts with prefix.
 	DeletePrefix(ctx context.Context, prefix string) error
+	// List returns the keys under prefix, sorted.
+	List(ctx context.Context, prefix string) ([]string, error)
 }
 
 // CheckKey rejects keys that are empty, absolute, contain empty, "." or ".."

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/Bank5y/keine/internal/server"
@@ -25,7 +26,6 @@ const (
 type app struct {
 	t      *testing.T
 	dbURL  string
-	root   string // directory of the local file store
 	files  storage.Store
 	srv    *httptest.Server
 	server *server.Server
@@ -39,23 +39,38 @@ func withAdmin(name, pass string) appOption {
 
 func newApp(t *testing.T, opts ...appOption) *app {
 	t.Helper()
-	root := t.TempDir()
-	return startApp(t, testutil.NewDatabase(t), root, opts...)
+	return startApp(t, testutil.NewDatabase(t), newFileStore(t), opts...)
 }
 
-func (a *app) filesRoot() string { return a.root }
+// newFileStore is a local store, or an S3 bucket when the suite runs with
+// KEINE_TEST_STORAGE=s3, so the API behaves the same on either backend.
+func newFileStore(t *testing.T) storage.Store {
+	if os.Getenv("KEINE_TEST_STORAGE") == "s3" {
+		return testutil.NewS3Store(t)
+	}
+	return storage.NewLocal(t.TempDir())
+}
+
+// storedKeys lists the stored course files under prefix.
+func (a *app) storedKeys(prefix string) []string {
+	a.t.Helper()
+	keys, err := a.files.List(context.Background(), prefix)
+	if err != nil {
+		a.t.Fatalf("list %s: %v", prefix, err)
+	}
+	return keys
+}
 
 // restart starts a second instance against the same database and files,
 // as a redeploy would.
 func (a *app) restart(opts ...appOption) *app {
 	a.t.Helper()
 	a.srv.Close()
-	return startApp(a.t, a.dbURL, a.root, opts...)
+	return startApp(a.t, a.dbURL, a.files, opts...)
 }
 
-func startApp(t *testing.T, dbURL, root string, opts ...appOption) *app {
+func startApp(t *testing.T, dbURL string, files storage.Store, opts ...appOption) *app {
 	t.Helper()
-	files := storage.NewLocal(root)
 	o := server.Options{DatabaseURL: dbURL, Storage: files, AdminUsername: adminName, AdminPassword: adminPass}
 	for _, f := range opts {
 		f(&o)
@@ -66,7 +81,7 @@ func startApp(t *testing.T, dbURL, root string, opts ...appOption) *app {
 	}
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(func() { ts.Close(); s.Close() })
-	return &app{t: t, dbURL: dbURL, root: root, files: files, srv: ts, server: s}
+	return &app{t: t, dbURL: dbURL, files: files, srv: ts, server: s}
 }
 
 // client is one browser: it keeps its own session cookie.

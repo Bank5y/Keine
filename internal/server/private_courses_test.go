@@ -3,8 +3,6 @@ package server_test
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -55,9 +53,9 @@ func TestUploaderDeletesAPrivateCourseWithItsFiles(t *testing.T) {
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
 	keep := uploadCourse(t, alice, columnFiles(columnManifest()))
-	dir := filepath.Join(a.filesRoot(), "courses", fmt.Sprint(id))
-	if _, err := os.Stat(dir); err != nil {
-		t.Fatalf("course files should exist before deleting: %v", err)
+	dir := fmt.Sprintf("courses/%d/", id)
+	if len(a.storedKeys(dir)) == 0 {
+		t.Fatal("course files should exist before deleting")
 	}
 
 	expectStatus(t, alice.do("DELETE", fmt.Sprintf("/api/courses/%d", id), nil), http.StatusNoContent)
@@ -67,8 +65,11 @@ func TestUploaderDeletesAPrivateCourseWithItsFiles(t *testing.T) {
 	if len(mine) != 1 || int(mine[0].(map[string]any)["id"].(float64)) != keep {
 		t.Fatalf("only the other course should remain, got %v", mine)
 	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("course files should be removed, stat: %v", err)
+	if keys := a.storedKeys(dir); len(keys) != 0 {
+		t.Fatalf("course files should be removed, found %v", keys)
+	}
+	if len(a.storedKeys(fmt.Sprintf("courses/%d/", keep))) == 0 {
+		t.Fatal("the other course's files should remain")
 	}
 	alice.mustOK(alice.do("GET", fmt.Sprintf("/api/courses/%d", keep), nil))
 }

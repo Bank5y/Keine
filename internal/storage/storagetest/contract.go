@@ -110,6 +110,24 @@ func Run(t *testing.T, newStore func(t *testing.T) storage.Store) {
 		}
 	})
 
+	t.Run("list returns the keys under a prefix in order", func(t *testing.T) {
+		s := newStore(t)
+		put(t, s, "courses/1/b.md", "x")
+		put(t, s, "courses/1/a/z.png", "x")
+		put(t, s, "courses/10/c.md", "x")
+		got, err := s.List(ctx, "courses/1/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"courses/1/a/z.png", "courses/1/b.md"}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+		if got, err := s.List(ctx, "courses/404/"); err != nil || len(got) != 0 {
+			t.Fatalf("expected an empty list, got %v %v", got, err)
+		}
+	})
+
 	t.Run("unsafe keys are rejected", func(t *testing.T) {
 		s := newStore(t)
 		for _, k := range []string{"", "/abs", "a/../b", "../x", "a//b", "a/./b", `a\b`, "a/"} {

@@ -36,13 +36,18 @@ func run() error {
 	if webFS == nil {
 		slog.Warn("front end not built; serving the API only")
 	}
+	files, err := openStorage(ctx, cfg)
+	if err != nil {
+		return err
+	}
 	s, err := server.New(ctx, server.Options{
-		DatabaseURL:   cfg.DatabaseURL,
-		Storage:       storage.NewLocal(cfg.DataDir),
-		AdminUsername: cfg.AdminUsername,
-		AdminPassword: cfg.AdminPassword,
-		SecureCookies: cfg.SecureCookies,
-		Web:           webFS,
+		DatabaseURL:    cfg.DatabaseURL,
+		Storage:        files,
+		AdminUsername:  cfg.AdminUsername,
+		AdminPassword:  cfg.AdminPassword,
+		SecureCookies:  cfg.SecureCookies,
+		MaxUploadBytes: cfg.MaxUploadMB << 20,
+		Web:            webFS,
 	})
 	if err != nil {
 		return err
@@ -61,4 +66,37 @@ func run() error {
 		return err
 	}
 	return nil
+}
+
+func openStorage(ctx context.Context, cfg config.Config) (storage.Store, error) {
+	if cfg.Storage != "s3" {
+		slog.Info("course files on local disk", "dir", cfg.DataDir)
+		return storage.NewLocal(cfg.DataDir), nil
+	}
+	slog.Info("course files in s3", "endpoint", cfg.S3.Endpoint, "bucket", cfg.S3.Bucket)
+	s3cfg := storage.S3Config{
+		Endpoint:     cfg.S3.Endpoint,
+		Region:       cfg.S3.Region,
+		Bucket:       cfg.S3.Bucket,
+		AccessKey:    cfg.S3.AccessKey,
+		SecretKey:    cfg.S3.SecretKey,
+		Prefix:       cfg.S3.Prefix,
+		Insecure:     cfg.S3.Insecure,
+		PathStyle:    cfg.S3.PathStyle,
+		CreateBucket: cfg.S3.CreateBucket,
+	}
+	// an object store started alongside us may need a moment to answer
+	var err error
+	for attempt := 1; ; attempt++ {
+		var s *storage.S3
+		if s, err = storage.NewS3(ctx, s3cfg); err == nil || attempt == 15 {
+			return s, err
+		}
+		slog.Warn("object storage not ready, retrying", "err", err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
 }

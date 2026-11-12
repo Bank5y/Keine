@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // Local keeps objects as files under a root directory.
@@ -81,4 +83,31 @@ func (l *Local) DeletePrefix(_ context.Context, prefix string) error {
 		return err
 	}
 	return os.RemoveAll(filepath.Join(l.root, filepath.FromSlash(prefix)))
+}
+
+func (l *Local) List(_ context.Context, prefix string) ([]string, error) {
+	if err := checkPrefix(prefix); err != nil {
+		return nil, err
+	}
+	var keys []string
+	dir := filepath.Join(l.root, filepath.FromSlash(prefix))
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() || strings.HasPrefix(d.Name(), ".put-") {
+			return nil
+		}
+		rel, err := filepath.Rel(l.root, p)
+		if err != nil {
+			return err
+		}
+		keys = append(keys, filepath.ToSlash(rel))
+		return nil
+	})
+	sort.Strings(keys)
+	return keys, err
 }

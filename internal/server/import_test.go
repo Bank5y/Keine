@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -307,10 +305,8 @@ func TestFailedImportLeavesNothingBehind(t *testing.T) {
 	if mine := alice.mustOK(alice.do("GET", "/api/my/courses", nil)).list("courses"); len(mine) != 0 {
 		t.Fatalf("no course should exist, got %v", mine)
 	}
-	root := a.filesRoot()
-	entries, _ := os.ReadDir(filepath.Join(root, "courses"))
-	if len(entries) != 0 {
-		t.Fatalf("no course files should be stored, found %d entries", len(entries))
+	if keys := a.storedKeys("courses/"); len(keys) != 0 {
+		t.Fatalf("no course files should be stored, found %v", keys)
 	}
 }
 
