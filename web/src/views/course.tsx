@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, PlayCircle, Search } from 'lucide-react';
 import { Empty } from '@/components/common';
 import { Highlight } from '@/components/highlight';
-import { Markdown } from '@/components/markdown';
+import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
@@ -131,7 +131,7 @@ function Intro({ c }: { c: CourseDetail }) {
   if (!c.intro && !c.authorName) return <Empty glyph="简" title="暂无课程介绍"><div>课程清单里没有提供介绍</div></Empty>;
   return (
     <>
-      {c.intro ? <Markdown text={c.intro} className="mt-6" /> : null}
+      {c.intro ? <LazyMarkdown text={c.intro} className="mt-6" /> : null}
       {c.authorName ? (
         <div className="author-card">
           <div className="kicker">Author</div>

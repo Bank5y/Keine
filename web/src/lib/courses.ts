@@ -34,3 +34,5 @@ export interface CourseDetail extends CourseSummary {
 
 export const pad2 = (n: number) => String(n).padStart(2, '0');
 export const lessonURL = (courseId: number, lessonId: number) => `/courses/${courseId}/lessons/${lessonId}`;
+
+export interface LessonText { id: number; key: string; title: string; chapterId: number; markdown: string; base: string }

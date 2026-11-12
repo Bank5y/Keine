@@ -3,11 +3,14 @@ package server
 import (
 	"archive/zip"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
+	"strconv"
 
 	"github.com/Bank5y/keine/internal/course"
 )
@@ -128,6 +131,10 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 		return true
 	case errors.Is(err, course.ErrNotFound):
 		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
+	case errors.Is(err, course.ErrLessonNotFound):
+		writeError(w, http.StatusNotFound, "lesson_not_found", "这一讲不存在")
+	case errors.Is(err, course.ErrFileNotFound):
+		writeError(w, http.StatusNotFound, "file_not_found", "文件不存在")
 	case errors.Is(err, course.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "没有权限进行这个操作")
 	default:
@@ -186,4 +193,51 @@ func (s *Server) manifestPrompt(w http.ResponseWriter, r *http.Request) {
 func setUserFileHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; sandbox")
+}
+
+// lessonBody is a lesson for the reader. Base is the URL folder that the
+// relative links in its Markdown resolve against.
+type lessonBody struct {
+	course.LessonText
+	Base string `json:"base"`
+}
+
+func (s *Server) getLesson(w http.ResponseWriter, r *http.Request) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
+		return
+	}
+	lessonID, err := strconv.ParseInt(r.PathValue("lesson"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "lesson_not_found", "这一讲不存在")
+		return
+	}
+	l, err := s.courses.Lesson(r.Context(), currentUser(r), id, lessonID)
+	if !writeCourseError(w, r, err) {
+		return
+	}
+	base := fmt.Sprintf("/api/courses/%d/files/", id)
+	if dir := path.Dir(l.File); l.File != "" && dir != "." {
+		base += (&url.URL{Path: dir}).EscapedPath() + "/"
+	}
+	writeJSON(w, http.StatusOK, lessonBody{LessonText: l, Base: base})
+}
+
+func (s *Server) courseFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("path")
+	rc, err := s.courses.File(r.Context(), currentUser(r), id, name)
+	if !writeCourseError(w, r, err) {
+		return
+	}
+	defer rc.Close()
+	if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	setUserFileHeaders(w)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	_, _ = io.Copy(w, rc)
 }
