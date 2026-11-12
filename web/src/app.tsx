@@ -12,7 +12,7 @@ import { MineView } from '@/views/mine';
 function routeView(path: string, user: User): ReactNode {
   if (path.startsWith('/mine')) return <MineView />;
   if (path.startsWith('/account')) return <AccountView user={user} />;
-  if (path.startsWith('/admin') && user.role === 'admin') return <AdminView path={path} />;
+  if (path.startsWith('/admin') && user.role === 'admin') return <AdminView path={path} user={user} />;
   return <LibraryView />;
 }
 

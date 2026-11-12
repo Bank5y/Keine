@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button';
 import { ErrorBox, PageHead } from '@/components/common';
 import { api, ApiError } from '@/lib/api';
 import { Link } from '@/lib/router';
+import type { User } from '@/lib/session';
 import { cn } from '@/lib/utils';
+import { AdminUsers } from '@/views/admin-users';
 
-const TABS: [string, string][] = [['/admin/site', '站点设置']];
+const TABS: [string, string][] = [['/admin/users', '用户'], ['/admin/site', '站点设置']];
 
-export function AdminView({ path }: { path: string }) {
+export function AdminView({ path, user }: { path: string; user: User }) {
   const tab = TABS.find(([href]) => path.startsWith(href))?.[0] ?? TABS[0][0];
   return (
     <div className="page enter">
@@ -16,7 +18,7 @@ export function AdminView({ path }: { path: string }) {
       <nav className="subnav" aria-label="管理">
         {TABS.map(([href, label]) => <Link key={href} href={href} className={cn(tab === href && 'active')}>{label}</Link>)}
       </nav>
-      <SiteSettings />
+      {tab === '/admin/site' ? <SiteSettings /> : <AdminUsers me={user} />}
     </div>
   );
 }

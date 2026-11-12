@@ -62,6 +62,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/users", s.createUser)
 	s.mux.HandleFunc("GET /api/site", s.getSite)
 	s.mux.HandleFunc("PUT /api/site", s.adminOnly(s.putSite))
+	s.mux.HandleFunc("GET /api/admin/users", s.adminOnly(s.listUsers))
+	s.mux.HandleFunc("PUT /api/admin/users/{id}", s.adminOnly(s.updateUser))
+	s.mux.HandleFunc("PUT /api/admin/users/{id}/password", s.adminOnly(s.resetPassword))
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
 	})

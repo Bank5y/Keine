@@ -221,3 +221,41 @@ func (s *Service) SetPassword(ctx context.Context, userID int64, password string
 	}
 	return err
 }
+
+// Users lists every account, oldest first.
+func (s *Service) Users(ctx context.Context) ([]User, error) {
+	rows, err := s.db.Query(ctx, "SELECT id, username, role, disabled, created_at FROM users ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (User, error) {
+		var u User
+		err := r.Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.CreatedAt)
+		return u, err
+	})
+}
+
+// SetDisabled disables or re-enables an account. Disabling ends every
+// session of the account at once.
+func (s *Service) SetDisabled(ctx context.Context, userID int64, disabled bool) (User, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var u User
+	err = tx.QueryRow(ctx, "UPDATE users SET disabled = $2 WHERE id = $1 RETURNING id, username, role, disabled, created_at", userID, disabled).
+		Scan(&u.ID, &u.Username, &u.Role, &u.Disabled, &u.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+	if disabled {
+		if _, err := tx.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", userID); err != nil {
+			return User{}, err
+		}
+	}
+	return u, tx.Commit(ctx)
+}
