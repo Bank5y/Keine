@@ -1,0 +1,34 @@
+# Keep course files in S3-compatible object storage instead of the local
+# volume. This override adds a local RustFS server to try it out:
+#
+#   docker compose -f compose.yaml -f compose.s3.yaml up -d
+#
+# (MinIO no longer publishes container images; RustFS speaks the same S3
+# API.) To use a real cloud bucket instead, drop the s3 service and point
+# the KEINE_S3_* variables at it.
+services:
+  keine:
+    environment:
+      KEINE_STORAGE: s3
+      KEINE_S3_ENDPOINT: http://s3:9000
+      KEINE_S3_BUCKET: keine
+      KEINE_S3_REGION: us-east-1
+      KEINE_S3_ACCESS_KEY: ${KEINE_S3_ACCESS_KEY:-keine}
+      KEINE_S3_SECRET_KEY: ${KEINE_S3_SECRET_KEY:-keine-s3-secret}
+      KEINE_S3_PATH_STYLE: "true"
+      KEINE_S3_CREATE_BUCKET: "true"
+    depends_on:
+      s3:
+        condition: service_started
+
+  s3:
+    image: rustfs/rustfs:1.0.4
+    environment:
+      RUSTFS_ACCESS_KEY: ${KEINE_S3_ACCESS_KEY:-keine}
+      RUSTFS_SECRET_KEY: ${KEINE_S3_SECRET_KEY:-keine-s3-secret}
+    volumes:
+      - s3-data:/data
+    restart: unless-stopped
+
+volumes:
+  s3-data:

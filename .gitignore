@@ -1,0 +1,6 @@
+/data/
+/keine
+node_modules/
+internal/web/dist/*
+!internal/web/dist/.gitkeep
+.env
