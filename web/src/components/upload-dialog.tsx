@@ -6,6 +6,8 @@ import { ErrorBox } from '@/components/common';
 import { ApiError, upload, type Problem } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
+const PROMPT_URL = '/api/manifest/prompt';
+
 // UploadDialog sends a course package and shows its progress, then either
 // opens the new course or lists every problem the server found.
 export function UploadDialog({ open, onClose, onUploaded }: { open: boolean; onClose: () => void; onUploaded: (id: number) => void }) {
@@ -38,9 +40,14 @@ export function UploadDialog({ open, onClose, onUploaded }: { open: boolean; onC
   const busy = progress !== null;
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v && !busy) onClose(); }} title="上传课程" wide>
-      <p className="mt-2">上传一个 zip 课程包, 根目录必须包含 <code>course.json</code> 课程清单。上传后它是只有你能看到的私有课程。</p>
+      <p className="mt-2">
+        上传一个 zip 课程包, 根目录必须包含 <code>course.json</code> 课程清单。上传后它是只有你能看到的私有课程。
+        还没有清单? <a className="link" href={PROMPT_URL} download>下载提示词模板</a>, 交给 AI 帮你生成。
+      </p>
       {err ? (
-        <ErrorBox message={err.message} problems={err.problems} />
+        <ErrorBox message={err.message} problems={err.problems}>
+          {err.problems.length ? <div className="mt-2">不确定怎么写? <a className="link" href={PROMPT_URL} download>下载提示词模板</a>, 交给 AI 重新生成 course.json。</div> : null}
+        </ErrorBox>
       ) : null}
       <div
         className={cn('drop', over && 'over')}

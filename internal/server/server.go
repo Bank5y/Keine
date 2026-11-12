@@ -32,8 +32,10 @@ type Server struct {
 	db      *pgxpool.Pool
 	auth    *auth.Service
 	courses *course.Service
-	files   storage.Store
-	mux     *http.ServeMux
+	// generator helps users write a course manifest
+	generator course.Generator
+	files     storage.Store
+	mux       *http.ServeMux
 }
 
 // New connects to the database, migrates it and makes sure the deployment's
@@ -43,7 +45,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage), files: opts.Storage, mux: http.NewServeMux()}
+	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -74,6 +76,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/courses/{id}", s.signedIn(s.deleteCourse))
 	s.mux.HandleFunc("GET /api/courses/{id}/cover", s.signedIn(s.courseCover))
 	s.mux.HandleFunc("GET /api/my/courses", s.signedIn(s.myCourses))
+	s.mux.HandleFunc("GET /api/manifest/prompt", s.signedIn(s.manifestPrompt))
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
 	})

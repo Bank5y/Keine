@@ -171,3 +171,14 @@ func (s *Server) deleteCourse(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Server) manifestPrompt(w http.ResponseWriter, r *http.Request) {
+	a, err := s.generator.Help(r.Context())
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", a.ContentType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": a.Filename}))
+	_, _ = w.Write(a.Body)
+}
