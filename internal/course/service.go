@@ -242,7 +242,7 @@ func summaryColumns(viewerParam string) string {
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
 	c.created_at, c.updated_at, c.files_dir,
-	EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = ` + viewerParam + `)`
+	EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = ` + viewerParam + ` AND e.removed_at IS NULL)`
 }
 
 // summaryFields are the scan targets matching summaryColumns.
@@ -360,17 +360,38 @@ func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int6
 	return out, rows.Err()
 }
 
-// Mine lists the courses a user has started learning, most recently studied
-// first.
-func (s *Service) Mine(ctx context.Context, viewer auth.User) ([]Summary, error) {
+// MineFilter narrows my courses; empty fields match everything.
+type MineFilter struct {
+	// State is "studying" (not every lesson done yet) or "done".
+	State      string
+	Type       string
+	Completion string
+}
+
+// Mine lists the courses a user is learning that they can still see, most
+// recently studied first.
+func (s *Service) Mine(ctx context.Context, viewer auth.User, f MineFilter) ([]Summary, error) {
 	rows, err := s.db.Query(ctx, "SELECT "+summaryColumns("$1")+` FROM courses c
-		JOIN enrollments e ON e.course_id = c.id AND e.user_id = $1
-		WHERE c.visibility = 'public' OR c.uploader_id = $1
-		ORDER BY e.last_studied_at DESC, c.id DESC`, viewer.ID)
+		JOIN enrollments e ON e.course_id = c.id AND e.user_id = $1 AND e.removed_at IS NULL
+		WHERE (c.visibility = 'public' OR c.uploader_id = $1)
+		  AND ($2 = '' OR c.type = $2)
+		  AND ($3 = '' OR c.completion = $3)
+		ORDER BY e.last_studied_at DESC, c.id DESC`, viewer.ID, f.Type, f.Completion)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Summary, error) { return scanSummary(r, viewer) })
+	all, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Summary, error) { return scanSummary(r, viewer) })
+	if err != nil || f.State == "" {
+		return all, err
+	}
+	out := []Summary{}
+	for _, c := range all {
+		finished := c.LessonCount > 0 && c.DoneCount == c.LessonCount
+		if (f.State == "done") == finished {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 // ErrNoCover means the course has no cover image of its own.

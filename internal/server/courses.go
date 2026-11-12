@@ -147,7 +147,8 @@ func (s *Server) getCourse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) myCourses(w http.ResponseWriter, r *http.Request) {
-	list, err := s.courses.Mine(r.Context(), currentUser(r))
+	q := r.URL.Query()
+	list, err := s.courses.Mine(r.Context(), currentUser(r), course.MineFilter{State: q.Get("state"), Type: q.Get("type"), Completion: q.Get("completion")})
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -404,4 +405,8 @@ func (s *Server) withdrawUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) unenroll(r *http.Request, id int64) error {
+	return s.courses.Unenroll(r.Context(), currentUser(r), id)
 }
