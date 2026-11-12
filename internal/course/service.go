@@ -39,87 +39,123 @@ func NewService(db *pgxpool.Pool, files storage.Store) *Service {
 	return &Service{db: db, files: files}
 }
 
-// prefix is where a course's files live in the store.
-func prefix(courseID int64) string { return fmt.Sprintf("courses/%d/", courseID) }
+// coursePrefix holds every file of a course, across versions.
+func coursePrefix(courseID int64) string { return fmt.Sprintf("courses/%d/", courseID) }
+
+// filesPrefix holds one version of a course's files.
+func filesPrefix(courseID int64, version int) string {
+	return fmt.Sprintf("courses/%d/v%d/", courseID, version)
+}
+
+// parsedPackage is a course package that passed every check.
+type parsedPackage struct {
+	pkg      *pkg
+	manifest Manifest
+	files    []string
+}
+
+// parsePackage checks a course package against its manifest; a package that
+// cannot become a course is *InvalidPackage listing every problem.
+func parsePackage(zr *zip.Reader) (parsedPackage, error) {
+	p, problems := openPackage(zr)
+	if problems != nil {
+		return parsedPackage{}, &InvalidPackage{problems}
+	}
+	data, err := p.read(ManifestFile, maxManifestSize)
+	if err != nil {
+		return parsedPackage{}, &InvalidPackage{[]Problem{{ManifestFile, "无法读取: " + err.Error()}}}
+	}
+	m, problems := ParseManifest(data)
+	if len(problems) > 0 {
+		return parsedPackage{}, &InvalidPackage{problems}
+	}
+	files, problems := p.resolve(m)
+	if len(problems) > 0 {
+		return parsedPackage{}, &InvalidPackage{problems}
+	}
+	return parsedPackage{pkg: p, manifest: m, files: files}, nil
+}
 
 // Import creates a private course from a course package and enrolls the
 // uploader. Either the whole course is created or nothing is: an invalid
 // package returns *InvalidPackage, and a failure while storing removes what
 // was already written.
 func (s *Service) Import(ctx context.Context, uploader auth.User, zr *zip.Reader) (int64, error) {
-	p, problems := openPackage(zr)
-	if problems != nil {
-		return 0, &InvalidPackage{problems}
-	}
-	data, err := p.read(ManifestFile, maxManifestSize)
-	if err != nil {
-		return 0, &InvalidPackage{[]Problem{{ManifestFile, "无法读取: " + err.Error()}}}
-	}
-	m, problems := ParseManifest(data)
-	if len(problems) > 0 {
-		return 0, &InvalidPackage{problems}
-	}
-	files, problems := p.resolve(m)
-	if len(problems) > 0 {
-		return 0, &InvalidPackage{problems}
-	}
-
-	tx, err := s.db.Begin(ctx)
+	pp, err := parsePackage(zr)
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	m := pp.manifest
 	var id int64
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO courses (uploader_id, title, type, completion, intro, author_name, author_intro, cover)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''))
-		RETURNING id`, uploader.ID, m.Title, m.Type, m.Completion, m.Intro, m.AuthorName, m.AuthorIntro, m.Cover).Scan(&id); err != nil {
-		return 0, err
-	}
-	if err := insertStructure(ctx, tx, id, m); err != nil {
-		return 0, err
-	}
-	if _, err := tx.Exec(ctx, "INSERT INTO enrollments (user_id, course_id) VALUES ($1, $2)", uploader.ID, id); err != nil {
-		return 0, err
-	}
-	if err := s.storeFiles(ctx, p, id, files); err != nil {
-		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), prefix(id))
-		return 0, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), prefix(id))
-		return 0, err
-	}
-	return id, nil
-}
-
-func insertStructure(ctx context.Context, tx pgx.Tx, courseID int64, m Manifest) error {
-	for i, ch := range m.Chapters {
-		var chapterID int64
-		if err := tx.QueryRow(ctx, "INSERT INTO chapters (course_id, key, title, position) VALUES ($1, $2, $3, $4) RETURNING id",
-			courseID, ch.Key, ch.Title, i).Scan(&chapterID); err != nil {
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO courses (uploader_id, title, type, completion, intro, author_name, author_intro, cover)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''))
+			RETURNING id`, uploader.ID, m.Title, m.Type, m.Completion, m.Intro, m.AuthorName, m.AuthorIntro, m.Cover).Scan(&id); err != nil {
 			return err
 		}
+		if err := writeStructure(ctx, tx, id, m); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "INSERT INTO enrollments (user_id, course_id) VALUES ($1, $2)", uploader.ID, id); err != nil {
+			return err
+		}
+		if err := s.storeFiles(ctx, pp, filesPrefix(id, 1)); err != nil {
+			_ = s.files.DeletePrefix(context.WithoutCancel(ctx), coursePrefix(id))
+			return err
+		}
+		return nil
+	})
+	if err != nil && id != 0 {
+		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), coursePrefix(id))
+	}
+	return id, err
+}
+
+// writeStructure makes a course's chapters and lessons those of the
+// manifest. Chapters and lessons are matched by key, so a lesson that stays
+// keeps its id (and its links); the ones the manifest drops are removed.
+// Learning records hang on lesson keys and are not touched.
+func writeStructure(ctx context.Context, tx pgx.Tx, courseID int64, m Manifest) error {
+	chapterKeys := []string{}
+	lessonKeys := []string{}
+	for i, ch := range m.Chapters {
+		var chapterID int64
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO chapters (course_id, key, title, position) VALUES ($1, $2, $3, $4)
+			ON CONFLICT (course_id, key) DO UPDATE SET title = EXCLUDED.title, position = EXCLUDED.position
+			RETURNING id`, courseID, ch.Key, ch.Title, i).Scan(&chapterID); err != nil {
+			return err
+		}
+		chapterKeys = append(chapterKeys, ch.Key)
 		for j, l := range ch.Lessons {
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO lessons (course_id, chapter_id, key, title, position, file, video_file, video_url, duration)
-				VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), $9)`,
+				VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), $9)
+				ON CONFLICT (course_id, key) DO UPDATE SET
+					chapter_id = EXCLUDED.chapter_id, title = EXCLUDED.title, position = EXCLUDED.position,
+					file = EXCLUDED.file, video_file = EXCLUDED.video_file, video_url = EXCLUDED.video_url, duration = EXCLUDED.duration`,
 				courseID, chapterID, l.Key, l.Title, j, l.File, l.VideoFile, l.VideoURL, l.Duration); err != nil {
 				return err
 			}
+			lessonKeys = append(lessonKeys, l.Key)
 		}
 	}
-	return nil
+	if _, err := tx.Exec(ctx, "DELETE FROM lessons WHERE course_id = $1 AND NOT (key = ANY($2))", courseID, lessonKeys); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, "DELETE FROM chapters WHERE course_id = $1 AND NOT (key = ANY($2))", courseID, chapterKeys)
+	return err
 }
 
-func (s *Service) storeFiles(ctx context.Context, p *pkg, courseID int64, files []string) error {
-	for _, name := range files {
-		f := p.files[name]
+func (s *Service) storeFiles(ctx context.Context, pp parsedPackage, dir string) error {
+	for _, name := range pp.files {
+		f := pp.pkg.files[name]
 		rc, err := f.Open()
 		if err != nil {
 			return fmt.Errorf("open %s: %w", name, err)
 		}
-		err = s.files.Put(ctx, prefix(courseID)+name, rc, int64(f.UncompressedSize64))
+		err = s.files.Put(ctx, dir+name, rc, int64(f.UncompressedSize64))
 		rc.Close()
 		if err != nil {
 			return fmt.Errorf("store %s: %w", name, err)
@@ -145,6 +181,8 @@ type Summary struct {
 	DoneCount int       `json:"doneCount"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// FilesVersion is the version of the stored files in use.
+	FilesVersion int `json:"-"`
 }
 
 // Detail is a course with its chapters and lessons.
@@ -193,13 +231,13 @@ func summaryColumns(viewerParam string) string {
 	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id),
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
-	c.created_at, c.updated_at`
+	c.created_at, c.updated_at, c.files_version`
 }
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
 	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt}
+		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesVersion}
 }
 
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
@@ -330,14 +368,14 @@ func (s *Service) summary(ctx context.Context, viewer auth.User, id int64) (Summ
 
 // Cover streams the course's cover image; name is its package path.
 func (s *Service) Cover(ctx context.Context, viewer auth.User, id int64) (rc io.ReadCloser, name string, err error) {
-	_, cover, err := s.summary(ctx, viewer, id)
+	sm, cover, err := s.summary(ctx, viewer, id)
 	if err != nil {
 		return nil, "", err
 	}
 	if cover == "" {
 		return nil, "", ErrNoCover
 	}
-	rc, err = s.files.Get(ctx, prefix(id)+cover)
+	rc, err = s.files.Get(ctx, filesPrefix(id, sm.FilesVersion)+cover)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil, "", ErrNoCover
 	}
@@ -365,7 +403,7 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 	}
 	// The course is gone either way; files left behind by a failure here are
 	// unreachable and only cost space.
-	if err := s.files.DeletePrefix(ctx, prefix(id)); err != nil {
+	if err := s.files.DeletePrefix(ctx, coursePrefix(id)); err != nil {
 		slog.Warn("course files not removed", "course", id, "err", err)
 	}
 	return nil

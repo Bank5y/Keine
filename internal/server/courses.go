@@ -18,10 +18,10 @@ import (
 
 const defaultMaxUpload = 4 << 30
 
-// uploadCourse imports a course package sent as the "package" field of a
-// multipart form. The upload is streamed to a temporary file, since zip
-// needs random access and packages with videos can be large.
-func (s *Server) uploadCourse(w http.ResponseWriter, r *http.Request) {
+// withPackage reads a course package sent as the "package" field of a
+// multipart form and hands it to use. The upload is streamed to a temporary
+// file, since zip needs random access and packages with videos can be large.
+func (s *Server) withPackage(w http.ResponseWriter, r *http.Request, use func(*zip.Reader) error) error {
 	limit := s.opts.MaxUploadBytes
 	if limit <= 0 {
 		limit = defaultMaxUpload
@@ -29,75 +29,107 @@ func (s *Server) uploadCourse(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, limit+1<<20)
 	mr, err := r.MultipartReader()
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "请以 multipart 表单上传课程包")
-		return
+		return errUpload{http.StatusBadRequest, "bad_request", "请以 multipart 表单上传课程包"}
 	}
 	tmp, err := os.CreateTemp("", "keine-upload-*.zip")
 	if err != nil {
-		writeInternal(w, r, err)
-		return
+		return err
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
 
 	found := false
-	for {
+	for !found {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			writeUploadError(w, r, err)
-			return
+			return uploadFailure(err)
 		}
 		if part.FormName() != "package" {
 			continue
 		}
 		if _, err := io.Copy(tmp, io.LimitReader(part, limit+1)); err != nil {
-			writeUploadError(w, r, err)
-			return
+			return uploadFailure(err)
 		}
 		found = true
-		break
 	}
 	if !found {
-		writeError(w, http.StatusBadRequest, "bad_request", "缺少课程包文件")
-		return
+		return errUpload{http.StatusBadRequest, "bad_request", "缺少课程包文件"}
 	}
 	size, err := tmp.Seek(0, io.SeekCurrent)
 	if err != nil {
-		writeInternal(w, r, err)
-		return
+		return err
 	}
 	if size > limit {
-		writeError(w, http.StatusRequestEntityTooLarge, "package_too_large", "课程包超过了大小上限")
-		return
+		return errUpload{http.StatusRequestEntityTooLarge, "package_too_large", "课程包超过了大小上限"}
 	}
 	zr, err := zip.NewReader(tmp, size)
 	if err != nil {
-		writeProblems(w, http.StatusUnprocessableEntity, "invalid_package", "课程包不是有效的 zip 文件", []course.Problem{})
-		return
+		return &course.InvalidPackage{Problems: []course.Problem{{Path: "", Message: "课程包不是有效的 zip 文件"}}}
 	}
-	id, err := s.courses.Import(r.Context(), currentUser(r), zr)
+	return use(zr)
+}
+
+// errUpload is a failure of the upload itself, before the package is read.
+type errUpload struct {
+	status        int
+	code, message string
+}
+
+func (e errUpload) Error() string { return e.message }
+
+func uploadFailure(err error) error {
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		return errUpload{http.StatusRequestEntityTooLarge, "package_too_large", "课程包超过了大小上限"}
+	}
+	return errUpload{http.StatusBadRequest, "upload_failed", "上传中断: " + err.Error()}
+}
+
+// writePackageError answers the errors of receiving and importing a package
+// and reports whether err was nil.
+func writePackageError(w http.ResponseWriter, r *http.Request, err error) bool {
+	var up errUpload
 	var invalid *course.InvalidPackage
-	if errors.As(err, &invalid) {
+	switch {
+	case errors.As(err, &up):
+		writeError(w, up.status, up.code, up.message)
+	case errors.As(err, &invalid):
 		writeProblems(w, http.StatusUnprocessableEntity, "invalid_package", "课程包有问题, 请修正后重新上传", invalid.Problems)
-		return
+	case errors.Is(err, course.ErrUpdateRequestRequired):
+		writeError(w, http.StatusConflict, "update_request_required", "已公开的课程需要提交更新申请, 由管理员审核")
+	default:
+		return writeCourseError(w, r, err)
 	}
-	if err != nil {
-		writeInternal(w, r, err)
+	return false
+}
+
+func (s *Server) uploadCourse(w http.ResponseWriter, r *http.Request) {
+	var id int64
+	err := s.withPackage(w, r, func(zr *zip.Reader) (err error) {
+		id, err = s.courses.Import(r.Context(), currentUser(r), zr)
+		return err
+	})
+	if !writePackageError(w, r, err) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
-func writeUploadError(w http.ResponseWriter, r *http.Request, err error) {
-	var tooBig *http.MaxBytesError
-	if errors.As(err, &tooBig) {
-		writeError(w, http.StatusRequestEntityTooLarge, "package_too_large", "课程包超过了大小上限")
+func (s *Server) updateCoursePackage(w http.ResponseWriter, r *http.Request) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
 		return
 	}
-	writeError(w, http.StatusBadRequest, "upload_failed", "上传中断: "+err.Error())
+	err := s.withPackage(w, r, func(zr *zip.Reader) error {
+		return s.courses.Update(r.Context(), currentUser(r), id, zr)
+	})
+	if !writePackageError(w, r, err) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) getCourse(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Confirm } from '@/components/confirm';
 import { ErrorBox } from '@/components/common';
 import { RejectDialog } from '@/components/reject-dialog';
+import { UploadDialog } from '@/components/upload-dialog';
 import { api, ApiError } from '@/lib/api';
 import { COMPLETION_LABEL, type Completion, type CourseDetail, type Review } from '@/lib/courses';
 import { navigate } from '@/lib/router';
@@ -20,7 +21,7 @@ const fail = (ex: unknown) => toast.error(ex instanceof ApiError ? ex.message : 
 export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
   const user = useUser();
   const admin = user?.role === 'admin';
-  const [dialog, setDialog] = useState<'' | 'unpublish' | 'delete' | 'edit' | 'reject'>('');
+  const [dialog, setDialog] = useState<'' | 'unpublish' | 'delete' | 'edit' | 'reject' | 'update'>('');
   const [review, setReview] = useState<Review | null>(null);
 
   // an admin looking at a course under review can decide it right here
@@ -43,6 +44,9 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
         <Button onClick={() => act('POST', `/api/courses/${c.id}/publish-request`, '已提交公开申请, 等待管理员审核')}>
           {c.publishState === 'rejected' ? '再次申请公开' : '申请公开'}
         </Button>
+      ) : null}
+      {isPrivate && c.isUploader ? (
+        <Button variant="ghost" onClick={() => setDialog('update')}>更新课程</Button>
       ) : null}
       {isPrivate && c.isUploader && c.publishState === 'pending' ? (
         <Button variant="ghost" onClick={() => act('DELETE', `/api/courses/${c.id}/publish-request`, '已撤回公开申请')}>撤回公开申请</Button>
@@ -77,6 +81,7 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
       </Confirm>
       <RejectDialog open={dialog === 'reject'} title="驳回公开申请" onClose={() => setDialog('')}
         onReject={(reason) => act('POST', `/api/admin/reviews/${review?.id}/reject`, '已驳回', { reason })} />
+      <UploadDialog courseId={c.id} open={dialog === 'update'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); onChange(); }} />
       <EditDialog c={c} open={dialog === 'edit'} onClose={() => setDialog('')} onSaved={() => { setDialog(''); onChange(); }} />
     </div>
   );

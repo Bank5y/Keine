@@ -38,12 +38,13 @@ type LessonText struct {
 
 // Lesson returns a lesson of a course the viewer may see.
 func (s *Service) Lesson(ctx context.Context, viewer auth.User, courseID, lessonID int64) (LessonText, error) {
-	if _, err := s.loadVisible(ctx, viewer, courseID, ""); err != nil {
+	sm, err := s.loadVisible(ctx, viewer, courseID, "")
+	if err != nil {
 		return LessonText{}, err
 	}
 	var l LessonText
 	var file *string
-	err := s.db.QueryRow(ctx, `
+	err = s.db.QueryRow(ctx, `
 		SELECT l.id, l.key, l.title, l.chapter_id, l.file, coalesce(l.video_file, ''), coalesce(l.video_url, ''),
 		       `+lessonState+`, coalesce(p.position, 0)
 		FROM lessons l
@@ -57,7 +58,7 @@ func (s *Service) Lesson(ctx context.Context, viewer auth.User, courseID, lesson
 		return l, err
 	}
 	l.File = *file
-	rc, err := s.files.Get(ctx, prefix(courseID)+l.File)
+	rc, err := s.files.Get(ctx, filesPrefix(courseID, sm.FilesVersion)+l.File)
 	if err != nil {
 		return LessonText{}, err
 	}
@@ -70,13 +71,14 @@ func (s *Service) Lesson(ctx context.Context, viewer auth.User, courseID, lesson
 // File streams one stored file of a course the viewer may see. Only the
 // files the course references are stored, so nothing else can be reached.
 func (s *Service) File(ctx context.Context, viewer auth.User, courseID int64, path string) (io.ReadCloser, error) {
-	if _, err := s.loadVisible(ctx, viewer, courseID, ""); err != nil {
+	sm, err := s.loadVisible(ctx, viewer, courseID, "")
+	if err != nil {
 		return nil, err
 	}
 	if clean, ok := cleanPath(path); !ok || clean != path {
 		return nil, ErrFileNotFound
 	}
-	rc, err := s.files.Get(ctx, prefix(courseID)+path)
+	rc, err := s.files.Get(ctx, filesPrefix(courseID, sm.FilesVersion)+path)
 	if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrInvalidKey) {
 		return nil, ErrFileNotFound
 	}

@@ -74,6 +74,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/courses", s.signedIn(s.uploadCourse))
 	s.mux.HandleFunc("GET /api/courses/{id}", s.signedIn(s.getCourse))
 	s.mux.HandleFunc("DELETE /api/courses/{id}", s.signedIn(s.deleteCourse))
+	s.mux.HandleFunc("PUT /api/courses/{id}/package", s.signedIn(s.updateCoursePackage))
 	s.mux.HandleFunc("GET /api/courses/{id}/cover", s.signedIn(s.courseCover))
 	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}", s.signedIn(s.getLesson))
 	s.mux.HandleFunc("POST /api/courses/{id}/lessons/{lesson}/visit", s.signedIn(s.visitLesson))
