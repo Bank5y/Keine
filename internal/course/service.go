@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -245,4 +247,67 @@ func (s *Service) Mine(ctx context.Context, viewer auth.User) ([]Summary, error)
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Summary, error) { return scanSummary(r, viewer) })
+}
+
+// ErrNoCover means the course has no cover image of its own.
+var ErrNoCover = errors.New("course has no cover")
+
+// summary loads one course's card data and applies the visibility rule.
+func (s *Service) summary(ctx context.Context, viewer auth.User, id int64) (Summary, string, error) {
+	var cover *string
+	var sm Summary
+	err := s.db.QueryRow(ctx, "SELECT "+summaryColumns+", c.cover FROM courses c WHERE c.id = $1", id).
+		Scan(&sm.ID, &sm.Title, &sm.Type, &sm.Completion, &sm.AuthorName, &sm.HasCover, &sm.Visibility, &sm.PublishState,
+			&sm.UploaderID, &sm.LessonCount, &sm.CreatedAt, &sm.UpdatedAt, &cover)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sm, "", ErrNotFound
+	}
+	if err != nil {
+		return sm, "", err
+	}
+	sm.IsUploader = sm.UploaderID == viewer.ID
+	if !canView(viewer, sm) {
+		return Summary{}, "", ErrNotFound
+	}
+	if cover == nil {
+		return sm, "", nil
+	}
+	return sm, *cover, nil
+}
+
+// Cover streams the course's cover image; name is its package path.
+func (s *Service) Cover(ctx context.Context, viewer auth.User, id int64) (rc io.ReadCloser, name string, err error) {
+	_, cover, err := s.summary(ctx, viewer, id)
+	if err != nil {
+		return nil, "", err
+	}
+	if cover == "" {
+		return nil, "", ErrNoCover
+	}
+	rc, err = s.files.Get(ctx, prefix(id)+cover)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, "", ErrNoCover
+	}
+	return rc, cover, err
+}
+
+// Delete removes a course and its files. The uploader may delete a private
+// course; admins may delete any course.
+func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error {
+	sm, _, err := s.summary(ctx, viewer, id)
+	if err != nil {
+		return err
+	}
+	if !viewer.IsAdmin() && !(sm.IsUploader && sm.Visibility == Private) {
+		return ErrForbidden
+	}
+	if _, err := s.db.Exec(ctx, "DELETE FROM courses WHERE id = $1", id); err != nil {
+		return err
+	}
+	// The course is gone either way; files left behind by a failure here are
+	// unreachable and only cost space.
+	if err := s.files.DeletePrefix(ctx, prefix(id)); err != nil {
+		slog.Warn("course files not removed", "course", id, "err", err)
+	}
+	return nil
 }

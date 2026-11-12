@@ -4,8 +4,10 @@ import (
 	"archive/zip"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"path"
 
 	"github.com/Bank5y/keine/internal/course"
 )
@@ -133,4 +135,39 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeInternal(w, r, err)
 	}
 	return false
+}
+
+func (s *Server) courseCover(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r, "id")
+	if !ok {
+		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
+		return
+	}
+	rc, name, err := s.courses.Cover(r.Context(), currentUser(r), id)
+	if errors.Is(err, course.ErrNoCover) {
+		writeError(w, http.StatusNotFound, "cover_not_found", "课程没有封面")
+		return
+	}
+	if !writeCourseError(w, r, err) {
+		return
+	}
+	defer rc.Close()
+	if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	_, _ = io.Copy(w, rc)
+}
+
+func (s *Server) deleteCourse(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r, "id")
+	if !ok {
+		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
+		return
+	}
+	if !writeCourseError(w, r, s.courses.Delete(r.Context(), currentUser(r), id)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
