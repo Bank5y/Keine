@@ -41,31 +41,36 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 	if err != nil {
 		return err
 	}
-	return s.replaceContent(ctx, sm, pp)
-}
-
-func (s *Service) replaceContent(ctx context.Context, sm Summary, pp parsedPackage) error {
-	m := pp.manifest
-	next := sm.FilesVersion + 1
+	next := newFilesDir()
 	if err := s.storeFiles(ctx, pp, filesPrefix(sm.ID, next)); err != nil {
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
-	err := s.tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `
-			UPDATE courses SET title = $2, type = $3, completion = $4, intro = $5, author_name = $6, author_intro = $7,
-				cover = NULLIF($8, ''), files_version = $9, updated_at = now()
-			WHERE id = $1`, sm.ID, m.Title, m.Type, m.Completion, m.Intro, m.AuthorName, m.AuthorIntro, m.Cover, next); err != nil {
-			return err
-		}
-		return writeStructure(ctx, tx, sm.ID, m)
-	})
+	err = s.tx(ctx, func(tx pgx.Tx) error { return switchContent(ctx, tx, sm.ID, pp.manifest, next) })
 	if err != nil {
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
-	if err := s.files.DeletePrefix(ctx, filesPrefix(sm.ID, sm.FilesVersion)); err != nil {
-		slog.Warn("old course files not removed", "course", sm.ID, "version", sm.FilesVersion, "err", err)
-	}
+	s.dropFiles(ctx, sm.ID, sm.FilesDir)
 	return nil
+}
+
+// switchContent makes a course follow manifest m, with its files in the
+// already stored folder dir.
+func switchContent(ctx context.Context, tx pgx.Tx, courseID int64, m Manifest, dir string) error {
+	if _, err := tx.Exec(ctx, `
+		UPDATE courses SET title = $2, type = $3, completion = $4, intro = $5, author_name = $6, author_intro = $7,
+			cover = NULLIF($8, ''), files_dir = $9, updated_at = now()
+		WHERE id = $1`, courseID, m.Title, m.Type, m.Completion, m.Intro, m.AuthorName, m.AuthorIntro, m.Cover, dir); err != nil {
+		return err
+	}
+	return writeStructure(ctx, tx, courseID, m)
+}
+
+// dropFiles removes a folder of course files no longer in use; leftovers
+// only cost space, so a failure is logged.
+func (s *Service) dropFiles(ctx context.Context, courseID int64, dir string) {
+	if err := s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(courseID, dir)); err != nil {
+		slog.Warn("course files not removed", "course", courseID, "dir", dir, "err", err)
+	}
 }

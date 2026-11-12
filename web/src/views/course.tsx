@@ -92,6 +92,7 @@ function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
           <dt>讲数</dt><dd className="num">{c.lessonCount}</dd>
           <dt>章数</dt><dd className="num">{c.chapters.length}</dd>
           {c.authorName ? <><dt>讲师</dt><dd>{c.authorName}</dd></> : null}
+          {c.contributors.length ? <><dt>贡献者</dt><dd>{c.contributors.join('、')}</dd></> : null}
         </dl>
         <div className="course-progress">
           <div className="cp-head"><span>学习进度</span><b>{c.progress.done} / {c.progress.total}</b></div>

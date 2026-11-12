@@ -8,7 +8,7 @@ import { ErrorBox } from '@/components/common';
 import { RejectDialog } from '@/components/reject-dialog';
 import { UploadDialog } from '@/components/upload-dialog';
 import { api, ApiError } from '@/lib/api';
-import { COMPLETION_LABEL, type Completion, type CourseDetail, type Review } from '@/lib/courses';
+import { COMPLETION_LABEL, type Completion, type CourseDetail, type Review, type UpdateRequest } from '@/lib/courses';
 import { navigate } from '@/lib/router';
 import { useUser } from '@/lib/session';
 
@@ -21,7 +21,8 @@ const fail = (ex: unknown) => toast.error(ex instanceof ApiError ? ex.message : 
 export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
   const user = useUser();
   const admin = user?.role === 'admin';
-  const [dialog, setDialog] = useState<'' | 'unpublish' | 'delete' | 'edit' | 'reject' | 'update'>('');
+  const [dialog, setDialog] = useState<'' | 'unpublish' | 'delete' | 'edit' | 'reject' | 'update' | 'request'>('');
+  const [requests, setRequests] = useState<UpdateRequest[]>([]);
   const [review, setReview] = useState<Review | null>(null);
 
   // an admin looking at a course under review can decide it right here
@@ -30,10 +31,17 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
     api<{ reviews: Review[] }>('GET', '/api/admin/reviews').then((r) => setReview(r.reviews.find((x) => x.course.id === c.id && x.kind === 'publish') || null)).catch(() => {});
   }, [admin, c.id, c.publishState, c.visibility]);
 
+  // the viewer's own update requests, for a public course
+  const loadRequests = () => api<{ requests: UpdateRequest[] }>('GET', `/api/courses/${c.id}/update-requests`).then((r) => setRequests(r.requests)).catch(() => {});
+  useEffect(() => { if (c.visibility === 'public') void loadRequests(); }, [c.id, c.visibility]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const act = async (method: string, path: string, done: string, body?: unknown) => {
     try { await api(method, path, body); toast.success(done); setDialog(''); onChange(); } catch (ex) { fail(ex); }
   };
   const isPrivate = c.visibility === 'private';
+  const canRequest = !isPrivate && !admin && (c.isUploader || c.completion !== 'finished');
+  const pending = requests.find((r) => r.state === 'pending');
+  const latest = requests[0];
 
   return (
     <div className="stack">
@@ -60,6 +68,18 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
           </div>
         </div>
       ) : null}
+      {canRequest && !pending ? (
+        <Button variant="ghost" onClick={() => setDialog('request')}>{c.completion === 'incomplete' && !c.isUploader ? '申请补全' : '提交更新'}</Button>
+      ) : null}
+      {pending ? (
+        <div className="request-note">
+          <b>更新申请审核中</b>
+          <Button variant="text" size="bare" onClick={() => act('DELETE', `/api/courses/${c.id}/update-requests/${pending.id}`, '已撤回更新申请').then(loadRequests)}>撤回</Button>
+        </div>
+      ) : latest && latest.state === 'rejected' ? (
+        <div className="reject-note"><b>更新申请被驳回</b><p>{latest.reason}</p></div>
+      ) : null}
+      {admin && !isPrivate ? <Button variant="ghost" onClick={() => setDialog('update')}>更新课程</Button> : null}
       {admin && isPrivate && !review ? (
         <Button onClick={() => act('POST', `/api/admin/courses/${c.id}/publish`, '已公开到课程库')}>直接公开</Button>
       ) : null}
@@ -82,6 +102,7 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
       <RejectDialog open={dialog === 'reject'} title="驳回公开申请" onClose={() => setDialog('')}
         onReject={(reason) => act('POST', `/api/admin/reviews/${review?.id}/reject`, '已驳回', { reason })} />
       <UploadDialog courseId={c.id} open={dialog === 'update'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); onChange(); }} />
+      <UploadDialog courseId={c.id} request open={dialog === 'request'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); void loadRequests(); }} />
       <EditDialog c={c} open={dialog === 'edit'} onClose={() => setDialog('')} onSaved={() => { setDialog(''); onChange(); }} />
     </div>
   );

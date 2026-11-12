@@ -42,6 +42,14 @@ export function AdminReviews() {
             <span className="name">
               <span className="kind">{KIND_LABEL[r.kind]}</span>
               <Link href={`/courses/${r.course.id}`} className="hover:text-brand">{r.course.title}</Link>
+              {r.changes ? (
+                <span className="changes" title={[...r.changes.added.map((t) => '+ ' + t), ...r.changes.removed.map((t) => '- ' + t)].join('\n')}>
+                  <span className="add">+{r.changes.added.length}</span>
+                  <span className="del">-{r.changes.removed.length}</span>
+                  <span>保留 {r.changes.kept}</span>
+                </span>
+              ) : null}
+              {r.stale ? <span className="stale">课程已更新, 请基于新内容重新审核</span> : null}
             </span>
             <span className="meta">{TYPE_LABEL[r.course.type]} · {r.course.lessonCount} 讲</span>
             <span className="meta">{r.requester.username} · {fmtTime(r.createdAt)}</span>

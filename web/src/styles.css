@@ -567,5 +567,14 @@ a.rn:hover .t { color: var(--brand); }
 .peek-foot { padding: 10px 18px 14px; border-top: 1px solid var(--rule); flex-shrink: 0; }
 .peek-note { padding: 12px 18px; font-size: 13px; color: var(--text-2); }
 .peek-note.err { color: var(--danger); }
+
+/* ---------- update requests ---------- */
+.request-note { display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--info); background: var(--info-soft); padding: 10px 12px; font-size: 13px; }
+.request-note b { color: var(--info); }
+.review-row .changes { display: inline-flex; gap: 8px; margin-left: 12px; font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--text-3); vertical-align: 1px; }
+.review-row .changes .add { color: var(--success); }
+.review-row .changes .del { color: var(--danger); }
+.review-row .stale { display: block; font-family: var(--sans); font-size: 12px; font-weight: 400; color: var(--warn); margin-top: 2px; }
+.review-row .name { white-space: normal; }
 }
 

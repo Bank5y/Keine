@@ -24,6 +24,7 @@ var (
 // Review request kinds and states.
 const (
 	reviewPublish = "publish"
+	reviewUpdate  = "update"
 
 	reviewApproved  = "approved"
 	reviewRejected  = "rejected"
@@ -77,6 +78,11 @@ type Review struct {
 	Course    Summary   `json:"course"`
 	Requester Requester `json:"requester"`
 	CreatedAt time.Time `json:"createdAt"`
+	// Changes compares an update request's lessons with the course's.
+	Changes *Changes `json:"changes,omitempty"`
+	// Stale marks an update request submitted before the course last
+	// changed: it should be reviewed against the new content.
+	Stale bool `json:"stale"`
 }
 
 type Requester struct {
@@ -87,44 +93,102 @@ type Requester struct {
 // Reviews lists the pending requests, oldest first.
 func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT r.id, r.kind, r.created_at, u.id, u.username, `+summaryColumns("$1")+`
+		SELECT r.id, r.kind, r.created_at, u.id, u.username, coalesce(r.base_dir, ''), r.manifest, `+summaryColumns("$1")+`
 		FROM review_requests r JOIN users u ON u.id = r.requester_id JOIN courses c ON c.id = r.course_id
 		WHERE r.state = 'pending' ORDER BY r.created_at, r.id`, admin.ID)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Review, error) {
-		var r Review
-		err := row.Scan(append([]any{&r.ID, &r.Kind, &r.CreatedAt, &r.Requester.ID, &r.Requester.Username}, summaryFields(&r.Course)...)...)
+	type row struct {
+		Review
+		base     string
+		manifest []byte
+	}
+	list, err := pgx.CollectRows(rows, func(cr pgx.CollectableRow) (row, error) {
+		var r row
+		err := cr.Scan(append([]any{&r.ID, &r.Kind, &r.CreatedAt, &r.Requester.ID, &r.Requester.Username, &r.base, &r.manifest}, summaryFields(&r.Course)...)...)
 		r.Course.IsUploader = r.Course.UploaderID == admin.ID
 		return r, err
 	})
-}
-
-// pendingReview locks a pending request for deciding it.
-func pendingReview(ctx context.Context, tx pgx.Tx, id int64) (kind string, courseID int64, err error) {
-	err = tx.QueryRow(ctx, "SELECT kind, course_id FROM review_requests WHERE id = $1 AND state = 'pending' FOR UPDATE", id).Scan(&kind, &courseID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", 0, ErrReviewNotFound
+	if err != nil {
+		return nil, err
 	}
-	return kind, courseID, err
+	out := make([]Review, 0, len(list))
+	for _, r := range list {
+		if r.Kind == reviewUpdate {
+			r.Stale = r.base != r.Course.FilesDir
+			m, _ := ParseManifest(r.manifest)
+			if r.Changes, err = s.changes(ctx, r.Course.ID, m); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, r.Review)
+	}
+	return out, nil
 }
 
-// Approve grants a pending request.
+// reviewRow is a pending request locked for deciding it.
+type reviewRow struct {
+	kind        string
+	courseID    int64
+	requesterID int64
+	filesDir    string // an update request's package
+	manifest    []byte
+}
+
+func pendingReview(ctx context.Context, tx pgx.Tx, id int64) (reviewRow, error) {
+	var r reviewRow
+	err := tx.QueryRow(ctx, `
+		SELECT kind, course_id, requester_id, coalesce(files_dir, ''), manifest
+		FROM review_requests WHERE id = $1 AND state = 'pending' FOR UPDATE`, id).
+		Scan(&r.kind, &r.courseID, &r.requesterID, &r.filesDir, &r.manifest)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return r, ErrReviewNotFound
+	}
+	return r, err
+}
+
+// Approve grants a pending request: a publish request puts the course into
+// the library; an update request replaces the course's content and credits
+// a requester who is not the uploader as a contributor.
 func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) error {
-	return s.tx(ctx, func(tx pgx.Tx) error {
-		kind, courseID, err := pendingReview(ctx, tx, reviewID)
+	var drop struct {
+		courseID int64
+		dir      string
+	}
+	err := s.tx(ctx, func(tx pgx.Tx) error {
+		r, err := pendingReview(ctx, tx, reviewID)
 		if err != nil {
 			return err
-		}
-		if kind != reviewPublish {
-			return ErrInvalidState
 		}
 		if err := decide(ctx, tx, reviewID, reviewApproved, "", &admin); err != nil {
 			return err
 		}
-		return publish(ctx, tx, courseID)
+		if r.kind == reviewPublish {
+			return publish(ctx, tx, r.courseID)
+		}
+		var uploader int64
+		if err := tx.QueryRow(ctx, "SELECT uploader_id, files_dir FROM courses WHERE id = $1 FOR UPDATE", r.courseID).Scan(&uploader, &drop.dir); err != nil {
+			return err
+		}
+		m, problems := ParseManifest(r.manifest)
+		if len(problems) > 0 {
+			return &InvalidPackage{problems}
+		}
+		if err := switchContent(ctx, tx, r.courseID, m, r.filesDir); err != nil {
+			return err
+		}
+		drop.courseID = r.courseID
+		if r.requesterID == uploader {
+			return nil
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO course_contributors (course_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", r.courseID, r.requesterID)
+		return err
 	})
+	if err == nil && drop.courseID != 0 {
+		s.dropFiles(ctx, drop.courseID, drop.dir)
+	}
+	return err
 }
 
 // Reject turns a pending request down; the reason is shown to the requester.
@@ -133,19 +197,24 @@ func (s *Service) Reject(ctx context.Context, admin auth.User, reviewID int64, r
 	if reason == "" {
 		return ErrReasonRequired
 	}
-	return s.tx(ctx, func(tx pgx.Tx) error {
-		kind, courseID, err := pendingReview(ctx, tx, reviewID)
-		if err != nil {
+	var r reviewRow
+	err := s.tx(ctx, func(tx pgx.Tx) error {
+		var err error
+		if r, err = pendingReview(ctx, tx, reviewID); err != nil {
 			return err
 		}
 		if err := decide(ctx, tx, reviewID, reviewRejected, reason, &admin); err != nil {
 			return err
 		}
-		if kind == reviewPublish {
-			return setPublishState(ctx, tx, courseID, Rejected)
+		if r.kind == reviewPublish {
+			return setPublishState(ctx, tx, r.courseID, Rejected)
 		}
 		return nil
 	})
+	if err == nil && r.filesDir != "" {
+		s.dropFiles(ctx, r.courseID, r.filesDir)
+	}
+	return err
 }
 
 // Publish puts any private course into the library without a request,

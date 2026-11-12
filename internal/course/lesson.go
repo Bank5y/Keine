@@ -58,7 +58,7 @@ func (s *Service) Lesson(ctx context.Context, viewer auth.User, courseID, lesson
 		return l, err
 	}
 	l.File = *file
-	rc, err := s.files.Get(ctx, filesPrefix(courseID, sm.FilesVersion)+l.File)
+	rc, err := s.files.Get(ctx, filesPrefix(courseID, sm.FilesDir)+l.File)
 	if err != nil {
 		return LessonText{}, err
 	}
@@ -78,7 +78,7 @@ func (s *Service) File(ctx context.Context, viewer auth.User, courseID int64, pa
 	if clean, ok := cleanPath(path); !ok || clean != path {
 		return nil, ErrFileNotFound
 	}
-	rc, err := s.files.Get(ctx, filesPrefix(courseID, sm.FilesVersion)+path)
+	rc, err := s.files.Get(ctx, filesPrefix(courseID, sm.FilesDir)+path)
 	if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrInvalidKey) {
 		return nil, ErrFileNotFound
 	}

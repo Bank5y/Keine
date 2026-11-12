@@ -42,15 +42,20 @@ func NewService(db *pgxpool.Pool, files storage.Store) *Service {
 // coursePrefix holds every file of a course, across versions.
 func coursePrefix(courseID int64) string { return fmt.Sprintf("courses/%d/", courseID) }
 
-// filesPrefix holds one version of a course's files.
-func filesPrefix(courseID int64, version int) string {
-	return fmt.Sprintf("courses/%d/v%d/", courseID, version)
+// filesPrefix holds one set of a course's files: the folder in use, a new
+// version being written, or an update request's package.
+func filesPrefix(courseID int64, dir string) string {
+	return fmt.Sprintf("courses/%d/%s/", courseID, dir)
 }
+
+// newFilesDir names a fresh folder for a new version of a course's files.
+func newFilesDir() string { return fmt.Sprintf("v%d", time.Now().UnixNano()) }
 
 // parsedPackage is a course package that passed every check.
 type parsedPackage struct {
 	pkg      *pkg
 	manifest Manifest
+	raw      []byte // course.json as uploaded
 	files    []string
 }
 
@@ -73,7 +78,7 @@ func parsePackage(zr *zip.Reader) (parsedPackage, error) {
 	if len(problems) > 0 {
 		return parsedPackage{}, &InvalidPackage{problems}
 	}
-	return parsedPackage{pkg: p, manifest: m, files: files}, nil
+	return parsedPackage{pkg: p, manifest: m, raw: data, files: files}, nil
 }
 
 // Import creates a private course from a course package and enrolls the
@@ -100,7 +105,7 @@ func (s *Service) Import(ctx context.Context, uploader auth.User, zr *zip.Reader
 		if _, err := tx.Exec(ctx, "INSERT INTO enrollments (user_id, course_id) VALUES ($1, $2)", uploader.ID, id); err != nil {
 			return err
 		}
-		if err := s.storeFiles(ctx, pp, filesPrefix(id, 1)); err != nil {
+		if err := s.storeFiles(ctx, pp, filesPrefix(id, "v1")); err != nil {
 			_ = s.files.DeletePrefix(context.WithoutCancel(ctx), coursePrefix(id))
 			return err
 		}
@@ -183,8 +188,8 @@ type Summary struct {
 	DoneCount int       `json:"doneCount"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
-	// FilesVersion is the version of the stored files in use.
-	FilesVersion int `json:"-"`
+	// FilesDir is the folder of the course's files in use.
+	FilesDir string `json:"-"`
 }
 
 // Detail is a course with its chapters and lessons.
@@ -197,6 +202,9 @@ type Detail struct {
 	// RejectReason explains the last rejected publish request, while the
 	// course is rejected.
 	RejectReason string `json:"rejectReason,omitempty"`
+	// Contributors are the users, other than the uploader, whose update
+	// requests were approved.
+	Contributors []string `json:"contributors"`
 }
 
 // Progress is the viewer's progress through a course.
@@ -233,14 +241,14 @@ func summaryColumns(viewerParam string) string {
 	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id),
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
-	c.created_at, c.updated_at, c.files_version,
+	c.created_at, c.updated_at, c.files_dir,
 	EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = ` + viewerParam + `)`
 }
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
 	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesVersion, &s.Enrolled}
+		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesDir, &s.Enrolled}
 }
 
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
@@ -295,6 +303,15 @@ func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, 
 		return Detail{}, err
 	}
 	d.Progress = Progress{Done: sm.DoneCount, Total: sm.LessonCount}
+	rows, err := s.db.Query(ctx, `
+		SELECT u.username FROM course_contributors cc JOIN users u ON u.id = cc.user_id
+		WHERE cc.course_id = $1 ORDER BY cc.created_at`, id)
+	if err != nil {
+		return Detail{}, err
+	}
+	if d.Contributors, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+		return Detail{}, err
+	}
 	if sm.PublishState == Rejected && sm.Visibility == Private {
 		if err := s.db.QueryRow(ctx, `
 			SELECT reason FROM review_requests WHERE course_id = $1 AND kind = 'publish' AND state = 'rejected'
@@ -378,7 +395,7 @@ func (s *Service) Cover(ctx context.Context, viewer auth.User, id int64) (rc io.
 	if cover == "" {
 		return nil, "", ErrNoCover
 	}
-	rc, err = s.files.Get(ctx, filesPrefix(id, sm.FilesVersion)+cover)
+	rc, err = s.files.Get(ctx, filesPrefix(id, sm.FilesDir)+cover)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil, "", ErrNoCover
 	}

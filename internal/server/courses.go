@@ -98,6 +98,8 @@ func writePackageError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, up.status, up.code, up.message)
 	case errors.As(err, &invalid):
 		writeProblems(w, http.StatusUnprocessableEntity, "invalid_package", "课程包有问题, 请修正后重新上传", invalid.Problems)
+	case errors.Is(err, course.ErrUpdateNotAllowed):
+		writeError(w, http.StatusForbidden, "update_not_allowed", "已完结的课程只有上传者可以提交更新")
 	case errors.Is(err, course.ErrUpdateRequestRequired):
 		writeError(w, http.StatusConflict, "update_request_required", "已公开的课程需要提交更新申请, 由管理员审核")
 	default:
@@ -355,4 +357,51 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) enroll(r *http.Request, id int64) error {
 	return s.courses.Enroll(r.Context(), currentUser(r), id)
+}
+
+func (s *Server) submitUpdate(w http.ResponseWriter, r *http.Request) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
+		return
+	}
+	var reqID int64
+	err := s.withPackage(w, r, func(zr *zip.Reader) (err error) {
+		reqID, err = s.courses.SubmitUpdate(r.Context(), currentUser(r), id, zr)
+		return err
+	})
+	if !writePackageError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"id": reqID})
+}
+
+func (s *Server) myUpdateRequests(w http.ResponseWriter, r *http.Request) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
+		return
+	}
+	list, err := s.courses.MyUpdateRequests(r.Context(), currentUser(r), id)
+	if !writeCourseError(w, r, err) {
+		return
+	}
+	if list == nil {
+		list = []course.UpdateRequest{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"requests": list})
+}
+
+func (s *Server) withdrawUpdate(w http.ResponseWriter, r *http.Request) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
+		return
+	}
+	reqID, err := strconv.ParseInt(r.PathValue("request"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "review_not_found", "申请不存在或已处理")
+		return
+	}
+	if !writeCourseError(w, r, s.courses.WithdrawUpdate(r.Context(), currentUser(r), id, reqID)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

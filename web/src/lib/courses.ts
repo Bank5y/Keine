@@ -35,7 +35,10 @@ export interface CourseDetail extends CourseSummary {
   chapters: ChapterItem[];
   progress: { done: number; total: number; lastLessonId: number | null };
   rejectReason?: string;
+  contributors: string[];
 }
+
+export interface UpdateRequest { id: number; state: 'pending' | 'approved' | 'rejected' | 'withdrawn'; reason: string; createdAt: string; decidedAt: string | null }
 
 export interface Review {
   id: number;
@@ -43,6 +46,8 @@ export interface Review {
   course: CourseSummary;
   requester: { id: number; username: string };
   createdAt: string;
+  changes?: { added: string[]; removed: string[]; kept: number };
+  stale: boolean;
 }
 
 export const pad2 = (n: number) => String(n).padStart(2, '0');
