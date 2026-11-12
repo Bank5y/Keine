@@ -259,8 +259,9 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .book:hover .book-title { color: var(--brand); }
 .book:focus-visible .book-cover { outline: 2px solid var(--brand); outline-offset: 3px; }
 .book-author { color: var(--text-3); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.book-cover-wrap { position: relative; }
 .book-tools {
-  position: absolute; top: 10px; left: 10px; display: flex; gap: 6px; opacity: 0; transition: opacity .15s;
+  position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; opacity: 0; transition: opacity .15s;
 }
 .book:hover .book-tools, .book:focus-within .book-tools { opacity: 1; }
 @media (hover: none) { .book-tools { opacity: 1; } }
@@ -325,6 +326,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
   border: 1.5px dashed var(--rule); border-radius: var(--radius); padding: 36px 20px; text-align: center; color: var(--text-3);
   transition: border-color .15s, background-color .15s; cursor: pointer;
 }
+.drop:focus-visible { outline: none; border-color: var(--brand); }
 .drop:hover, .drop.over { border-color: var(--brand); background: var(--brand-soft); color: var(--text); }
 .drop .t { font-family: var(--serif); font-size: 17px; color: var(--text); margin-bottom: 4px; }
 .bar { height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; margin: 14px 0 6px; }

@@ -33,12 +33,21 @@ export function CourseCard({ course, onDelete }: { course: CourseSummary; onDele
   const isPrivate = course.visibility === 'private';
   return (
     <div className="book">
-      <Link href={`/courses/${course.id}`} className="contents" aria-label={course.title}>
-        <div className="book-cover">
-          <Cover course={course} />
-          {isPrivate ? <span className={cn('book-badge', course.publishState)}>{PUBLISH_LABEL[course.publishState]}</span> : null}
-          {course.completion !== 'finished' ? <span className={cn('book-flag', course.completion)}>{COMPLETION_LABEL[course.completion]}</span> : null}
-        </div>
+      <div className="book-cover-wrap">
+        <Link href={`/courses/${course.id}`} className="block" aria-label={course.title} tabIndex={-1}>
+          <div className="book-cover">
+            <Cover course={course} />
+            {isPrivate ? <span className={cn('book-badge', course.publishState)}>{PUBLISH_LABEL[course.publishState]}</span> : null}
+            {course.completion !== 'finished' ? <span className={cn('book-flag', course.completion)}>{COMPLETION_LABEL[course.completion]}</span> : null}
+          </div>
+        </Link>
+        {onDelete && isPrivate && course.isUploader ? (
+          <div className="book-tools">
+            <Button variant="icon" size="icon" title="删除课程" aria-label={`删除 ${course.title}`} onClick={() => onDelete(course)}><Trash2 /></Button>
+          </div>
+        ) : null}
+      </div>
+      <Link href={`/courses/${course.id}`} className="contents">
         <div className="book-meta">
           <div className="book-kicker">
             <span>{TYPE_LABEL[course.type]}</span>
@@ -49,11 +58,6 @@ export function CourseCard({ course, onDelete }: { course: CourseSummary; onDele
           {course.authorName ? <div className="book-author">{course.authorName}</div> : null}
         </div>
       </Link>
-      {onDelete && isPrivate && course.isUploader ? (
-        <div className="book-tools">
-          <Button variant="icon" size="icon" title="删除课程" aria-label={`删除 ${course.title}`} onClick={() => onDelete(course)}><Trash2 /></Button>
-        </div>
-      ) : null}
     </div>
   );
 }
