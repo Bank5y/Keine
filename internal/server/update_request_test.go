@@ -235,3 +235,22 @@ func TestUnpublishingSettlesPendingUpdateRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminDoesNotUpdateOthersPrivateCourses(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	admin := a.admin()
+	private := uploadCourse(t, alice, columnFiles(columnManifest()))
+	pending := uploadCourse(t, alice, columnFiles(columnManifest()))
+	alice.mustOK(requestPublish(alice, pending))
+	own := uploadCourse(t, admin, columnFiles(columnManifest()))
+	_, files := nextVersion()
+
+	expectError(t, updateCourse(t, admin, private, files), http.StatusNotFound, "course_not_found")
+	expectError(t, updateCourse(t, admin, pending, files), http.StatusForbidden, "forbidden")
+	admin.mustOK(updateCourse(t, admin, own, files))
+
+	if d := courseJSON(t, alice, private); d["title"] != "Agent 系统设计" {
+		t.Fatalf("alice's private course must not change: %v", d["title"])
+	}
+}

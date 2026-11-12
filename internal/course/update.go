@@ -17,16 +17,19 @@ var ErrUpdateRequestRequired = errors.New("public courses are updated through an
 
 // Update replaces a course's content with a new course package: its
 // information, chapters, lessons and files all follow the new manifest.
-// The uploader updates a private course directly; admins update any course.
+// The uploader updates their private course directly; admins update public
+// courses directly, but never another user's private course.
 // The new files are stored beside the old ones and the course switches over
 // in one transaction, so a failed update leaves the course as it was.
 func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zip.Reader) error {
 	sm, err := s.loadToChange(ctx, viewer, id)
-	if err == nil && !viewer.IsAdmin() {
+	if err == nil {
 		switch {
-		case !sm.IsUploader:
-			err = ErrNotFound
-		case sm.Visibility != Private:
+		case sm.Visibility == Private && !sm.IsUploader && !canView(viewer, sm):
+			err = ErrNotFound // others' private courses stay invisible
+		case sm.Visibility == Private && !sm.IsUploader:
+			err = ErrForbidden // an admin reviewing it still may not change it
+		case sm.Visibility == Public && !viewer.IsAdmin():
 			err = ErrUpdateRequestRequired
 		}
 	}
