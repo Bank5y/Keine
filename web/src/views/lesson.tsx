@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ListTree, PanelLeft } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, ListTree, PanelLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { Drawer } from '@/components/drawer';
+import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
 import { ImageZoom } from '@/components/zoom';
 import { api } from '@/lib/api';
-import { lessonURL, pad2, type CourseDetail, type LessonItem, type LessonText } from '@/lib/courses';
+import { lessonURL, pad2, type CourseDetail, type LessonItem, type LessonState, type LessonText } from '@/lib/courses';
+import { useReadingProgress } from '@/lib/use-reading-progress';
 import { Link, navigate } from '@/lib/router';
 import { useHeadings, type Heading } from '@/lib/use-headings';
 import { cn } from '@/lib/utils';
@@ -26,7 +28,7 @@ function neighbours(c: CourseDetail | null, lessonId: number) {
 const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 export function LessonView({ courseId, lessonId }: { courseId: number; lessonId: number }) {
-  const { course } = useCourse(courseId);
+  const { course, reload } = useCourse(courseId);
   const [lesson, setLesson] = useState<LessonText | null>(null);
   const [err, setErr] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);
@@ -34,6 +36,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const doc = useRef<HTMLElement>(null);
   const { headings, active } = useHeadings(doc, lesson?.id);
   const { prev, next } = useMemo(() => neighbours(course, lessonId), [course, lessonId]);
+  const { state, setDone } = useReadingProgress(courseId, lesson, doc, reload);
 
   useEffect(() => {
     setLesson(null);
@@ -86,6 +89,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
               : <p className="text-ink-3">这一讲没有文字内容。</p>}
           </article>
         ) : null}
+        {lesson ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
         {lesson ? (
           <nav className="reader-nav" aria-label="翻页">
             <NavCard courseId={courseId} item={prev} dir="prev" />
@@ -103,6 +107,16 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   );
 }
 
+function DoneBar({ state, onToggle }: { state: LessonState; onToggle: () => void }) {
+  return (
+    <div className="done-bar">
+      {state === 'done'
+        ? <><span className="ok"><Check />这一讲已学完</span><Button variant="text" size="bare" onClick={onToggle}>标记为未学完</Button></>
+        : <><span>读到这里了?</span><Button variant="outline" size="sm" onClick={onToggle}><Check />标记为已学完</Button></>}
+    </div>
+  );
+}
+
 function CourseToc({ c, current }: { c: CourseDetail; current: number }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { ref.current?.querySelector('.current')?.scrollIntoView({ block: 'nearest' }); }, [current]);
@@ -110,6 +124,7 @@ function CourseToc({ c, current }: { c: CourseDetail; current: number }) {
   return (
     <div className="side-toc" ref={ref}>
       <div className="side-title">{c.title}</div>
+      <div className="side-progress"><ProgressBar done={c.progress.done} total={c.progress.total} /><span>{c.progress.done} / {c.progress.total}</span></div>
       {c.chapters.map((ch, i) => (
         <div className="side-ch" key={ch.id}>
           <div className="side-ch-head"><span className="no">{pad2(i + 1)}</span>{ch.title}</div>
@@ -119,6 +134,7 @@ function CourseToc({ c, current }: { c: CourseDetail; current: number }) {
               <Link key={l.id} href={lessonURL(c.id, l.id)} className={cn('side-l', l.id === current && 'current')} aria-current={l.id === current ? 'page' : undefined}>
                 <span className="no">{pad2(n)}</span>
                 <span className="t">{l.title}</span>
+                <StateMark state={l.state} compact />
               </Link>
             );
           })}

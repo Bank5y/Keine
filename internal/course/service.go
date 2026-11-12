@@ -130,19 +130,21 @@ func (s *Service) storeFiles(ctx context.Context, p *pkg, courseID int64, files 
 
 // Summary is a course as shown on a card.
 type Summary struct {
-	ID           int64     `json:"id"`
-	Title        string    `json:"title"`
-	Type         string    `json:"type"`
-	Completion   string    `json:"completion"`
-	AuthorName   string    `json:"authorName"`
-	HasCover     bool      `json:"hasCover"`
-	Visibility   string    `json:"visibility"`
-	PublishState string    `json:"publishState"`
-	UploaderID   int64     `json:"uploaderId"`
-	IsUploader   bool      `json:"isUploader"`
-	LessonCount  int       `json:"lessonCount"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	ID           int64  `json:"id"`
+	Title        string `json:"title"`
+	Type         string `json:"type"`
+	Completion   string `json:"completion"`
+	AuthorName   string `json:"authorName"`
+	HasCover     bool   `json:"hasCover"`
+	Visibility   string `json:"visibility"`
+	PublishState string `json:"publishState"`
+	UploaderID   int64  `json:"uploaderId"`
+	IsUploader   bool   `json:"isUploader"`
+	LessonCount  int    `json:"lessonCount"`
+	// DoneCount is how many lessons the viewer has finished.
+	DoneCount int       `json:"doneCount"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Detail is a course with its chapters and lessons.
@@ -151,12 +153,22 @@ type Detail struct {
 	Intro       string          `json:"intro"`
 	AuthorIntro string          `json:"authorIntro"`
 	Chapters    []ChapterDetail `json:"chapters"`
+	Progress    Progress        `json:"progress"`
+}
+
+// Progress is the viewer's progress through a course.
+type Progress struct {
+	Done  int `json:"done"`
+	Total int `json:"total"`
+	// LastLessonID is the lesson the viewer opened last, if any.
+	LastLessonID *int64 `json:"lastLessonId"`
 }
 
 type ChapterDetail struct {
 	ID      int64          `json:"id"`
 	Key     string         `json:"key"`
 	Title   string         `json:"title"`
+	Done    int            `json:"done"`
 	Lessons []LessonDetail `json:"lessons"`
 }
 
@@ -167,16 +179,24 @@ type LessonDetail struct {
 	Video    string `json:"video"` // "file", "url" or ""
 	Duration string `json:"duration"`
 	HasText  bool   `json:"hasText"`
+	State    string `json:"state"`
 }
 
-const summaryColumns = `
+// summaryColumns selects a Summary from courses c for the viewer bound to
+// the query parameter viewerParam (e.g. "$2").
+func summaryColumns(viewerParam string) string {
+	return `
 	c.id, c.title, c.type, c.completion, c.author_name, c.cover IS NOT NULL, c.visibility, c.publish_state,
-	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id), c.created_at, c.updated_at`
+	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id),
+	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
+	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
+	c.created_at, c.updated_at`
+}
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
 	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.CreatedAt, &s.UpdatedAt}
+		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt}
 }
 
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
@@ -191,7 +211,7 @@ func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
 // ErrNotFound, so private courses do not reveal that they exist.
 func (s *Service) loadVisible(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
 	var sm Summary
-	row := s.db.QueryRow(ctx, "SELECT "+summaryColumns+extraColumns+" FROM courses c WHERE c.id = $1", id)
+	row := s.db.QueryRow(ctx, "SELECT "+summaryColumns("$2")+extraColumns+" FROM courses c WHERE c.id = $1", id, viewer.ID)
 	err := row.Scan(append(summaryFields(&sm), extra...)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Summary{}, ErrNotFound
@@ -220,18 +240,28 @@ func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, 
 		return Detail{}, err
 	}
 	d.Summary = sm
-	d.Chapters, err = s.structure(ctx, id)
+	if d.Chapters, err = s.structure(ctx, viewer, id); err != nil {
+		return Detail{}, err
+	}
+	d.Progress = Progress{Done: sm.DoneCount, Total: sm.LessonCount}
+	err = s.db.QueryRow(ctx, `
+		SELECT l.id FROM enrollments e JOIN lessons l ON l.course_id = e.course_id AND l.key = e.last_lesson_key
+		WHERE e.user_id = $1 AND e.course_id = $2`, viewer.ID, id).Scan(&d.Progress.LastLessonID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = nil
+	}
 	return d, err
 }
 
-func (s *Service) structure(ctx context.Context, courseID int64) ([]ChapterDetail, error) {
+func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int64) ([]ChapterDetail, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT ch.id, ch.key, ch.title, l.id, l.key, l.title,
 		       CASE WHEN l.video_file IS NOT NULL THEN 'file' WHEN l.video_url IS NOT NULL THEN 'url' ELSE '' END,
-		       l.duration, l.file IS NOT NULL
+		       l.duration, l.file IS NOT NULL, `+lessonState+`
 		FROM chapters ch JOIN lessons l ON l.chapter_id = ch.id
+		LEFT JOIN lesson_progress p ON p.user_id = $2 AND p.course_id = l.course_id AND p.lesson_key = l.key
 		WHERE ch.course_id = $1
-		ORDER BY ch.position, l.position`, courseID)
+		ORDER BY ch.position, l.position`, courseID, viewer.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +270,7 @@ func (s *Service) structure(ctx context.Context, courseID int64) ([]ChapterDetai
 	for rows.Next() {
 		var ch ChapterDetail
 		var l LessonDetail
-		if err := rows.Scan(&ch.ID, &ch.Key, &ch.Title, &l.ID, &l.Key, &l.Title, &l.Video, &l.Duration, &l.HasText); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.Key, &ch.Title, &l.ID, &l.Key, &l.Title, &l.Video, &l.Duration, &l.HasText, &l.State); err != nil {
 			return nil, err
 		}
 		if len(out) == 0 || out[len(out)-1].ID != ch.ID {
@@ -248,6 +278,9 @@ func (s *Service) structure(ctx context.Context, courseID int64) ([]ChapterDetai
 		}
 		last := &out[len(out)-1]
 		last.Lessons = append(last.Lessons, l)
+		if l.State == StateDone {
+			last.Done++
+		}
 	}
 	return out, rows.Err()
 }
@@ -255,7 +288,7 @@ func (s *Service) structure(ctx context.Context, courseID int64) ([]ChapterDetai
 // Mine lists the courses a user has started learning, most recently studied
 // first.
 func (s *Service) Mine(ctx context.Context, viewer auth.User) ([]Summary, error) {
-	rows, err := s.db.Query(ctx, "SELECT "+summaryColumns+` FROM courses c
+	rows, err := s.db.Query(ctx, "SELECT "+summaryColumns("$1")+` FROM courses c
 		JOIN enrollments e ON e.course_id = c.id AND e.user_id = $1
 		WHERE c.visibility = 'public' OR c.uploader_id = $1
 		ORDER BY e.last_studied_at DESC, c.id DESC`, viewer.ID)

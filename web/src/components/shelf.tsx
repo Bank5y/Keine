@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ProgressBar } from '@/components/progress';
 import { COMPLETION_LABEL, PUBLISH_LABEL, TYPE_LABEL, coverURL, type CourseSummary } from '@/lib/courses';
 import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
@@ -30,7 +31,7 @@ export function Cover({ course }: { course: Pick<CourseSummary, 'id' | 'title' |
 }
 
 // href is where the card leads; without it the card does not navigate.
-export function CourseCard({ course, href, onDelete }: { course: CourseSummary; href?: string; onDelete?: (c: CourseSummary) => void }) {
+export function CourseCard({ course, href, onDelete, showProgress }: { course: CourseSummary; href?: string; onDelete?: (c: CourseSummary) => void; showProgress?: boolean }) {
   const isPrivate = course.visibility === 'private';
   const Go = ({ className, children, tabIndex }: { className: string; children: ReactNode; tabIndex?: number }) =>
     href ? <Link href={href} className={className} tabIndex={tabIndex}>{children}</Link> : <div className={className}>{children}</div>;
@@ -59,6 +60,12 @@ export function CourseCard({ course, href, onDelete }: { course: CourseSummary; 
           </div>
           <h3 className="book-title" title={course.title}>{course.title}</h3>
           {course.authorName ? <div className="book-author">{course.authorName}</div> : null}
+          {showProgress ? (
+            <div className="book-progress">
+              <ProgressBar done={course.doneCount} total={course.lessonCount} />
+              <span>{course.doneCount ? `已学 ${course.doneCount} / ${course.lessonCount}` : '尚未开始'}</span>
+            </div>
+          ) : null}
         </div>
       </Go>
     </div>
@@ -66,6 +73,6 @@ export function CourseCard({ course, href, onDelete }: { course: CourseSummary; 
 }
 
 // hrefOf says where each card leads; course pages arrive with the course detail ticket.
-export function Shelf({ courses, hrefOf, onDelete }: { courses: CourseSummary[]; hrefOf?: (c: CourseSummary) => string; onDelete?: (c: CourseSummary) => void }) {
-  return <div className="shelf">{courses.map((c) => <CourseCard key={c.id} course={c} href={hrefOf?.(c)} onDelete={onDelete} />)}</div>;
+export function Shelf({ courses, hrefOf, onDelete, showProgress }: { courses: CourseSummary[]; hrefOf?: (c: CourseSummary) => string; onDelete?: (c: CourseSummary) => void; showProgress?: boolean }) {
+  return <div className="shelf">{courses.map((c) => <CourseCard key={c.id} course={c} href={hrefOf?.(c)} onDelete={onDelete} showProgress={showProgress} />)}</div>;
 }

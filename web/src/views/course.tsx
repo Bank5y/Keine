@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, PlayCircle, Search } from 'lucide-react';
+import { ArrowLeft, BookOpen, PlayCircle, Search } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { Highlight } from '@/components/highlight';
+import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
 import { COMPLETION_LABEL, PUBLISH_LABEL, TYPE_LABEL, lessonURL, pad2, type ChapterItem, type CourseDetail } from '@/lib/courses';
-import { Link } from '@/lib/router';
+import { Link, navigate } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
 export function useCourse(id: number) {
@@ -51,6 +53,19 @@ export function CourseView({ id }: { id: number }) {
   );
 }
 
+// ContinueButton opens the lesson studied last, or the first lesson.
+function ContinueButton({ c }: { c: CourseDetail }) {
+  const first = c.chapters[0]?.lessons[0];
+  const target = c.progress.lastLessonId ?? first?.id;
+  if (!target) return null;
+  const started = c.progress.lastLessonId != null;
+  return (
+    <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target))}>
+      <BookOpen />{started ? '继续学习' : '开始学习'}
+    </Button>
+  );
+}
+
 function BackLink() {
   return <Link className="back" href="/mine"><ArrowLeft />我的课程</Link>;
 }
@@ -75,6 +90,11 @@ function Colophon({ c }: { c: CourseDetail }) {
           <dt>章数</dt><dd className="num">{c.chapters.length}</dd>
           {c.authorName ? <><dt>讲师</dt><dd>{c.authorName}</dd></> : null}
         </dl>
+        <div className="course-progress">
+          <div className="cp-head"><span>学习进度</span><b>{c.progress.done} / {c.progress.total}</b></div>
+          <ProgressBar done={c.progress.done} total={c.progress.total} />
+        </div>
+        <div className="stack"><ContinueButton c={c} /></div>
       </div>
     </>
   );
@@ -108,7 +128,7 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
           <div className="chapter-head">
             <span className="c-no">第 {pad2(chapterNo.get(ch.id)!)} 章</span>
             <span className="c-title"><Highlight text={ch.title} q={q} /></span>
-            <span className="c-meta">{ch.lessons.length} 讲</span>
+            <span className={cn('c-meta', ch.done === ch.lessons.length && 'complete')}>{ch.done} / {ch.lessons.length}</span>
           </div>
           <div className="lessons">
             {ch.lessons.map((l) => (
@@ -118,6 +138,7 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
                 <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
                 {l.duration ? <span className="e-dur">{l.duration}</span> : null}
                 <span className="e-lead" />
+                <span className="e-state"><StateMark state={l.state} /></span>
               </Link>
             ))}
           </div>

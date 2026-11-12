@@ -135,6 +135,8 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, http.StatusNotFound, "lesson_not_found", "这一讲不存在")
 	case errors.Is(err, course.ErrFileNotFound):
 		writeError(w, http.StatusNotFound, "file_not_found", "文件不存在")
+	case errors.Is(err, course.ErrBadProgress):
+		writeError(w, http.StatusBadRequest, "bad_request", "学习进度不合法")
 	case errors.Is(err, course.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "没有权限进行这个操作")
 	default:
@@ -202,14 +204,45 @@ type lessonBody struct {
 	Base string `json:"base"`
 }
 
-func (s *Server) getLesson(w http.ResponseWriter, r *http.Request) {
-	id, ok := courseIDParam(w, r)
+// lessonParams reads the {id} and {lesson} path segments.
+func lessonParams(w http.ResponseWriter, r *http.Request) (courseID, lessonID int64, ok bool) {
+	if courseID, ok = courseIDParam(w, r); !ok {
+		return 0, 0, false
+	}
+	lessonID, err := strconv.ParseInt(r.PathValue("lesson"), 10, 64)
+	if err != nil || lessonID <= 0 {
+		writeError(w, http.StatusNotFound, "lesson_not_found", "这一讲不存在")
+		return 0, 0, false
+	}
+	return courseID, lessonID, true
+}
+
+func (s *Server) visitLesson(w http.ResponseWriter, r *http.Request) {
+	id, lessonID, ok := lessonParams(w, r)
+	if !ok || !writeCourseError(w, r, s.courses.Visit(r.Context(), currentUser(r), id, lessonID)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) setProgress(w http.ResponseWriter, r *http.Request) {
+	id, lessonID, ok := lessonParams(w, r)
 	if !ok {
 		return
 	}
-	lessonID, err := strconv.ParseInt(r.PathValue("lesson"), 10, 64)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "lesson_not_found", "这一讲不存在")
+	var in course.ProgressUpdate
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if !writeCourseError(w, r, s.courses.SetProgress(r.Context(), currentUser(r), id, lessonID, in)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getLesson(w http.ResponseWriter, r *http.Request) {
+	id, lessonID, ok := lessonParams(w, r)
+	if !ok {
 		return
 	}
 	l, err := s.courses.Lesson(r.Context(), currentUser(r), id, lessonID)

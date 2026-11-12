@@ -485,5 +485,26 @@ a.rn:hover .t { color: var(--brand); }
 .rn.none { border-style: dashed; color: var(--text-3); }
 .rn.none .lbl { color: var(--text-3); }
 @media (max-width: 560px) { .reader-nav { grid-template-columns: 1fr; } }
+
+/* ---------- progress ---------- */
+.pbar { height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; flex: 1; min-width: 40px; }
+.pbar > i { display: block; height: 100%; background: var(--success); transition: width .3s; }
+.book-progress { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.course-progress { margin: 0 0 18px; }
+.course-progress .cp-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-3); letter-spacing: .08em; margin-bottom: 6px; }
+.course-progress .cp-head b { font-family: var(--mono); color: var(--success); font-weight: 600; letter-spacing: 0; }
+.chapter-head .c-meta.complete { color: var(--success); }
+.smark { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; color: var(--text-3); }
+.smark svg { width: 13px; height: 13px; }
+.smark.unstarted { opacity: .7; }
+.smark.studying { color: var(--info); }
+.smark.studying::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.smark.done { color: var(--success); }
+.smark.compact { margin-left: auto; flex-shrink: 0; align-self: center; }
+.sm-none { margin-left: auto; width: 13px; flex-shrink: 0; }
+.side-progress { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+.done-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 32px; padding: 14px 16px; border: 1px dashed var(--rule); border-radius: 2px; color: var(--text-2); font-size: 13px; }
+.done-bar .ok { display: inline-flex; align-items: center; gap: 6px; color: var(--success); font-weight: 600; }
+.done-bar .ok svg { width: 15px; height: 15px; }
 }
 
