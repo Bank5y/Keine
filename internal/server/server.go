@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Bank5y/keine/internal/auth"
+	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/db"
 	"github.com/Bank5y/keine/internal/storage"
 )
@@ -22,14 +23,17 @@ type Options struct {
 	SecureCookies bool
 	// Web is the built front end; nil serves the API only.
 	Web fs.FS
+	// MaxUploadBytes caps the size of a course package (default 4 GiB).
+	MaxUploadBytes int64
 }
 
 type Server struct {
-	opts  Options
-	db    *pgxpool.Pool
-	auth  *auth.Service
-	files storage.Store
-	mux   *http.ServeMux
+	opts    Options
+	db      *pgxpool.Pool
+	auth    *auth.Service
+	courses *course.Service
+	files   storage.Store
+	mux     *http.ServeMux
 }
 
 // New connects to the database, migrates it and makes sure the deployment's
@@ -39,7 +43,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), files: opts.Storage, mux: http.NewServeMux()}
+	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage), files: opts.Storage, mux: http.NewServeMux()}
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -65,6 +69,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/admin/users", s.adminOnly(s.listUsers))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}", s.adminOnly(s.updateUser))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}/password", s.adminOnly(s.resetPassword))
+	s.mux.HandleFunc("POST /api/courses", s.signedIn(s.uploadCourse))
+	s.mux.HandleFunc("GET /api/courses/{id}", s.signedIn(s.getCourse))
+	s.mux.HandleFunc("GET /api/my/courses", s.signedIn(s.myCourses))
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
 	})

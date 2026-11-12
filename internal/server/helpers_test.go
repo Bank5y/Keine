@@ -25,6 +25,7 @@ const (
 type app struct {
 	t      *testing.T
 	dbURL  string
+	root   string // directory of the local file store
 	files  storage.Store
 	srv    *httptest.Server
 	server *server.Server
@@ -38,19 +39,23 @@ func withAdmin(name, pass string) appOption {
 
 func newApp(t *testing.T, opts ...appOption) *app {
 	t.Helper()
-	return startApp(t, testutil.NewDatabase(t), storage.NewLocal(t.TempDir()), opts...)
+	root := t.TempDir()
+	return startApp(t, testutil.NewDatabase(t), root, opts...)
 }
+
+func (a *app) filesRoot() string { return a.root }
 
 // restart starts a second instance against the same database and files,
 // as a redeploy would.
 func (a *app) restart(opts ...appOption) *app {
 	a.t.Helper()
 	a.srv.Close()
-	return startApp(a.t, a.dbURL, a.files, opts...)
+	return startApp(a.t, a.dbURL, a.root, opts...)
 }
 
-func startApp(t *testing.T, dbURL string, files storage.Store, opts ...appOption) *app {
+func startApp(t *testing.T, dbURL, root string, opts ...appOption) *app {
 	t.Helper()
+	files := storage.NewLocal(root)
 	o := server.Options{DatabaseURL: dbURL, Storage: files, AdminUsername: adminName, AdminPassword: adminPass}
 	for _, f := range opts {
 		f(&o)
@@ -61,7 +66,7 @@ func startApp(t *testing.T, dbURL string, files storage.Store, opts ...appOption
 	}
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(func() { ts.Close(); s.Close() })
-	return &app{t: t, dbURL: dbURL, files: files, srv: ts, server: s}
+	return &app{t: t, dbURL: dbURL, root: root, files: files, srv: ts, server: s}
 }
 
 // client is one browser: it keeps its own session cookie.
