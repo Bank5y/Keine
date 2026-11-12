@@ -1,15 +1,18 @@
 import { useEffect, type ReactNode } from 'react';
 import { Toaster } from 'sonner';
 import { Masthead } from '@/components/masthead';
-import { navigate, usePath } from '@/lib/router';
+import { match, navigate, usePath } from '@/lib/router';
 import { useUser, type User } from '@/lib/session';
 import { AccountView } from '@/views/account';
 import { AdminView } from '@/views/admin';
+import { CourseView } from '@/views/course';
 import { LibraryView } from '@/views/library';
 import { LoginView } from '@/views/login';
 import { MineView } from '@/views/mine';
 
 function routeView(path: string, user: User): ReactNode {
+  const m = match('/courses/:id', path);
+  if (m) return <CourseView id={Number(m.id)} />;
   if (path.startsWith('/mine')) return <MineView />;
   if (path.startsWith('/account')) return <AccountView user={user} />;
   if (path.startsWith('/admin') && user.role === 'admin') return <AdminView path={path} user={user} />;

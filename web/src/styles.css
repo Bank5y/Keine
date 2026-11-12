@@ -332,4 +332,92 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .bar { height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; margin: 14px 0 6px; }
 .bar > i { display: block; height: 100%; background: var(--brand); transition: width .2s; }
 
+
+/* ---------- course detail (colophon + table of contents) ---------- */
+.back { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); margin-bottom: 28px; cursor: pointer; font-size: 13px; }
+.back:hover { color: var(--brand); }
+.back svg { width: 15px; height: 15px; }
+.course { display: grid; grid-template-columns: 280px 1fr; gap: 64px; align-items: start; }
+@media (max-width: 900px) { .course { grid-template-columns: 1fr; gap: 32px; } }
+.colophon { position: sticky; top: 96px; }
+@media (max-width: 900px) { .colophon { position: static; display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: start; } }
+.colophon h1 { font-family: var(--serif); font-size: 28px; line-height: 1.3; margin: 24px 0 14px; word-break: break-word; }
+@media (max-width: 900px) { .colophon h1 { margin-top: 0; font-size: 24px; } }
+.colophon .tags { display: flex; gap: 8px; flex-wrap: wrap; margin: -4px 0 16px; }
+.tag { display: inline-flex; align-items: center; padding: 1px 8px; font-size: 12px; border-radius: 2px; background: var(--surface-2); color: var(--text-2); }
+.tag.ongoing { background: var(--info-soft); color: var(--info); }
+.tag.incomplete { background: var(--warn-soft); color: var(--warn); }
+.tag.private { box-shadow: inset 0 0 0 1px var(--rule); background: transparent; }
+.tag.pending { color: var(--info); box-shadow: inset 0 0 0 1px var(--info); background: transparent; }
+.tag.rejected { color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); background: transparent; }
+.spec { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0 0 24px; font-size: 13px; padding: 14px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.spec dt { color: var(--text-3); letter-spacing: .08em; }
+.spec dd { margin: 0; color: var(--text-2); }
+.spec .num { font-family: var(--mono); }
+.colophon .stack { display: flex; flex-direction: column; gap: 10px; }
+.colophon .note { color: var(--text-3); font-size: 12px; margin-top: 14px; line-height: 1.7; }
+
+.toc-head { display: flex; align-items: center; gap: 16px; padding: 0 0 14px; border-bottom: 1.5px solid var(--text); flex-wrap: wrap; }
+.toc-tabs { display: flex; gap: 26px; flex: 1; min-width: 160px; }
+.toc-tab { border: 0; background: none; padding: 0; font-family: var(--serif); font-size: 22px; font-weight: 700; color: var(--text-3); transition: color .15s; }
+.toc-tab:hover { color: var(--text-2); }
+.toc-tab.active { color: var(--text); }
+.toc-tab sup { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
+.search-sm { position: relative; flex: 1; min-width: 160px; max-width: 280px; }
+.search-sm svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-3); }
+.search-sm input { width: 100%; height: 34px; padding: 0 10px 0 32px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); outline: none; font-size: 13px; }
+.search-sm input:focus { border-color: var(--text); }
+
+/* chapters are section heads; lessons hang indented beneath them */
+.chapter { margin-top: 30px; }
+.chapter:first-child { margin-top: 10px; }
+.chapter-head {
+  display: flex; align-items: baseline; gap: 14px; padding: 12px 0 10px;
+  border-bottom: 1.5px solid var(--text);
 }
+.chapter-head .c-no { font-family: var(--mono); font-size: 12px; color: var(--brand); letter-spacing: .12em; font-weight: 600; flex-shrink: 0; }
+.chapter-head .c-title { font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--text); flex: 1; min-width: 0; }
+.chapter-head .c-meta { font-family: var(--mono); font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+.lessons { padding-left: 28px; border-left: 1px solid var(--rule); margin-left: 6px; }
+.entry { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+.entry:hover .e-title { color: var(--brand); }
+.entry .e-no { font-family: var(--mono); font-size: 11px; color: var(--text-3); width: 26px; text-align: right; flex-shrink: 0; }
+.entry .e-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color .15s; font-size: 14px; }
+.entry .e-icon { display: inline-flex; color: var(--info); flex-shrink: 0; }
+.entry .e-icon svg { width: 13px; height: 13px; }
+.entry .e-dur { font-family: var(--mono); font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+.entry .e-lead { flex: 1; min-width: 16px; border-bottom: 1px dotted var(--rule); align-self: center; transform: translateY(4px); }
+.entry .e-state { flex-shrink: 0; }
+@media (max-width: 560px) { .lessons { padding-left: 14px; margin-left: 0; } }
+mark { background: none; color: var(--brand); border-bottom: 1px solid var(--brand); }
+
+/* ---------- prose (rendered Markdown) ---------- */
+.prose { max-width: 720px; padding: 8px 0 24px; font-size: 15px; line-height: 1.9; color: var(--text); }
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 { font-family: var(--serif); line-height: 1.4; margin: 36px 0 12px; scroll-margin-top: 90px; }
+.prose h1 { font-size: 26px; }
+.prose h2 { font-size: 22px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+.prose h3 { font-size: 18px; }
+.prose h4 { font-size: 16px; }
+.prose h5, .prose h6 { font-size: 15px; }
+.prose p { margin: 0 0 14px; }
+.prose ul, .prose ol { padding-left: 22px; margin: 0 0 16px; }
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose li { margin: 4px 0; }
+.prose li::marker { color: var(--brand); }
+.prose img { max-width: 100%; height: auto; display: block; margin: 18px auto; border-radius: 2px; cursor: zoom-in; }
+.prose a { color: var(--brand); border-bottom: 1px solid currentColor; }
+.prose blockquote { margin: 16px 0; padding: 4px 18px; border-left: 2px solid var(--brand); color: var(--text-2); }
+.prose table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; display: block; overflow-x: auto; }
+.prose th, .prose td { border: 1px solid var(--rule); padding: 6px 10px; text-align: left; }
+.prose th { font-weight: 700; background: var(--surface-2); }
+.prose hr { margin: 28px 0; border: 0; border-top: 1px solid var(--rule); }
+.prose pre { background: var(--surface-2); border: 1px solid var(--border); border-radius: 2px; padding: 14px 16px; overflow-x: auto; font-size: 13px; line-height: 1.65; margin: 16px 0; }
+.prose code { font-family: var(--mono); font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-radius: 2px; }
+.prose pre code { background: none; padding: 0; font-size: inherit; white-space: pre; }
+.author-card { border-top: 1.5px solid var(--text); padding: 18px 0 8px; margin-top: 28px; }
+.author-card .kicker { margin-bottom: 8px; }
+.author-card .name { font-family: var(--serif); font-size: 18px; font-weight: 700; }
+.author-card .role { color: var(--text-3); font-size: 13px; margin-left: 10px; }
+}
+

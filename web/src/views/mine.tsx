@@ -46,7 +46,7 @@ export function MineView() {
         <div className="result-bar"><span className="count"><b>{courses.length}</b>门课程</span></div>
       ) : null}
       {courses && !courses.length ? <Empty glyph="空" title="还没有课程"><div>上传一个课程包, 或去课程库挑一门课开始学习</div></Empty> : null}
-      {courses && courses.length ? <Shelf courses={courses} onDelete={setDeleting} /> : null}
+      {courses && courses.length ? <Shelf courses={courses} hrefOf={(c) => `/courses/${c.id}`} onDelete={setDeleting} /> : null}
       <UploadDialog open={uploading} onClose={() => setUploading(false)} onUploaded={() => { setUploading(false); void load(); }} />
       <Dialog open={!!deleting} onOpenChange={(v) => { if (!v && !busy) setDeleting(null); }} title="删除课程">
         <p>确定删除「{deleting?.title}」吗? 课程内容、文件和学习记录都会被删除, 无法恢复。</p>
