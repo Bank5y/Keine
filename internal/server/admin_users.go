@@ -1,9 +1,6 @@
 package server
 
-import (
-	"net/http"
-	"strconv"
-)
+import "net/http"
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.auth.Users(r.Context())
@@ -14,15 +11,9 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"users": users})
 }
 
-func pathID(r *http.Request, name string) (int64, bool) {
-	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
-	return id, err == nil && id > 0
-}
-
 func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r, "id")
+	id, ok := userIDParam(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
 		return
 	}
 	var in struct {
@@ -47,9 +38,8 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resetPassword(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r, "id")
+	id, ok := userIDParam(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "user_not_found", "用户不存在")
 		return
 	}
 	var in struct {

@@ -173,12 +173,37 @@ const summaryColumns = `
 	c.id, c.title, c.type, c.completion, c.author_name, c.cover IS NOT NULL, c.visibility, c.publish_state,
 	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id), c.created_at, c.updated_at`
 
+// summaryFields are the scan targets matching summaryColumns.
+func summaryFields(s *Summary) []any {
+	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
+		&s.UploaderID, &s.LessonCount, &s.CreatedAt, &s.UpdatedAt}
+}
+
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
 	var s Summary
-	err := row.Scan(&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(summaryFields(&s)...)
 	s.IsUploader = err == nil && s.UploaderID == viewer.ID
 	return s, err
+}
+
+// loadVisible loads one course the viewer may see, scanning the summary
+// plus extraColumns into extra. Courses the viewer may not see are
+// ErrNotFound, so private courses do not reveal that they exist.
+func (s *Service) loadVisible(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
+	var sm Summary
+	row := s.db.QueryRow(ctx, "SELECT "+summaryColumns+extraColumns+" FROM courses c WHERE c.id = $1", id)
+	err := row.Scan(append(summaryFields(&sm), extra...)...)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Summary{}, ErrNotFound
+	}
+	if err != nil {
+		return Summary{}, err
+	}
+	sm.IsUploader = sm.UploaderID == viewer.ID
+	if !canView(viewer, sm) {
+		return Summary{}, ErrNotFound
+	}
+	return sm, nil
 }
 
 // canView is the single rule for who may see a course: anyone signed in sees
@@ -187,23 +212,14 @@ func canView(viewer auth.User, s Summary) bool {
 	return s.Visibility == Public || s.UploaderID == viewer.ID
 }
 
-// Get returns a course the viewer may see; any other course is ErrNotFound,
-// so private courses do not reveal that they exist.
+// Get returns a course with its chapters and lessons.
 func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, error) {
 	var d Detail
-	row := s.db.QueryRow(ctx, "SELECT "+summaryColumns+", c.intro, c.author_intro FROM courses c WHERE c.id = $1", id)
-	err := row.Scan(&d.ID, &d.Title, &d.Type, &d.Completion, &d.AuthorName, &d.HasCover, &d.Visibility, &d.PublishState,
-		&d.UploaderID, &d.LessonCount, &d.CreatedAt, &d.UpdatedAt, &d.Intro, &d.AuthorIntro)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return d, ErrNotFound
-	}
+	sm, err := s.loadVisible(ctx, viewer, id, ", c.intro, c.author_intro", &d.Intro, &d.AuthorIntro)
 	if err != nil {
-		return d, err
+		return Detail{}, err
 	}
-	d.IsUploader = d.UploaderID == viewer.ID
-	if !canView(viewer, d.Summary) {
-		return Detail{}, ErrNotFound
-	}
+	d.Summary = sm
 	d.Chapters, err = s.structure(ctx, id)
 	return d, err
 }
@@ -252,25 +268,12 @@ func (s *Service) Mine(ctx context.Context, viewer auth.User) ([]Summary, error)
 // ErrNoCover means the course has no cover image of its own.
 var ErrNoCover = errors.New("course has no cover")
 
-// summary loads one course's card data and applies the visibility rule.
+// summary loads one course's card data with its cover path ("" if none).
 func (s *Service) summary(ctx context.Context, viewer auth.User, id int64) (Summary, string, error) {
 	var cover *string
-	var sm Summary
-	err := s.db.QueryRow(ctx, "SELECT "+summaryColumns+", c.cover FROM courses c WHERE c.id = $1", id).
-		Scan(&sm.ID, &sm.Title, &sm.Type, &sm.Completion, &sm.AuthorName, &sm.HasCover, &sm.Visibility, &sm.PublishState,
-			&sm.UploaderID, &sm.LessonCount, &sm.CreatedAt, &sm.UpdatedAt, &cover)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return sm, "", ErrNotFound
-	}
-	if err != nil {
+	sm, err := s.loadVisible(ctx, viewer, id, ", c.cover", &cover)
+	if err != nil || cover == nil {
 		return sm, "", err
-	}
-	sm.IsUploader = sm.UploaderID == viewer.ID
-	if !canView(viewer, sm) {
-		return Summary{}, "", ErrNotFound
-	}
-	if cover == nil {
-		return sm, "", nil
 	}
 	return sm, *cover, nil
 }

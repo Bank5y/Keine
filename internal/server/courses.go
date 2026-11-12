@@ -97,9 +97,8 @@ func writeUploadError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func (s *Server) getCourse(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r, "id")
+	id, ok := courseIDParam(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
 		return
 	}
 	d, err := s.courses.Get(r.Context(), currentUser(r), id)
@@ -138,9 +137,8 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 }
 
 func (s *Server) courseCover(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r, "id")
+	id, ok := courseIDParam(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
 		return
 	}
 	rc, name, err := s.courses.Cover(r.Context(), currentUser(r), id)
@@ -161,9 +159,8 @@ func (s *Server) courseCover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteCourse(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(r, "id")
+	id, ok := courseIDParam(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
 		return
 	}
 	if !writeCourseError(w, r, s.courses.Delete(r.Context(), currentUser(r), id)) {

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/Bank5y/keine/internal/auth"
@@ -109,4 +110,23 @@ func spa(web fs.FS) http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFileFS(w, r, web, "index.html")
 	})
+}
+
+// idParam reads the {id} path segment. A malformed id names nothing, so it
+// is answered as the not-found error of that resource.
+func idParam(w http.ResponseWriter, r *http.Request, notFoundCode, notFoundMessage string) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusNotFound, notFoundCode, notFoundMessage)
+		return 0, false
+	}
+	return id, true
+}
+
+func courseIDParam(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	return idParam(w, r, "course_not_found", "课程不存在")
+}
+
+func userIDParam(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	return idParam(w, r, "user_not_found", "用户不存在")
 }
