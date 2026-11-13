@@ -39,7 +39,9 @@
   --mast-h: 64px;
   --main-top: 48px;
   --sticky-top: calc(var(--mast-h) + 1px + var(--main-top)); /* masthead + its border + page padding */
-  --back-h: 22px; /* the back link above a page, without its margin */
+  --back-h: 22px; /* the back link above a page */
+  --back-gap: 28px; /* and the space below it */
+  --sticky-foot: 24px; /* space left below a sticky column */
   color-scheme: light;
 
   --background: var(--bg);
@@ -350,17 +352,18 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 
 
 /* ---------- course detail (colophon + table of contents) ---------- */
-.back { display: inline-flex; align-items: center; gap: 6px; height: var(--back-h); color: var(--text-3); margin-bottom: 28px; cursor: pointer; font-size: 13px; }
+.back { display: inline-flex; align-items: center; gap: 6px; height: var(--back-h); vertical-align: top; color: var(--text-3); margin-bottom: var(--back-gap); cursor: pointer; font-size: 13px; }
 .back:hover { color: var(--brand); }
 .back svg { width: 15px; height: 15px; }
 .course { display: grid; grid-template-columns: 280px 1fr; gap: 64px; align-items: start; }
 @media (max-width: 900px) { .course { grid-template-columns: 1fr; gap: 32px; } }
 .colophon {
   /* below the back link; taller than the window, it scrolls on its own */
-  --colophon-top: calc(var(--sticky-top) + var(--back-h) + 28px);
-  position: sticky; top: var(--colophon-top); max-height: calc(100vh - var(--colophon-top) - 24px); overflow-y: auto; overscroll-behavior: contain;
+  --colophon-top: calc(var(--sticky-top) + var(--back-h) + var(--back-gap));
+  position: sticky; top: var(--colophon-top); max-height: calc(100vh - var(--colophon-top) - var(--sticky-foot)); overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 4px; margin: 0 -4px; /* room for focus rings, which the scroll box would clip */
 }
-@media (max-width: 900px) { .colophon { position: static; max-height: none; overflow: visible; mask-image: none; display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: start; } }
+@media (max-width: 900px) { .colophon { position: static; max-height: none; overflow: visible; mask-image: none; padding: 0; margin: 0; display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: start; } }
 .colophon h1 { font-family: var(--serif); font-size: 28px; line-height: 1.3; margin: 24px 0 14px; word-break: break-word; }
 @media (max-width: 900px) { .colophon h1 { margin-top: 0; font-size: 24px; } }
 .colophon .tags { display: flex; gap: 8px; flex-wrap: wrap; margin: -4px 0 16px; }
@@ -469,7 +472,7 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .main:has(> .contents > .docs) { max-width: 1400px; }
 .docs { display: grid; grid-template-columns: 250px minmax(0, 1fr) 210px; gap: 48px; align-items: start; }
 .docs-main { min-width: 0; max-width: 780px; width: 100%; justify-self: center; }
-.docs-side { position: sticky; top: var(--sticky-top); max-height: calc(100vh - var(--sticky-top) - 24px); overflow-y: auto; overscroll-behavior: contain; }
+.docs-side { position: sticky; top: var(--sticky-top); max-height: calc(100vh - var(--sticky-top) - var(--sticky-foot)); overflow-y: auto; overscroll-behavior: contain; }
 /* the course toc scrolls below the back link, with the locate button over its foot */
 .docs-left { display: flex; flex-direction: column; overflow: visible; }
 .side-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
