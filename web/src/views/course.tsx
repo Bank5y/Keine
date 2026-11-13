@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, BookOpen, ChevronRight, PlayCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
 import { COMPLETION_LABEL, PUBLISH_LABEL, TYPE_LABEL, lessonURL, pad2, type ChapterItem, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
+import { useScrollFade } from '@/lib/use-scroll-fade';
 import { cn } from '@/lib/utils';
 
 export function useCourse(id: number) {
@@ -44,13 +45,15 @@ export function CourseView({ id }: { id: number }) {
     history.replaceState(history.state, '', `${location.pathname}?tab=${t}${location.hash}`);
   };
   const [q, setQ] = useState('');
+  const colophon = useRef<HTMLElement>(null);
+  useScrollFade(colophon);
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
   return (
     <div className="page enter">
       <BackLink library={!!course && course.visibility === 'public' && !course.enrolled} />
       <div className="course">
-        <aside className="colophon">{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</aside>
+        <aside className="colophon side-fade" ref={colophon}>{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</aside>
         <section>
           <div className="toc-head">
             <div className="toc-tabs" role="tablist">
