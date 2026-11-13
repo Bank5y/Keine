@@ -38,18 +38,24 @@ export function useReadingProgress(courseId: number, lesson: LessonText | null, 
     return undefined;
   }, [lesson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // position: save while scrolling and when leaving
+  // position: save while scrolling and when leaving. The ratio is taken from
+  // scroll events, not read on leaving: navigating scrolls the window to the
+  // top before this lesson lets go, which would save 0.
   useEffect(() => {
     if (!text) return undefined;
     let last = -1;
+    let ratio: number | null = null; // null until the reader (or the restore) scrolls
+    const onScroll = () => { ratio = scrollRatio(); };
     const save = () => {
-      const p = Math.round(scrollRatio() * 1000) / 1000;
+      if (ratio === null) return;
+      const p = Math.round(ratio * 1000) / 1000;
       if (Math.abs(p - last) < 0.01) return;
       last = p;
       void api('PUT', url + '/progress', { position: p }).catch(() => {});
     };
+    window.addEventListener('scroll', onScroll, { passive: true });
     const timer = setInterval(save, SAVE_EVERY_MS);
-    return () => { clearInterval(timer); save(); };
+    return () => { window.removeEventListener('scroll', onScroll); clearInterval(timer); save(); };
   }, [lesson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // done: when the reader scrolls the end of the text into view (a short

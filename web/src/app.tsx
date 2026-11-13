@@ -31,6 +31,8 @@ export function App() {
     if (user && (path === '/login' || path === '/')) navigate('/library', { replace: true });
   }, [user, path]);
 
+  // switching lessons keeps the reader mounted, so only the text reloads
+  const viewKey = path.replace(/^(\/courses\/[^/]+\/lessons)\/[^/]+$/, '$1');
   let view: ReactNode = null;
   if (user === null) view = <LoginView />;
   else if (user) view = routeView(path, user);
@@ -38,7 +40,7 @@ export function App() {
   return (
     <>
       <Masthead user={user} path={path} />
-      <main className="main" id="view" tabIndex={-1}>{view && <div key={path} className="contents">{view}</div>}</main>
+      <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
       <Toaster position="top-center" toastOptions={{ style: { background: 'var(--text)', color: 'var(--bg)', border: 0, borderRadius: 'var(--radius)' } }} />
     </>
   );

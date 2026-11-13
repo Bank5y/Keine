@@ -180,8 +180,20 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 
 .main { max-width: var(--page); margin: 0 auto; padding: 48px var(--gutter) 96px; outline: none; }
 .page.enter { animation: rise .35s ease-out both; }
+
+/* a chapter's lessons open and close with their height */
+.fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .2s ease; }
+.fold.open { grid-template-rows: 1fr; }
+.fold-inner { min-height: 0; overflow: hidden; }
+
+/* a scrolling box with no scrollbar, fading out at whichever edge has more */
+.side-fade {
+  scrollbar-width: none; --fade-top: 0px; --fade-bottom: 0px;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+}
+.side-fade::-webkit-scrollbar { display: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
-@media (prefers-reduced-motion: reduce) { .page.enter { animation: none; } * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .page.enter, .reader-doc.fresh, .side-locate { animation: none; } * { transition: none !important; } }
 
 @media (max-width: 760px) {
   :root { --gutter: 16px; }
@@ -369,12 +381,15 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .search-sm input:focus { border-color: var(--text); }
 
 /* chapters are section heads; lessons hang indented beneath them */
-.chapter { margin-top: 30px; }
-.chapter:first-child { margin-top: 10px; }
+.chapter { margin-top: 10px; }
 .chapter-head {
-  display: flex; align-items: baseline; gap: 14px; padding: 12px 0 10px;
-  border-bottom: 1.5px solid var(--text);
+  display: flex; align-items: baseline; gap: 14px; padding: 12px 0 10px; width: 100%; text-align: left;
+  background: none; border: 0; border-bottom: 1.5px solid var(--text); cursor: pointer; color: inherit; font: inherit;
 }
+.chapter-head:hover .c-title { color: var(--brand); }
+.chapter-head .chev { width: 14px; height: 14px; color: var(--text-3); flex-shrink: 0; align-self: center; transition: transform .2s; }
+.chapter-head.open .chev { transform: rotate(90deg); }
+.chapter .lessons { padding-bottom: 20px; }
 .chapter-head .c-no { font-family: var(--mono); font-size: 12px; color: var(--brand); letter-spacing: .12em; font-weight: 600; flex-shrink: 0; }
 .chapter-head .c-title { font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--text); flex: 1; min-width: 0; }
 .chapter-head .c-meta { font-family: var(--mono); font-size: 11px; color: var(--text-3); flex-shrink: 0; }
@@ -421,7 +436,10 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .author-card .role { color: var(--text-3); font-size: 13px; margin-left: 10px; }
 
 /* ---------- reader ---------- */
-.reader-doc { padding: 8px 0; }
+.reader-doc { padding: 8px 0; transition: opacity .15s; }
+.reader-doc.fresh { animation: fade .25s ease-out both; }
+.reader-doc.stale { opacity: .4; pointer-events: none; }
+@keyframes fade { from { opacity: 0; } }
 .reader-doc > h1 { font-family: var(--serif); font-size: 34px; line-height: 1.35; margin: 12px 0 14px; letter-spacing: .01em; }
 .reader-doc > .kicker { margin-bottom: 6px; }
 .reader-prose { max-width: none; font-size: 16.5px; line-height: 1.95; }
@@ -443,7 +461,18 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .main:has(> .contents > .docs) { max-width: 1400px; }
 .docs { display: grid; grid-template-columns: 250px minmax(0, 1fr) 210px; gap: 48px; align-items: start; }
 .docs-main { min-width: 0; max-width: 780px; width: 100%; justify-self: center; }
-.docs-side { position: sticky; top: 88px; max-height: calc(100vh - 110px); overflow-y: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.docs-side { position: sticky; top: 88px; max-height: calc(100vh - 110px); overflow-y: auto; overscroll-behavior: contain; }
+/* the course toc scrolls below the back link, with the locate button over its foot */
+.docs-left { display: flex; flex-direction: column; overflow: visible; }
+.side-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.side-locate {
+  position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 1;
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--brand); font-size: 12px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / .08); cursor: pointer; animation: rise .2s ease-out both;
+}
+.side-locate:hover { border-color: var(--brand); }
+.side-locate svg { width: 13px; height: 13px; }
 .docs-bar { display: none; gap: 8px; margin-bottom: 18px; }
 @media (max-width: 1180px) {
   .docs { grid-template-columns: 240px minmax(0, 1fr); }
@@ -458,8 +487,11 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 @media (min-width: 1181px) { .docs-bar { display: none; } }
 
 .side-title { font-family: var(--serif); font-weight: 700; font-size: 16px; line-height: 1.4; padding-bottom: 12px; border-bottom: 1.5px solid var(--text); }
-.side-ch { margin-top: 14px; }
-.side-ch-head { display: flex; gap: 8px; align-items: baseline; font-family: var(--serif); font-weight: 600; font-size: 14px; color: var(--text); padding: 4px 0; }
+.side-ch { margin-top: 6px; }
+.side-ch-head { display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; cursor: pointer; font-family: var(--serif); font-weight: 600; font-size: 14px; color: var(--text); padding: 4px 0; }
+.side-ch-head:hover .t { color: var(--brand); }
+.side-ch-head .chev { width: 12px; height: 12px; color: var(--text-3); flex-shrink: 0; align-self: center; transition: transform .2s; }
+.side-ch-head.open .chev { transform: rotate(90deg); }
 .side-ch-head .no { font-family: var(--mono); font-size: 10px; color: var(--brand); }
 .side-l { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px 4px 10px; margin-left: 4px; border-left: 1px solid var(--rule); font-size: 13px; color: var(--text-2); line-height: 1.55; }
 .side-l .no { font-family: var(--mono); font-size: 10px; color: var(--text-3); flex-shrink: 0; width: 18px; }

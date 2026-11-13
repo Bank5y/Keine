@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, PlayCircle, Search } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronRight, PlayCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { CourseActions } from '@/components/course-actions';
+import { Fold, useChapterFolds } from '@/components/fold';
 import { startLearning } from '@/components/peek';
 import { Highlight } from '@/components/highlight';
 import { ProgressBar, StateMark } from '@/components/progress';
@@ -22,9 +23,26 @@ export function useCourse(id: number) {
   return { course, err, reload };
 }
 
+type Tab = 'intro' | 'toc';
+
+// readTab is the tab named in the address (?tab=), if any.
+const readTab = (): Tab | null => {
+  const t = new URLSearchParams(location.search).get('tab');
+  return t === 'intro' || t === 'toc' ? t : null;
+};
+
+const hasIntro = (c: CourseDetail) => !!(c.intro || c.authorName);
+
 export function CourseView({ id }: { id: number }) {
   const { course, err, reload } = useCourse(id);
-  const [tab, setTab] = useState<'toc' | 'intro'>('toc');
+  // the introduction comes first unless there is none; the chosen tab is kept
+  // in the address so coming back from a lesson returns to it
+  const [picked, setPicked] = useState<Tab | null>(readTab);
+  const tab: Tab = picked ?? (!course || hasIntro(course) ? 'intro' : 'toc');
+  const setTab = (t: Tab) => {
+    setPicked(t);
+    history.replaceState(history.state, '', `${location.pathname}?tab=${t}${location.hash}`);
+  };
   const [q, setQ] = useState('');
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
@@ -36,10 +54,10 @@ export function CourseView({ id }: { id: number }) {
         <section>
           <div className="toc-head">
             <div className="toc-tabs" role="tablist">
+              <button role="tab" aria-selected={tab === 'intro'} className={cn('toc-tab', tab === 'intro' && 'active')} onClick={() => setTab('intro')}>课程介绍</button>
               <button role="tab" aria-selected={tab === 'toc'} className={cn('toc-tab', tab === 'toc' && 'active')} onClick={() => setTab('toc')}>
                 目录{course ? <sup>{course.lessonCount}</sup> : null}
               </button>
-              <button role="tab" aria-selected={tab === 'intro'} className={cn('toc-tab', tab === 'intro' && 'active')} onClick={() => setTab('intro')}>课程介绍</button>
             </div>
             {tab === 'toc' ? (
               <label className="search-sm">
@@ -115,7 +133,26 @@ function filterToc(chapters: ChapterItem[], q: string) {
     .filter((ch) => ch.lessons.length);
 }
 
+// progressChapter is the chapter of the lesson studied last, or the first.
+function progressChapter(c: CourseDetail) {
+  const last = c.progress.lastLessonId;
+  return (c.chapters.find((ch) => ch.lessons.some((l) => l.id === last)) ?? c.chapters[0])?.id;
+}
+
+// Toc opens the chapter the reader has got to. A search opens every chapter
+// with a match; clearing it brings back the chapters opened before.
 function Toc({ c, q }: { c: CourseDetail; q: string }) {
+  const folds = useChapterFolds(() => { const ch = progressChapter(c); return ch == null ? [] : [ch]; });
+  const [closed, setClosed] = useState<{ q: string; ids: Set<number> }>({ q: '', ids: new Set() });
+  const searchClosed = closed.q === q ? closed.ids : new Set<number>();
+  const isOpen = (id: number) => (q ? !searchClosed.has(id) : folds.isOpen(id));
+  const toggle = (id: number) => {
+    if (!q) return folds.toggle(id);
+    const ids = new Set(searchClosed);
+    if (!ids.delete(id)) ids.add(id);
+    setClosed({ q, ids });
+  };
+
   // lesson numbers run through the whole course
   const numbers = useMemo(() => {
     const m = new Map<number, number>();
@@ -130,23 +167,26 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
     <div>
       {shown.map((ch) => (
         <div className="chapter" key={ch.id}>
-          <div className="chapter-head">
+          <button type="button" className={cn('chapter-head', isOpen(ch.id) && 'open')} aria-expanded={isOpen(ch.id)} onClick={() => toggle(ch.id)}>
+            <ChevronRight className="chev" />
             <span className="c-no">第 {pad2(chapterNo.get(ch.id)!)} 章</span>
             <span className="c-title"><Highlight text={ch.title} q={q} /></span>
             <span className={cn('c-meta', ch.done === ch.lessons.length && 'complete')}>{ch.done} / {ch.lessons.length}</span>
-          </div>
-          <div className="lessons">
-            {ch.lessons.map((l) => (
-              <Link className="entry" key={l.id} href={lessonURL(c.id, l.id)}>
-                <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
-                {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
-                <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
-                {l.duration ? <span className="e-dur">{l.duration}</span> : null}
-                <span className="e-lead" />
-                <span className="e-state"><StateMark state={l.state} /></span>
-              </Link>
-            ))}
-          </div>
+          </button>
+          <Fold open={isOpen(ch.id)}>
+            <div className="lessons">
+              {ch.lessons.map((l) => (
+                <Link className="entry" key={l.id} href={lessonURL(c.id, l.id)}>
+                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
+                  {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
+                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  {l.duration ? <span className="e-dur">{l.duration}</span> : null}
+                  <span className="e-lead" />
+                  <span className="e-state"><StateMark state={l.state} /></span>
+                </Link>
+              ))}
+            </div>
+          </Fold>
         </div>
       ))}
     </div>
