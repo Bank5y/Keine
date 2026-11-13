@@ -48,7 +48,9 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const doc = useRef<HTMLElement>(null);
   const right = useRef<HTMLElement>(null);
   const current = lesson?.id === lessonId ? lesson : null;
-  const shown = current ?? (slow ? null : lesson);
+  // a video gives way at once: kept on screen it would play on unseen, and
+  // its last position would no longer reach the lesson it belongs to
+  const shown = current ?? (slow || lesson?.video ? null : lesson);
   const { headings: found, active } = useHeadings(doc, shown?.id);
   const headings = current ? found : [];
   const { prev, next } = useMemo(() => neighbours(course, lessonId), [course, lessonId]);
@@ -209,6 +211,7 @@ function CourseToc({ c, current, docked }: { c: CourseDetail; current: number; d
           <div className="side-ch" key={ch.id}>
             <button type="button" className={cn('side-ch-head', open && 'open')} data-chapter={ch.id} aria-expanded={open} onClick={() => folds.toggle(ch.id)}>
               <ChevronRight className="chev" /><span className="no">{pad2(i + 1)}</span><span className="t">{ch.title}</span>
+              <span className={cn('meta', ch.done === ch.lessons.length && 'complete')}>{ch.done}/{ch.lessons.length}</span>
             </button>
             <Fold open={open}>
               {ch.lessons.map((l) => {

@@ -492,6 +492,9 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .side-ch-head:hover .t { color: var(--brand); }
 .side-ch-head .chev { width: 12px; height: 12px; color: var(--text-3); flex-shrink: 0; align-self: center; transition: transform .2s; }
 .side-ch-head.open .chev { transform: rotate(90deg); }
+.side-ch-head .t { flex: 1; min-width: 0; }
+.side-ch-head .meta { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--text-3); flex-shrink: 0; }
+.side-ch-head .meta.complete { color: var(--success); }
 .side-ch-head .no { font-family: var(--mono); font-size: 10px; color: var(--brand); }
 .side-l { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px 4px 10px; margin-left: 4px; border-left: 1px solid var(--rule); font-size: 13px; color: var(--text-2); line-height: 1.55; }
 .side-l .no { font-family: var(--mono); font-size: 10px; color: var(--text-3); flex-shrink: 0; width: 18px; }
