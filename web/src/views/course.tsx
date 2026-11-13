@@ -45,15 +45,18 @@ export function CourseView({ id }: { id: number }) {
     history.replaceState(history.state, '', `${location.pathname}?tab=${t}${location.hash}`);
   };
   const [q, setQ] = useState('');
-  const colophon = useRef<HTMLElement>(null);
+  const colophon = useRef<HTMLDivElement>(null);
   useScrollFade(colophon);
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
   return (
     <div className="page enter">
-      <BackLink library={!!course && course.visibility === 'public' && !course.enrolled} />
       <div className="course">
-        <aside className="colophon side-fade" ref={colophon}>{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</aside>
+        {/* the back link stays put above the colophon, which scrolls on its own when taller than the window */}
+        <aside className="colophon">
+          <BackLink library={!!course && course.visibility === 'public' && !course.enrolled} />
+          <div className="colophon-body side-fade" ref={colophon}>{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</div>
+        </aside>
         <section>
           <div className="toc-head">
             <div className="toc-tabs" role="tablist">
