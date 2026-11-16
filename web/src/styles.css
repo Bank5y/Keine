@@ -870,6 +870,12 @@ a.rn:hover .t { color: var(--brand); }
 .entry.unavailable:hover .e-title, .side-l.unavailable:hover { color: var(--text-3); }
 .entry.unavailable .e-title { text-decoration: line-through; text-decoration-color: var(--rule); }
 
+/* ---------- upcoming lessons and empty chapters ---------- */
+.upcoming-mark { font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+.entry.upcoming, .side-l.upcoming { color: var(--text-3); cursor: default; }
+.entry.upcoming:hover .e-title, .side-l.upcoming:hover { color: var(--text-3); }
+.empty-chapter .e-title, .empty-chapter .t { font-style: italic; }
+
 .peek {
   width: 340px; max-width: calc(100vw - 24px); height: min(560px, calc(100vh - 100px)); overflow: hidden;
   background: var(--surface); border: 1px solid var(--rule); border-top: 3px solid var(--brand);

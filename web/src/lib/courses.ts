@@ -35,8 +35,11 @@ export const PUBLISH_LABEL: Record<PublishState, string> = { unpublished: 'æœªå…
 export const coverURL = (id: number) => `/api/courses/${id}/cover`;
 
 export type LessonState = 'unstarted' | 'done';
-export interface LessonItem { id: number; key: string; title: string; video: '' | 'file' | 'url'; duration: string; hasText: boolean; state: LessonState; unavailable?: boolean }
-export interface ChapterItem { id: number; key: string; title: string; done: number; lessons: LessonItem[] }
+export interface LessonItem { id: number; key: string; title: string; video: '' | 'file' | 'url'; duration: string; hasText: boolean; state: LessonState; upcoming?: boolean; unavailable?: boolean }
+// readable tells whether a lesson can be opened: not upcoming, not gone.
+export const readable = (l: LessonItem) => !l.upcoming && !l.unavailable;
+// total counts the chapter's lessons in progress: all but the upcoming ones.
+export interface ChapterItem { id: number; key: string; title: string; done: number; total: number; lessons: LessonItem[] }
 export interface CourseDetail extends CourseSummary {
   intro: string;
   authorIntro: string;
