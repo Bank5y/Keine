@@ -26,6 +26,8 @@ export interface Rendered { title: string; detail?: string; href: string }
 const kinds: Record<string, (p: any) => Rendered> = {
   publish_approved: (p) => ({ title: `「${p.courseTitle}」已公开到课程库`, detail: '你的公开申请已通过。', href: `/courses/${p.courseId}` }),
   publish_rejected: (p) => ({ title: `「${p.courseTitle}」的公开申请被驳回`, detail: `理由: ${p.reason}`, href: `/courses/${p.courseId}` }),
+  update_approved: (p) => ({ title: `「${p.courseTitle}」的更新申请已通过`, detail: '课程已换成你提交的新版本。', href: `/courses/${p.courseId}` }),
+  update_rejected: (p) => ({ title: `「${p.courseTitle}」的更新申请被驳回`, detail: `理由: ${p.reason}`, href: `/courses/${p.courseId}` }),
 };
 
 export function render(n: Notification): Rendered {

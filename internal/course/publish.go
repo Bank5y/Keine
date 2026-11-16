@@ -183,6 +183,9 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 			return err
 		}
 		drop.courseID = r.courseID
+		if err := notifyCourse(ctx, tx, r.requesterID, notify.UpdateApproved, r.courseID, ""); err != nil {
+			return err
+		}
 		if r.requesterID == uploader {
 			return nil
 		}
@@ -216,7 +219,7 @@ func (s *Service) Reject(ctx context.Context, admin auth.User, reviewID int64, r
 			}
 			return notifyCourse(ctx, tx, r.requesterID, notify.PublishRejected, r.courseID, reason)
 		}
-		return nil
+		return notifyCourse(ctx, tx, r.requesterID, notify.UpdateRejected, r.courseID, reason)
 	})
 	if err == nil && r.filesDir != "" {
 		s.dropFiles(ctx, r.courseID, r.filesDir)
