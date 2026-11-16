@@ -11,6 +11,7 @@ import (
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/db"
+	"github.com/Bank5y/keine/internal/notify"
 	"github.com/Bank5y/keine/internal/storage"
 )
 
@@ -28,10 +29,11 @@ type Options struct {
 }
 
 type Server struct {
-	opts    Options
-	db      *pgxpool.Pool
-	auth    *auth.Service
-	courses *course.Service
+	opts          Options
+	db            *pgxpool.Pool
+	auth          *auth.Service
+	courses       *course.Service
+	notifications *notify.Service
 	// generator helps users write a course manifest
 	generator course.Generator
 	files     storage.Store
@@ -45,7 +47,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
+	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage), notifications: notify.NewService(pool), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -95,6 +97,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/courses/{id}/enroll", s.signedIn(s.courseAction(s.enroll)))
 	s.mux.HandleFunc("DELETE /api/courses/{id}/enroll", s.signedIn(s.courseAction(s.unenroll)))
 	s.mux.HandleFunc("GET /api/my/courses", s.signedIn(s.myCourses))
+	s.mux.HandleFunc("GET /api/notifications", s.signedIn(s.listNotifications))
+	s.mux.HandleFunc("GET /api/notifications/unread-count", s.signedIn(s.unreadNotifications))
+	s.mux.HandleFunc("POST /api/notifications/read-all", s.signedIn(s.readAllNotifications))
+	s.mux.HandleFunc("POST /api/notifications/{id}/read", s.signedIn(s.readNotification))
 	s.mux.HandleFunc("GET /api/manifest/prompt", s.signedIn(s.manifestPrompt))
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "接口不存在")
