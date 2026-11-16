@@ -43,7 +43,7 @@ export function MineView() {
         actions={<Button variant="default" onClick={() => setUploading(true)}><Upload />上传课程</Button>}
       />
       <div className="facets">
-        <Facet label="学习" value={state} onPick={setState} items={[['', '全部'], ['studying', '学习中'], ['done', '已学完']]} />
+        <Facet label="学习" value={state} onPick={setState} items={[['', '全部'], ['unfinished', '未学完'], ['done', '已学完']]} />
         <Facet label="类型" value={type} onPick={setType} items={[['', '全部'], ['column', TYPE_LABEL.column], ['video', TYPE_LABEL.video]]} />
         <Facet label="状态" value={completion} onPick={setCompletion} items={[['', '全部'], ['finished', COMPLETION_LABEL.finished], ['ongoing', COMPLETION_LABEL.ongoing], ['incomplete', COMPLETION_LABEL.incomplete]]} />
       </div>

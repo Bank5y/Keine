@@ -550,8 +550,6 @@ a.rn:hover .t { color: var(--brand); }
 .smark { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; color: var(--text-3); }
 .smark svg { width: 13px; height: 13px; }
 .smark.unstarted { opacity: .7; }
-.smark.studying { color: var(--info); }
-.smark.studying::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .smark.done { color: var(--success); }
 .smark.compact { margin-left: auto; flex-shrink: 0; align-self: center; }
 .sm-none { margin-left: auto; width: 13px; flex-shrink: 0; }

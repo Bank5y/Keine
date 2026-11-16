@@ -371,7 +371,7 @@ func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int6
 
 // MineFilter narrows my courses; empty fields match everything.
 type MineFilter struct {
-	// State is "studying" (not every lesson done yet) or "done".
+	// State is "unfinished" (not every lesson done yet) or "done".
 	State      string
 	Type       string
 	Completion string
