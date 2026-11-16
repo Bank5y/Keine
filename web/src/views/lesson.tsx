@@ -16,6 +16,7 @@ import { Link, navigate } from '@/lib/router';
 import { useHeadings, type Heading } from '@/lib/use-headings';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { cn } from '@/lib/utils';
+import { SubscribeButton } from '@/components/peek';
 import { useCourse } from '@/views/course';
 
 // a text that opens with its own "# title" shows that instead of ours; a
@@ -94,6 +95,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
     <div className="page enter docs" onClick={onClick}>
       <aside className="docs-side docs-left" aria-label="课程目录">
         <Link className="back" href={`/courses/${courseId}?tab=toc`}><ArrowLeft />返回课程</Link>
+        {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
         {course ? <CourseToc c={course} current={lessonId} docked /> : <Skeleton className="h-40" />}
       </aside>
 

@@ -42,6 +42,8 @@
   --back-h: 22px; /* the back link above a page */
   --back-gap: 28px; /* and the space below it */
   --sticky-foot: 24px; /* space left below a sticky column */
+  /* thin scrollbars in the page's own ink, in either theme */
+  --scroll-thumb: color-mix(in srgb, var(--text) 22%, transparent);
   color-scheme: light;
 
   --background: var(--bg);
@@ -145,7 +147,8 @@
 
 @layer base {
   * { box-sizing: border-box; border-color: var(--border); }
-  html { scrollbar-gutter: stable; }
+  html { scrollbar-gutter: stable; scrollbar-color: var(--scroll-thumb) transparent; }
+  * { scrollbar-width: thin; }
   body {
     min-height: 100vh;
     background: var(--bg);
@@ -207,6 +210,11 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 
 .main { max-width: var(--page); margin: 0 auto; padding: var(--main-top) var(--gutter) 96px; outline: none; }
 .page.enter { animation: rise .35s ease-out both; }
+
+/* tabs: the underline slides to the chosen tab, the content fades across */
+.tab-ink { position: absolute; left: 0; z-index: 2; height: 2px; background: var(--brand); pointer-events: none; transition: transform .15s ease, width .15s ease; }
+.tab-pane { transition: opacity 75ms ease; }
+.tab-pane.fading { opacity: 0; }
 
 /* a chapter's lessons open and close with their height */
 .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .2s ease; }
@@ -404,11 +412,12 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .colophon .stack { display: flex; flex-direction: column; gap: 10px; }
 .colophon .note { color: var(--text-3); font-size: 12px; margin-top: 14px; line-height: 1.7; }
 
-.toc-head { display: flex; align-items: center; gap: 16px; padding: 0 0 14px; border-bottom: 1.5px solid var(--text); flex-wrap: wrap; }
+.toc-head { position: relative; display: flex; align-items: center; gap: 16px; padding: 0 0 14px; border-bottom: 1.5px solid var(--text); flex-wrap: wrap; }
 .toc-tabs { display: flex; gap: 26px; flex: 1; min-width: 160px; }
 .toc-tab { border: 0; background: none; padding: 0; font-family: var(--serif); font-size: 22px; font-weight: 700; color: var(--text-3); transition: color .15s; }
 .toc-tab:hover { color: var(--text-2); }
 .toc-tab.active { color: var(--text); }
+.toc-head .tab-ink { bottom: -1.5px; }
 .toc-tab sup { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
 .search-sm { position: relative; flex: 1; min-width: 160px; max-width: 280px; }
 .search-sm svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-3); }
@@ -512,6 +521,8 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .docs-left { display: flex; flex-direction: column; overflow: visible; }
 .side-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .docs-left > .back, .colophon > .back { flex-shrink: 0; align-self: flex-start; }
+/* reading a library course without subscribing: subscribing sits at the top of the sidebar */
+.docs-left > .side-subscribe, .colophon > .side-subscribe { flex-shrink: 0; margin-bottom: 16px; }
 .side-locate {
   position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 1;
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px;
@@ -617,25 +628,28 @@ a.rn:hover .t { color: var(--brand); }
 .searchbar input { flex: 1; min-width: 0; border: 0; background: none; outline: none; height: 48px; font-family: var(--serif); font-size: 22px; color: var(--text); }
 .searchbar input::placeholder { color: var(--text-3); opacity: .8; }
 @media (max-width: 560px) { .searchbar input { font-size: 18px; } }
-.book-badge.enrolled { color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
+.book-badge.subscribed { color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
 
 .peek {
-  width: 340px; max-width: calc(100vw - 24px); max-height: min(560px, calc(100vh - 100px)); overflow: hidden;
+  width: 340px; max-width: calc(100vw - 24px); height: min(560px, calc(100vh - 100px)); overflow: hidden;
   background: var(--surface); border: 1px solid var(--rule); border-top: 3px solid var(--brand);
   box-shadow: 0 18px 40px -18px color-mix(in srgb, var(--text) 45%, transparent), 0 2px 6px color-mix(in srgb, var(--text) 8%, transparent);
   padding: 16px 0 0; display: flex; flex-direction: column;
 }
+/* intro and toc share one fixed area, so switching never moves the peek */
+.peek-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .peek-kicker { font-size: 11px; letter-spacing: .1em; color: var(--brand); padding: 0 18px; }
 .peek-title { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.4; margin: 4px 0 10px; padding: 0 18px; }
-.peek-tabs { display: flex; gap: 18px; padding: 0 18px; border-bottom: 1.5px solid var(--text); }
-.peek-tabs button { border: 0; background: none; padding: 4px 0 7px; font-size: 13px; color: var(--text-3); border-bottom: 2px solid transparent; margin-bottom: -1.5px; }
-.peek-tabs button.active { color: var(--text); font-weight: 600; border-bottom-color: var(--brand); }
+.peek-tabs { position: relative; display: flex; gap: 18px; padding: 0 18px; border-bottom: 1.5px solid var(--text); }
+.peek-tabs button { border: 0; background: none; padding: 4px 0 9px; font-size: 13px; color: var(--text-3); transition: color .15s; }
+.peek-tabs button.active { color: var(--text); font-weight: 600; }
+.peek-tabs .tab-ink { bottom: -1.5px; }
 .peek-body { padding: 12px 18px; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
 .peek-prose { font-size: 13px; line-height: 1.8; padding: 0; }
 .peek-prose p { margin-bottom: 8px; }
 .peek-author { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); font-size: 13px; display: flex; gap: 10px; align-items: baseline; }
 .peek-author span { color: var(--text-3); font-size: 12px; }
-.peek-list { padding: 0 18px 6px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; flex: 1; scrollbar-width: thin; }
+.peek-list { padding: 0 18px 6px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; flex: 1; }
 .peek-ch { display: flex; align-items: baseline; gap: 8px; padding: 9px 0 4px; font-size: 13px; font-weight: 600; position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .peek-ch .no { font-family: var(--mono); font-size: 10px; color: var(--brand); font-weight: 500; }
 .peek-ch .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--serif); }

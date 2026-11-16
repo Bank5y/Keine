@@ -42,7 +42,7 @@ export function CourseCard({ course, href, onDelete, onRemove, showProgress }: {
           <div className="book-cover">
             <Cover course={course} />
             {isPrivate ? <span className={cn('book-badge', course.publishState)}>{PUBLISH_LABEL[course.publishState]}</span> : null}
-            {!isPrivate && course.enrolled && !showProgress ? <span className="book-badge enrolled">学习中</span> : null}
+            {!isPrivate && course.subscribed && !showProgress ? <span className="book-badge subscribed">已订阅</span> : null}
             {course.completion !== 'finished' ? <span className={cn('book-flag', course.completion)}>{COMPLETION_LABEL[course.completion]}</span> : null}
           </div>
         </Go>
@@ -53,7 +53,7 @@ export function CourseCard({ course, href, onDelete, onRemove, showProgress }: {
         ) : null}
         {onRemove && !isPrivate ? (
           <div className="book-tools">
-            <Button variant="icon" size="icon" title="移出我的课程" aria-label={`移出 ${course.title}`} onClick={() => onRemove(course)}><BookmarkMinus /></Button>
+            <Button variant="icon" size="icon" title="取消订阅" aria-label={`取消订阅 ${course.title}`} onClick={() => onRemove(course)}><BookmarkMinus /></Button>
           </div>
         ) : null}
       </div>
