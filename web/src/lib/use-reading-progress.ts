@@ -22,13 +22,14 @@ export function useReadingProgress(courseId: number, lesson: LessonText | null, 
   const url = lesson ? `/api/courses/${courseId}/lessons/${lesson.id}` : '';
   const text = !!lesson && !lesson.video;
 
-  // opening: record the visit and jump back to where the reader left off
+  // opening: record the visit and jump back to where the reader left off,
+  // unless the address names a heading to open at
   useEffect(() => {
     if (!lesson) return undefined;
     manual.current = false;
     setState(lesson.state);
     api('POST', url + '/visit').then(onChange).catch(() => {});
-    if (text && lesson.position > 0 && lesson.position < 1) {
+    if (text && !location.hash && lesson.position > 0 && lesson.position < 1) {
       // the text renders lazily and images grow it; restore once it settled
       const restore = () => window.scrollTo(0, lesson.position * (document.documentElement.scrollHeight - window.innerHeight));
       const t1 = setTimeout(restore, 150);
