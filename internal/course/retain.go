@@ -160,40 +160,62 @@ func (s *Service) open(ctx context.Context, viewer auth.User, id int64, extraCol
 // retentionOf returns what the viewer, as a subscriber, retains of a frozen
 // course; nil if nothing.
 func (s *Service) retentionOf(ctx context.Context, viewer auth.User, courseID int64) (*retention, error) {
-	r := retention{retained: map[string]bool{}, done: map[string]bool{}}
-	var raw []byte
-	var keys []string
-	err := s.db.QueryRow(ctx, `
-		SELECT f.reason, f.files_dir, f.snapshot, array_agg(rl.lesson_key)
+	all, err := s.retentions(ctx, viewer, []int64{courseID})
+	return all[courseID], err
+}
+
+// retentions returns what the viewer, as a subscriber, retains of each of
+// the given courses that are frozen, by course id; courses of which he
+// retains nothing are left out. It takes two queries however many courses.
+func (s *Service) retentions(ctx context.Context, viewer auth.User, courseIDs []int64) (map[int64]*retention, error) {
+	out := map[int64]*retention{}
+	if len(courseIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(ctx, `
+		SELECT f.course_id, f.reason, f.files_dir, f.snapshot, array_agg(rl.lesson_key)
 		FROM course_freezes f
 		JOIN retained_lessons rl ON rl.course_id = f.course_id AND rl.user_id = $2
 		JOIN course_readers cr ON cr.course_id = f.course_id AND cr.user_id = $2 AND cr.subscribed_at IS NOT NULL
-		WHERE f.course_id = $1
-		GROUP BY f.course_id`, courseID, viewer.ID).Scan(&r.reason, &r.filesDir, &raw, &keys)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
+		WHERE f.course_id = ANY($1)
+		GROUP BY f.course_id`, courseIDs, viewer.ID)
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(raw, &r.snap); err != nil {
-		return nil, err
+	var (
+		id   int64
+		raw  []byte
+		keys []string
+		r    retention
+	)
+	_, err = pgx.ForEachRow(rows, []any{&id, &r.reason, &r.filesDir, &raw, &keys}, func() error {
+		ret := &retention{reason: r.reason, filesDir: r.filesDir, retained: map[string]bool{}, done: map[string]bool{}}
+		if err := json.Unmarshal(raw, &ret.snap); err != nil {
+			return err
+		}
+		for _, k := range keys {
+			ret.retained[k] = true
+		}
+		out[id] = ret
+		return nil
+	})
+	if err != nil || len(out) == 0 {
+		return out, err
 	}
-	for _, k := range keys {
-		r.retained[k] = true
+	frozen := make([]int64, 0, len(out))
+	for id := range out {
+		frozen = append(frozen, id)
 	}
-	rows, err := s.db.Query(ctx, "SELECT lesson_key FROM lesson_progress WHERE user_id = $1 AND course_id = $2 AND done", viewer.ID, courseID)
+	rows, err = s.db.Query(ctx, "SELECT course_id, lesson_key FROM lesson_progress WHERE user_id = $1 AND course_id = ANY($2) AND done", viewer.ID, frozen)
 	if err != nil {
 		return nil, err
 	}
-	done, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return nil, err
-	}
-	for _, k := range done {
-		r.done[k] = true
-	}
-	return &r, nil
+	var key string
+	_, err = pgx.ForEachRow(rows, []any{&id, &key}, func() error {
+		out[id].done[key] = true
+		return nil
+	})
+	return out, err
 }
 
 // freeze keeps a course's current files and structure for its subscribers

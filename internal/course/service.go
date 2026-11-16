@@ -439,13 +439,21 @@ func (s *Service) Mine(ctx context.Context, viewer auth.User, f MineFilter) ([]S
 	if err != nil {
 		return nil, err
 	}
+	readsFrozen := func(c Summary) bool { return c.Visibility != Public && (!c.IsUploader || c.Deleted) }
+	var frozen []int64
+	for _, c := range all {
+		if readsFrozen(c) {
+			frozen = append(frozen, c.ID)
+		}
+	}
+	rets, err := s.retentions(ctx, viewer, frozen)
+	if err != nil {
+		return nil, err
+	}
 	out := []Summary{}
 	for _, c := range all {
-		if c.Visibility != Public && (!c.IsUploader || c.Deleted) {
-			ret, err := s.retentionOf(ctx, viewer, c.ID)
-			if err != nil {
-				return nil, err
-			}
+		if readsFrozen(c) {
+			ret := rets[c.ID]
 			if ret == nil {
 				continue
 			}
