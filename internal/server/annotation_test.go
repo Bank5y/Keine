@@ -241,3 +241,68 @@ func TestQuoteMustBeInTheLessonText(t *testing.T) {
 		t.Fatalf("expected no annotations, got %v", got)
 	}
 }
+
+func notePath(a map[string]any) string {
+	return annotationPath(a) + "/note"
+}
+
+func TestNotesAreWrittenEditedAndDeletedWithoutTheAnnotation(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id, lesson := annotatedColumn(t, alice)
+
+	// a note may be written along with the annotation
+	ann := annotate(t, alice, id, lesson, map[string]any{"style": "underline", "quote": "调用工具", "note": "工具调用是 Agent 的手"})
+	if ann["note"] != "工具调用是 Agent 的手" {
+		t.Fatalf("unexpected note: %v", ann["note"])
+	}
+	// or added to one that has none
+	plain := annotate(t, alice, id, lesson, map[string]any{"style": "highlight", "color": "blue", "quote": "会思考"})
+	expectStatus(t, alice.do("PUT", notePath(plain), map[string]any{"note": "思考 = 规划"}), http.StatusNoContent)
+	// and edited
+	expectStatus(t, alice.do("PUT", notePath(ann), map[string]any{"note": "改过的笔记\n第二行"}), http.StatusNoContent)
+
+	got := listAnnotations(t, alice, id, lesson)
+	if len(got) != 2 || got[0]["note"] != "改过的笔记\n第二行" || got[1]["note"] != "思考 = 规划" {
+		t.Fatalf("unexpected annotations: %v", got)
+	}
+
+	// restyling leaves the note alone
+	expectStatus(t, alice.do("PATCH", annotationPath(plain), map[string]any{"style": "underline"}), http.StatusNoContent)
+	// deleting the note keeps the annotation
+	expectStatus(t, alice.do("DELETE", notePath(ann), nil), http.StatusNoContent)
+	got = listAnnotations(t, alice, id, lesson)
+	if len(got) != 2 || got[0]["note"] != nil || got[0]["quote"] != "调用工具" || got[1]["note"] != "思考 = 规划" || got[1]["style"] != "underline" {
+		t.Fatalf("unexpected annotations: %v", got)
+	}
+}
+
+func TestBlankNotesAreNotNotes(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id, lesson := annotatedColumn(t, alice)
+
+	ann := annotate(t, alice, id, lesson, map[string]any{"style": "underline", "quote": "调用工具", "note": "  \n "})
+	if ann["note"] != nil {
+		t.Fatalf("a blank note was kept: %v", ann["note"])
+	}
+	expectError(t, alice.do("PUT", notePath(ann), map[string]any{"note": " \n"}), http.StatusBadRequest, "bad_request")
+	if got := listAnnotations(t, alice, id, lesson); got[0]["note"] != nil {
+		t.Fatalf("unexpected annotations: %v", got)
+	}
+}
+
+func TestNotesAreTheirOwnersAlone(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	id := publishAs(t, a, columnFiles(columnManifest()))
+	lesson := lessonIDs(t, alice, id)["l00"]
+	ann := annotate(t, alice, id, lesson, map[string]any{"style": "underline", "quote": "你好", "note": "alice 的笔记"})
+
+	expectError(t, bob.do("PUT", notePath(ann), map[string]any{"note": "bob 写的"}), http.StatusNotFound, "annotation_not_found")
+	expectError(t, bob.do("DELETE", notePath(ann), nil), http.StatusNotFound, "annotation_not_found")
+	if got := listAnnotations(t, alice, id, lesson); got[0]["note"] != "alice 的笔记" {
+		t.Fatalf("unexpected annotations: %v", got)
+	}
+}
