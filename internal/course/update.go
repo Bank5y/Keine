@@ -45,12 +45,18 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
+	var prevDir string
 	err = s.tx(ctx, func(tx pgx.Tx) error {
+		// Lock the course, so a concurrent update or approval cannot switch
+		// its content between reading the old files and replacing them.
+		if err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 FOR UPDATE", sm.ID).Scan(&prevDir); err != nil {
+			return err
+		}
 		before, err := lessonFiles(ctx, tx, sm.ID)
 		if err != nil {
 			return err
 		}
-		diff, err := s.diffContent(ctx, sm.ID, before, sm.FilesDir, pp.manifest, next)
+		diff, err := s.diffContent(ctx, sm.ID, before, prevDir, pp.manifest, next)
 		if err != nil {
 			return err
 		}
@@ -69,7 +75,7 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
-	s.dropUnused(ctx, sm.ID, sm.FilesDir) // a freeze may still hold it
+	s.dropUnused(ctx, sm.ID, prevDir) // a freeze may still hold it
 	return nil
 }
 
