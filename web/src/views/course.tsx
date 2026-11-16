@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { CourseActions } from '@/components/course-actions';
 import { Fold, useChapterFolds } from '@/components/fold';
-import { startLearning } from '@/components/peek';
+import { SubscribeButton } from '@/components/peek';
 import { Highlight } from '@/components/highlight';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -53,7 +53,8 @@ export function CourseView({ id }: { id: number }) {
     <div className="page enter">
       <div className="course">
         <aside className="colophon">
-          <BackLink library={!!course && course.visibility === 'public' && !course.enrolled} />
+          <BackLink library={!!course && course.visibility === 'public' && !course.subscribed} />
+          {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
           <div className="colophon-body side-scroll side-fade" ref={colophonBody}>{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</div>
         </aside>
         <section>
@@ -80,14 +81,13 @@ export function CourseView({ id }: { id: number }) {
 
 // ContinueButton opens the lesson studied last, or the first lesson.
 function ContinueButton({ c }: { c: CourseDetail }) {
-  if (!c.enrolled) return <Button variant="default" size="block" onClick={() => void startLearning(c)}><BookOpen />开始学习</Button>;
   const first = c.chapters[0]?.lessons[0];
   const target = c.progress.lastLessonId ?? first?.id;
   if (!target) return null;
   const started = c.progress.lastLessonId != null;
   return (
     <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target))}>
-      <BookOpen />{started ? '继续学习' : '开始学习'}
+      <BookOpen />{started ? '继续学习' : '开始阅读'}
     </Button>
   );
 }

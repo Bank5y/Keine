@@ -481,6 +481,8 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .docs-left { display: flex; flex-direction: column; overflow: visible; }
 .side-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .docs-left > .back, .colophon > .back { flex-shrink: 0; align-self: flex-start; }
+/* reading a library course without subscribing: subscribing sits at the top of the sidebar */
+.docs-left > .side-subscribe, .colophon > .side-subscribe { flex-shrink: 0; margin-bottom: 16px; }
 .side-locate {
   position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 1;
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px;
@@ -588,7 +590,7 @@ a.rn:hover .t { color: var(--brand); }
 .searchbar input { flex: 1; min-width: 0; border: 0; background: none; outline: none; height: 48px; font-family: var(--serif); font-size: 22px; color: var(--text); }
 .searchbar input::placeholder { color: var(--text-3); opacity: .8; }
 @media (max-width: 560px) { .searchbar input { font-size: 18px; } }
-.book-badge.enrolled { color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
+.book-badge.subscribed { color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
 
 .peek {
   width: 340px; max-width: calc(100vw - 24px); max-height: min(560px, calc(100vh - 100px)); overflow: hidden;

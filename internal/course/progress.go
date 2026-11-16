@@ -36,8 +36,8 @@ func (s *Service) lessonKey(ctx context.Context, viewer auth.User, courseID, les
 }
 
 // Visit records that the viewer opened a lesson: an unstarted lesson
-// becomes studying, it becomes the course's last studied lesson, and a
-// course not started yet is started.
+// becomes studying and it becomes the course's last studied lesson. Opening
+// a lesson does not subscribe to the course.
 func (s *Service) Visit(ctx context.Context, viewer auth.User, courseID, lessonID int64) error {
 	key, err := s.lessonKey(ctx, viewer, courseID, lessonID)
 	if err != nil {
@@ -48,15 +48,15 @@ func (s *Service) Visit(ctx context.Context, viewer auth.User, courseID, lessonI
 		ON CONFLICT DO NOTHING`, viewer.ID, courseID, key); err != nil {
 		return err
 	}
-	if err := enroll(ctx, s, viewer, courseID); err != nil {
-		return err
-	}
 	return s.touch(ctx, viewer, courseID, key)
 }
 
-// touch moves the course to the top of the viewer's courses.
+// touch remembers the lesson as the viewer's last one in the course and
+// moves the course to the top of the viewer's courses.
 func (s *Service) touch(ctx context.Context, viewer auth.User, courseID int64, key string) error {
-	_, err := s.db.Exec(ctx, "UPDATE enrollments SET last_lesson_key = $3, last_studied_at = now() WHERE user_id = $1 AND course_id = $2",
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO course_readers (user_id, course_id, last_lesson_key) VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, course_id) DO UPDATE SET last_lesson_key = $3, last_studied_at = now()`,
 		viewer.ID, courseID, key)
 	return err
 }

@@ -15,7 +15,8 @@ export interface CourseSummary {
   isUploader: boolean;
   lessonCount: number;
   doneCount: number;
-  enrolled: boolean;
+  // subscribed: the library course is in the viewer's my courses
+  subscribed: boolean;
   createdAt: string;
   updatedAt: string;
 }

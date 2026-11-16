@@ -16,53 +16,56 @@ func myCourseIDsWhere(t *testing.T, c *client, q url.Values) []int {
 	return ids
 }
 
-func TestRemovingALibraryCourseKeepsItsProgress(t *testing.T) {
+func TestUnsubscribingKeepsProgress(t *testing.T) {
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
-	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/enroll", id), nil))
+	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
 	bob.mustOK(setProgress(bob, id, lessonIDs(t, bob, id)["l01"], map[string]any{"done": true}))
 
-	expectStatus(t, bob.do("DELETE", fmt.Sprintf("/api/courses/%d/enroll", id), nil), http.StatusNoContent)
+	expectStatus(t, bob.do("DELETE", fmt.Sprintf("/api/courses/%d/subscribe", id), nil), http.StatusNoContent)
 
 	if contains(myCourseIDs(t, bob), id) {
 		t.Fatal("the course should leave my courses")
 	}
-	if d := courseJSON(t, bob, id); d["enrolled"] != false {
-		t.Fatalf("expected not enrolled after removing, got %v", d["enrolled"])
+	if d := courseJSON(t, bob, id); d["subscribed"] != false {
+		t.Fatalf("expected not subscribed after unsubscribing, got %v", d["subscribed"])
+	}
+	if s := lessonStates(t, bob, id)["l01"]; s != "done" {
+		t.Fatalf("progress stays while unsubscribed, got %s", s)
 	}
 
-	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/enroll", id), nil))
+	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
 
 	if !contains(myCourseIDs(t, bob), id) {
-		t.Fatal("starting again brings the course back")
+		t.Fatal("subscribing again brings the course back")
 	}
 	if s := lessonStates(t, bob, id)["l01"]; s != "done" {
 		t.Fatalf("progress should be restored, got %s", s)
 	}
 }
 
-func TestOpeningALessonBringsARemovedCourseBack(t *testing.T) {
+func TestOpeningALessonDoesNotBringAnUnsubscribedCourseBack(t *testing.T) {
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
 	ids := lessonIDs(t, bob, id)
-	visit(t, bob, id, ids["l01"])
-	bob.mustOK(bob.do("DELETE", fmt.Sprintf("/api/courses/%d/enroll", id), nil))
+	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
+	bob.mustOK(bob.do("DELETE", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
 
 	visit(t, bob, id, ids["l02"])
 
-	if !contains(myCourseIDs(t, bob), id) {
-		t.Fatal("opening a lesson starts learning again")
+	if contains(myCourseIDs(t, bob), id) {
+		t.Fatal("only subscribing puts a course in my courses")
 	}
 }
 
-func TestPrivateCoursesCannotBeRemovedOnlyDeleted(t *testing.T) {
+func TestPrivateCoursesCannotBeUnsubscribedOnlyDeleted(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
 
-	expectError(t, alice.do("DELETE", fmt.Sprintf("/api/courses/%d/enroll", id), nil), http.StatusConflict, "invalid_state")
+	expectError(t, alice.do("DELETE", fmt.Sprintf("/api/courses/%d/subscribe", id), nil), http.StatusConflict, "invalid_state")
 	if !contains(myCourseIDs(t, alice), id) {
 		t.Fatal("the private course stays")
 	}
@@ -105,7 +108,7 @@ func TestAnUnpublishedCourseLeavesOtherLearnersCourses(t *testing.T) {
 	admin := a.admin()
 	id := publishedCourse(t, a, alice)
 	bob.mustOK(setProgress(bob, id, lessonIDs(t, bob, id)["l01"], map[string]any{"done": true}))
-	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/enroll", id), nil))
+	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
 
 	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/unpublish", id), nil))
 
