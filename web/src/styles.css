@@ -1007,6 +1007,7 @@ a.rn:hover .t { color: var(--brand); }
 .ed-empty { padding: 10px 0; font-size: 13px; color: var(--text-3); border-bottom: 1px solid var(--border); }
 .ed-add { margin-top: 10px; }
 .ed-add svg { width: 14px; height: 14px; }
+.ed-adds { display: flex; flex-wrap: wrap; gap: 4px 20px; }
 .ed-hint { color: var(--text-3); font-size: 12px; margin: 0; }
 .tag.new { background: var(--success-soft); color: var(--success); padding: 0 6px; font-size: 11px; flex-shrink: 0; }
 /* dragging (desktop): a grip on each row, a brand line where the drop lands */
@@ -1024,3 +1025,12 @@ a.rn:hover .t { color: var(--brand); }
   .ed-tools { width: 100%; justify-content: flex-end; }
   .ed-l { padding: 6px 0; }
 }
+/* lesson uploads in the editor */
+.lu-files { list-style: none; margin: 12px 0 0; padding: 0; border-top: 1px solid var(--border); }
+.lu-file { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; min-width: 0; }
+.lu-file .n { flex: 1 1 0; min-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lu-file .s { font-family: var(--mono); font-size: 12px; color: var(--text-3); flex-shrink: 0; }
+.lu-file.done .s { color: var(--success); }
+.lu-file.failed .s { color: var(--danger); }
+.lu-file .bar { flex-basis: 100%; margin: 2px 0 0; }
+.lesson-preview .video-frame, .lesson-preview .video-player { margin-bottom: 20px; }

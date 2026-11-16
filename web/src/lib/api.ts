@@ -37,6 +37,29 @@ export async function api<T = any>(method: string, path: string, body?: unknown)
   return parse(res);
 }
 
+// sendFile sends one file as the raw request body (PUT by default),
+// reporting its progress (0..1). Aborting the signal stops the upload; the
+// promise then rejects with an ApiError coded "aborted".
+export function sendFile<T = any>(path: string, file: Blob, onProgress: (p: number) => void, signal?: AbortSignal, method = 'PUT'): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new ApiError(0, 'aborted', '已取消上传')); return; }
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, path);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onerror = () => reject(new ApiError(0, 'network', '网络错误, 上传中断'));
+    xhr.onabort = () => reject(new ApiError(0, 'aborted', '已取消上传'));
+    xhr.onload = () => {
+      signal?.removeEventListener('abort', stop);
+      parse(new Response(xhr.status === 204 ? null : xhr.responseText, { status: xhr.status })).then(resolve, reject);
+    };
+    const stop = () => xhr.abort();
+    signal?.addEventListener('abort', stop, { once: true });
+    xhr.send(file);
+  });
+}
+
 // upload posts a file as multipart form data and reports the upload progress
 // (0..1); fetch cannot observe request progress, XMLHttpRequest can.
 export function upload<T = any>(path: string, field: string, file: File, onProgress: (p: number) => void, method = 'POST'): Promise<T> {
