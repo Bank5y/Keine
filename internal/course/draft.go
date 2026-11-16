@@ -64,6 +64,8 @@ type DraftLesson struct {
 	HasText  bool   `json:"hasText"`
 	Upcoming bool   `json:"upcoming,omitempty"`
 	Added    bool   `json:"added,omitempty"` // new in this draft
+	// Changed: the draft gives the lesson uploaded content, to preview.
+	Changed bool `json:"changed,omitempty"`
 }
 
 // CommitResult is what committing a draft did. Outcome is "updated": the
@@ -137,20 +139,8 @@ func currentManifest(ctx context.Context, q querier, courseID int64) (Manifest, 
 // draftOps reads the viewer's draft operations for a course; none if they
 // have no draft.
 func draftOps(ctx context.Context, q querier, courseID, userID int64, lock bool) ([]Op, error) {
-	sql := "SELECT ops FROM course_drafts WHERE course_id = $1 AND user_id = $2"
-	if lock {
-		sql += " FOR UPDATE"
-	}
-	var raw []byte
-	err := q.QueryRow(ctx, sql, courseID, userID).Scan(&raw)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return []Op{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	ops := []Op{}
-	return ops, json.Unmarshal(raw, &ops)
+	d, err := loadDraft(ctx, q, courseID, userID, lock)
+	return d.Ops, err
 }
 
 // GetDraft returns the viewer's draft for a course; an empty one if they
@@ -177,10 +167,16 @@ func (s *Service) draftView(ctx context.Context, q querier, id int64, mode strin
 	if err != nil {
 		return Draft{}, err
 	}
-	return Draft{Ops: ops, Mode: mode, Course: viewDraftCourse(base, m)}, nil
+	return Draft{Ops: ops, Mode: mode, Course: viewDraftCourse(base, m, ops)}, nil
 }
 
-func viewDraftCourse(base, m Manifest) DraftCourse {
+func viewDraftCourse(base, m Manifest, ops []Op) DraftCourse {
+	changed := map[string]bool{}
+	for _, op := range ops {
+		if op.Content != nil {
+			changed[op.Lesson] = true
+		}
+	}
 	had := map[string]bool{}
 	for _, ch := range base.Chapters {
 		had[ch.Key] = true
@@ -200,7 +196,7 @@ func viewDraftCourse(base, m Manifest) DraftCourse {
 				video = "url"
 			}
 			dc.Lessons = append(dc.Lessons, DraftLesson{Key: l.Key, Title: l.Title, Video: video, HasText: l.File != "",
-				Upcoming: l.Upcoming(), Added: !had[l.Key]})
+				Upcoming: l.Upcoming(), Added: !had[l.Key], Changed: changed[l.Key]})
 		}
 		c.Chapters = append(c.Chapters, dc)
 	}
@@ -217,6 +213,17 @@ func (s *Service) AddDraftOp(ctx context.Context, viewer auth.User, id int64, op
 	}
 	if op, err = prepareOp(op); err != nil {
 		return Draft{}, err
+	}
+	if op.Content != nil {
+		row, err := loadDraft(ctx, s.db, id, viewer.ID, false)
+		if err != nil {
+			return Draft{}, err
+		}
+		c := *op.Content
+		if err := s.prepareContent(ctx, id, row, &c); err != nil {
+			return Draft{}, err
+		}
+		op.Content = &c
 	}
 	var d Draft
 	err = s.tx(ctx, func(tx pgx.Tx) error {
@@ -249,15 +256,18 @@ func (s *Service) UndoDraftOp(ctx context.Context, viewer auth.User, id int64) (
 		return Draft{}, err
 	}
 	var d Draft
+	var row draftRow
+	var unused string
 	err = s.tx(ctx, func(tx pgx.Tx) error {
-		ops, err := draftOps(ctx, tx, id, viewer.ID, true)
-		if err != nil {
+		if row, err = loadDraft(ctx, tx, id, viewer.ID, true); err != nil {
 			return err
 		}
+		ops := row.Ops
 		if len(ops) == 0 {
 			return ErrDraftEmpty
 		}
 		ops = ops[:len(ops)-1]
+		unused = unusedUpload(row.Ops[len(ops)], ops)
 		if len(ops) == 0 {
 			_, err = tx.Exec(ctx, "DELETE FROM course_drafts WHERE course_id = $1 AND user_id = $2", id, viewer.ID)
 		} else {
@@ -269,15 +279,30 @@ func (s *Service) UndoDraftOp(ctx context.Context, viewer auth.User, id int64) (
 		d, err = s.draftView(ctx, tx, id, mode, ops)
 		return err
 	})
+	switch {
+	case err != nil:
+	case len(d.Ops) == 0:
+		s.dropDraftFiles(ctx, id, row.ID, "") // the draft is gone
+	case unused != "":
+		s.dropDraftFiles(ctx, id, row.ID, unused)
+	}
 	return d, err
 }
 
-// DiscardDraft throws the viewer's draft away; having none is fine.
+// DiscardDraft throws the viewer's draft away with the files uploaded to
+// it; having none is fine.
 func (s *Service) DiscardDraft(ctx context.Context, viewer auth.User, id int64) error {
 	if _, _, err := s.loadToEdit(ctx, viewer, id); err != nil {
 		return err
 	}
-	_, err := s.db.Exec(ctx, "DELETE FROM course_drafts WHERE course_id = $1 AND user_id = $2", id, viewer.ID)
+	var draftID int64
+	err := s.db.QueryRow(ctx, "DELETE FROM course_drafts WHERE course_id = $1 AND user_id = $2 RETURNING id", id, viewer.ID).Scan(&draftID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err == nil {
+		s.dropDraftFiles(ctx, id, draftID, "")
+	}
 	return err
 }
 
@@ -297,28 +322,30 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 	}
 	next := newFilesDir()
 	var prevDir string
+	var row draftRow
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		// Lock the course first, so nothing else switches its content while
 		// the draft is applied to it.
 		if err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 FOR UPDATE", id).Scan(&prevDir); err != nil {
 			return err
 		}
-		ops, err := draftOps(ctx, tx, id, viewer.ID, true)
-		if err != nil {
+		var err error
+		if row, err = loadDraft(ctx, tx, id, viewer.ID, true); err != nil {
 			return err
 		}
-		if len(ops) == 0 {
+		if len(row.Ops) == 0 {
 			return ErrDraftEmpty
 		}
 		cur, _, err := currentManifest(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		m, err := applyOps(cur, ops)
+		m, err := applyOps(cur, row.Ops)
 		if err != nil {
 			return err
 		}
-		if err := s.copyFiles(ctx, id, prevDir, next, m); err != nil {
+		from := draftFiles{courseID: id, dir: prevDir, draftID: row.ID, uploads: row.uploads()}
+		if err := s.copyFiles(ctx, from, next, m); err != nil {
 			return err
 		}
 		if err := s.replaceContent(ctx, tx, sm, viewer, m, prevDir, next); err != nil {
@@ -332,22 +359,25 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 		return CommitResult{}, err
 	}
 	s.dropUnused(ctx, id, prevDir) // a freeze may still hold it
+	s.dropDraftFiles(ctx, id, row.ID, "")
 	return CommitResult{Outcome: "updated"}, nil
 }
 
 // copyFiles fills folder to with the files course m needs, copied from
-// folder from: lesson texts, the images they reference, videos and the
-// cover.
-func (s *Service) copyFiles(ctx context.Context, courseID int64, from, to string, m Manifest) error {
-	need, err := s.neededFiles(ctx, courseID, from, m)
+// where they are now (ADR-0005): the course's current folder, or the
+// draft's temporary area for uploaded ones. Those are lesson texts, the
+// images they reference, videos and the cover.
+func (s *Service) copyFiles(ctx context.Context, from draftFiles, to string, m Manifest) error {
+	need, err := s.neededFiles(ctx, from, m)
 	if err != nil {
 		return err
 	}
+	courseID := from.courseID
 	for _, name := range need {
-		err := s.files.Copy(ctx, filesPrefix(courseID, from)+name, filesPrefix(courseID, to)+name)
+		err := s.files.Copy(ctx, from.key(name), filesPrefix(courseID, to)+name)
 		if errors.Is(err, storage.ErrNotFound) {
-			// missing in the current version already; the new one cannot do better
-			slog.Warn("course file missing", "course", courseID, "dir", from, "file", name)
+			// missing where it is now already; the new version cannot do better
+			slog.Warn("course file missing", "course", courseID, "file", from.key(name))
 			continue
 		}
 		if err != nil {
@@ -357,8 +387,8 @@ func (s *Service) copyFiles(ctx context.Context, courseID int64, from, to string
 	return nil
 }
 
-// neededFiles lists the files of folder dir that course m uses.
-func (s *Service) neededFiles(ctx context.Context, courseID int64, dir string, m Manifest) ([]string, error) {
+// neededFiles lists the files that course m uses.
+func (s *Service) neededFiles(ctx context.Context, from draftFiles, m Manifest) ([]string, error) {
 	seen := map[string]bool{}
 	var out []string
 	add := func(name string) {
@@ -375,14 +405,14 @@ func (s *Service) neededFiles(ctx context.Context, courseID int64, dir string, m
 				continue
 			}
 			add(l.File)
-			text, err := s.lessonMarkdown(ctx, courseID, dir, l.File)
+			text, err := s.readFile(ctx, from.key(l.File))
 			if errors.Is(err, storage.ErrNotFound) {
 				continue
 			}
 			if err != nil {
 				return nil, err
 			}
-			for _, img := range localImages(text) {
+			for _, img := range localImages(string(text)) {
 				if target, ok := resolveRef(l.File, img); ok && path.Clean(target) == target {
 					add(target)
 				}

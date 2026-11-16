@@ -73,8 +73,12 @@ func (s *Server) commitDraft(w http.ResponseWriter, r *http.Request) {
 func writeDraftError(w http.ResponseWriter, r *http.Request, err error) bool {
 	var rejected *course.OpRejected
 	switch {
+	case errors.As(err, &rejected) && len(rejected.Problems) > 0:
+		writeProblems(w, http.StatusUnprocessableEntity, "draft_op_rejected", rejected.Message, rejected.Problems)
 	case errors.As(err, &rejected):
 		writeError(w, http.StatusUnprocessableEntity, "draft_op_rejected", rejected.Message)
+	case isUploadNotFound(err):
+		writeError(w, http.StatusNotFound, "draft_upload_not_found", "上传的文件已不在编辑稿里, 请重新上传")
 	case errors.Is(err, course.ErrDraftEmpty):
 		writeError(w, http.StatusConflict, "draft_empty", "编辑稿里还没有修改")
 	case errors.Is(err, course.ErrDraftRequestUnsupported):

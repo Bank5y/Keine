@@ -20,6 +20,10 @@ const (
 	OpDeleteLesson      = "deleteLesson"
 	OpMoveLesson        = "moveLesson"
 	OpSetInfo           = "setInfo"
+	// Operations that give lessons content uploaded to the draft.
+	OpAddLesson           = "addLesson"
+	OpReplaceLesson       = "replaceLesson"
+	OpUploadLessonContent = "uploadLessonContent"
 )
 
 // Op is one operation of a course draft, as stored and as sent by the
@@ -34,6 +38,9 @@ const (
 //	deleteLesson      {lesson}
 //	moveLesson        {lesson, chapter, after}  after: the lesson of chapter it follows, "" for first
 //	setInfo           {info}                    only the fields given change
+//	addLesson         {lesson, chapter, title, content}  lesson: the new key, set by the system; appended last
+//	replaceLesson     {lesson, content, title?}  a lesson with content gets new content (and title)
+//	uploadLessonContent {lesson, content}        an upcoming lesson gets its content
 //
 // Chapters and lessons are named by key, so an operation still finds its
 // target once others have moved things around.
@@ -44,6 +51,9 @@ type Op struct {
 	Title   string      `json:"title,omitempty"`
 	After   *string     `json:"after,omitempty"`
 	Info    *InfoChange `json:"info,omitempty"`
+	// Content is the lesson content of addLesson, replaceLesson and
+	// uploadLessonContent, from an upload of the draft.
+	Content *LessonContent `json:"content,omitempty"`
 }
 
 // InfoChange changes a course's information; nil fields stay as they are.
@@ -57,13 +67,17 @@ type InfoChange struct {
 }
 
 // OpRejected is an operation that cannot apply to the course as the draft
-// has it; Message tells the user why.
-type OpRejected struct{ Message string }
+// has it; Message tells the user why, and Problems lists the details
+// when there are several (such as each missing image).
+type OpRejected struct {
+	Message  string
+	Problems []Problem
+}
 
 func (e *OpRejected) Error() string { return "operation rejected: " + e.Message }
 
 func reject(format string, args ...any) error {
-	return &OpRejected{fmt.Sprintf(format, args...)}
+	return &OpRejected{Message: fmt.Sprintf(format, args...)}
 }
 
 // prepareOp turns an operation sent by the editor into the one the draft
@@ -74,7 +88,7 @@ func prepareOp(op Op) (Op, error) {
 	switch op.Type {
 	case OpAddChapter:
 		op.Chapter = newKey("c")
-	case OpAddUpcomingLesson:
+	case OpAddUpcomingLesson, OpAddLesson:
 		op.Lesson = newKey("l")
 	case OpSetInfo:
 		if op.Info == nil {
@@ -220,10 +234,55 @@ func (m *Manifest) apply(op Op) error {
 		m.Chapters[to].Lessons = slices.Insert(m.Chapters[to].Lessons, at, l)
 	case OpSetInfo:
 		return m.setInfo(op.Info)
+	case OpAddLesson:
+		i, err := m.findChapter(op.Chapter)
+		if err != nil {
+			return err
+		}
+		if err := checkTitle(op.Title, "讲"); err != nil {
+			return err
+		}
+		if _, _, ok := m.lesson(op.Lesson); op.Lesson == "" || ok {
+			return reject("新讲的标识无效")
+		}
+		l, err := op.lessonContent(m.Type, Lesson{Key: op.Lesson, Title: op.Title})
+		if err != nil {
+			return err
+		}
+		m.Chapters[i].Lessons = append(m.Chapters[i].Lessons, l)
+	case OpReplaceLesson, OpUploadLessonContent:
+		ci, li, err := m.findLesson(op.Lesson)
+		if err != nil {
+			return err
+		}
+		l := m.Chapters[ci].Lessons[li]
+		switch {
+		case op.Type == OpReplaceLesson && l.Upcoming():
+			return reject("这一讲还没有内容, 请用「上传内容」补全它")
+		case op.Type == OpUploadLessonContent && !l.Upcoming():
+			return reject("这一讲已经有内容了, 请用「替换」")
+		}
+		if op.Title != "" {
+			if err := checkTitle(op.Title, "讲"); err != nil {
+				return err
+			}
+			l.Title = op.Title
+		}
+		if l, err = op.lessonContent(m.Type, l); err != nil {
+			return err
+		}
+		m.Chapters[ci].Lessons[li] = l
 	default:
 		return reject("不支持的操作 %q", op.Type)
 	}
 	return nil
+}
+
+func (op Op) lessonContent(typ string, l Lesson) (Lesson, error) {
+	if op.Content == nil {
+		return l, reject("没有这一讲的内容")
+	}
+	return op.Content.lesson(typ, l)
 }
 
 func (m *Manifest) setInfo(c *InfoChange) error {
