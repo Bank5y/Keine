@@ -77,8 +77,6 @@ func writeDraftError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, http.StatusUnprocessableEntity, "draft_op_rejected", rejected.Message)
 	case errors.Is(err, course.ErrDraftEmpty):
 		writeError(w, http.StatusConflict, "draft_empty", "编辑稿里还没有修改")
-	case errors.Is(err, course.ErrDraftRequestUnsupported):
-		writeError(w, http.StatusConflict, "draft_request_unsupported", "暂不支持把编辑稿提交为更新申请; 请先用「提交更新」上传课程包")
 	case errors.Is(err, course.ErrUpdateNotAllowed):
 		writeError(w, http.StatusForbidden, "update_not_allowed", "已完结的课程只有上传者可以提交更新")
 	default:

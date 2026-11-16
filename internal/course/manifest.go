@@ -315,6 +315,53 @@ func isWebURL(s string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
+// encode writes the manifest as the course.json that describes it, so a
+// course made by a draft is stored and read back like an uploaded one.
+func (m Manifest) encode() ([]byte, error) {
+	type video struct {
+		File string `json:"file,omitempty"`
+		URL  string `json:"url,omitempty"`
+	}
+	type lesson struct {
+		ID       string `json:"id"`
+		Title    string `json:"title"`
+		File     string `json:"file,omitempty"`
+		Video    *video `json:"video,omitempty"`
+		Duration string `json:"duration,omitempty"`
+	}
+	type chapter struct {
+		ID      string   `json:"id"`
+		Title   string   `json:"title"`
+		Lessons []lesson `json:"lessons"`
+	}
+	type author struct {
+		Name  string `json:"name,omitempty"`
+		Intro string `json:"intro,omitempty"`
+	}
+	out := struct {
+		Version    int       `json:"version"`
+		Title      string    `json:"title"`
+		Type       string    `json:"type"`
+		Completion string    `json:"completion"`
+		Intro      string    `json:"intro,omitempty"`
+		Author     author    `json:"author"`
+		Cover      string    `json:"cover,omitempty"`
+		Chapters   []chapter `json:"chapters"`
+	}{ManifestVersion, m.Title, m.Type, m.Completion, m.Intro, author{m.AuthorName, m.AuthorIntro}, m.Cover, []chapter{}}
+	for _, ch := range m.Chapters {
+		c := chapter{ID: ch.Key, Title: ch.Title, Lessons: []lesson{}}
+		for _, l := range ch.Lessons {
+			e := lesson{ID: l.Key, Title: l.Title, File: l.File, Duration: l.Duration}
+			if l.VideoFile != "" || l.VideoURL != "" {
+				e.Video = &video{File: l.VideoFile, URL: l.VideoURL}
+			}
+			c.Lessons = append(c.Lessons, e)
+		}
+		out.Chapters = append(out.Chapters, c)
+	}
+	return json.Marshal(out)
+}
+
 func contains(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {

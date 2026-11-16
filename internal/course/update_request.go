@@ -35,24 +35,37 @@ func (s *Service) SubmitUpdate(ctx context.Context, viewer auth.User, id int64, 
 	if err != nil {
 		return 0, err
 	}
-	dir := fmt.Sprintf("r%d", time.Now().UnixNano())
+	dir := newRequestDir()
 	if err := s.storeFiles(ctx, pp, filesPrefix(id, dir)); err != nil {
 		s.dropFiles(ctx, id, dir)
 		return 0, err
 	}
 	var reqID int64
 	err = s.tx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
-			VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, id, viewer.ID, dir, sm.FilesDir, pp.raw).Scan(&reqID); err != nil {
-			return err
-		}
-		return tellAdmins(ctx, tx, notify.UpdateRequested, id, reqID, viewer)
+		var err error
+		reqID, err = fileUpdateRequest(ctx, tx, id, viewer, dir, sm.FilesDir, pp.raw)
+		return err
 	})
 	if err != nil {
 		s.dropFiles(ctx, id, dir)
 	}
 	return reqID, err
+}
+
+// newRequestDir names a fresh folder for an update request's files.
+func newRequestDir() string { return fmt.Sprintf("r%d", time.Now().UnixNano()) }
+
+// fileUpdateRequest records an update request whose course (manifest) and
+// files (in folder dir) are ready, made against the course version in
+// folder base, and tells the admins.
+func fileUpdateRequest(ctx context.Context, tx pgx.Tx, courseID int64, requester auth.User, dir, base string, manifest []byte) (int64, error) {
+	var reqID int64
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
+		VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, courseID, requester.ID, dir, base, manifest).Scan(&reqID); err != nil {
+		return 0, err
+	}
+	return reqID, tellAdmins(ctx, tx, notify.UpdateRequested, courseID, reqID, requester)
 }
 
 // UpdateRequest is one of the viewer's update requests for a course.
