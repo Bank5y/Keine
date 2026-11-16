@@ -49,6 +49,8 @@ type Chapter struct {
 	Lessons []Lesson
 }
 
+// Lesson is a lesson of the manifest. One with neither text nor video is an
+// upcoming lesson: listed in the outline, not readable yet.
 type Lesson struct {
 	Key       string
 	Title     string
@@ -56,6 +58,21 @@ type Lesson struct {
 	VideoFile string // package-relative video, or ""
 	VideoURL  string // external video link, or ""
 	Duration  string
+}
+
+// Upcoming tells whether the lesson is an upcoming lesson.
+func (l Lesson) Upcoming() bool { return l.File == "" && l.VideoFile == "" && l.VideoURL == "" }
+
+// hasUpcoming tells whether any lesson of the manifest is upcoming.
+func (m Manifest) hasUpcoming() bool {
+	for _, ch := range m.Chapters {
+		for _, l := range ch.Lessons {
+			if l.Upcoming() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Problem is one thing wrong with a course package. Path points into the
@@ -179,6 +196,9 @@ func (v *validator) manifest(root any) Manifest {
 		m.Cover = v.filePath(c, "cover")
 	}
 	m.Chapters = v.chapters(obj["chapters"], m.Type)
+	if m.Completion == Finished && m.hasUpcoming() {
+		v.add("completion", "课程里还有待更新的讲 (既没有 file 也没有 video 的讲), 不能标为已完结; 请改为 %q (连载中) 或 %q (缺失)", Ongoing, Incomplete)
+	}
 	return m
 }
 
@@ -198,9 +218,11 @@ func (v *validator) chapters(x any, typ string) []Chapter {
 			continue
 		}
 		ch := Chapter{Key: v.key(obj, at, chapterKeys, "章"), Title: v.str(obj, "title", at, true)}
-		lessons, ok := obj["lessons"].([]any)
-		if !ok || len(lessons) == 0 {
-			v.add(at+".lessons", "每章至少需要一讲")
+		var lessons []any
+		if lx, present := obj["lessons"]; present && lx != nil {
+			if lessons, ok = lx.([]any); !ok {
+				v.add(at+".lessons", "必须是数组")
+			}
 		}
 		for j, lx := range lessons {
 			ch.Lessons = append(ch.Lessons, v.lesson(lx, fmt.Sprintf("%s.lessons[%d]", at, j), typ, lessonKeys))
@@ -249,6 +271,9 @@ func (v *validator) lesson(x any, at, typ string, seen map[string]bool) Lesson {
 				v.add(at+".video", "file 和 url 必须且只能填一个")
 			}
 		}
+	}
+	if _, hasVideo := obj["video"]; l.File == "" && !hasVideo {
+		return l // an upcoming lesson: only its title so far
 	}
 	switch typ {
 	case TypeColumn:
