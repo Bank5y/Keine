@@ -56,8 +56,8 @@ export const putUploadFile = (id: number, upload: string, file: File, onProgress
 export interface LessonPreview { key: string; title: string; markdown: string; base: string; video: LessonVideo | null }
 export const previewLesson = (id: number, key: string) => api<LessonPreview>('GET', `${base(id)}/lessons/${encodeURIComponent(key)}`);
 
-// The moves below are what the editor's buttons send; dragging (#47) must
-// send the same operations.
+// The moves below are what the editor's buttons and drags send; a drag
+// gives the same operation as the buttons for the same move.
 
 // lessonUp moves a lesson one place up; the first lesson of a chapter goes
 // to the end of the chapter before.
@@ -95,6 +95,26 @@ export function chapterUp(chapters: DraftChapter[], ci: number): Op | null {
 export function chapterDown(chapters: DraftChapter[], ci: number): Op | null {
   if (ci === chapters.length - 1) return null;
   return { type: 'moveChapter', chapter: chapters[ci].key, after: chapters[ci + 1].key };
+}
+
+// lessonDrop moves a lesson to place `at` of a chapter: the gap before the
+// at-th lesson as shown, the lesson itself included. Dropping a lesson where
+// it already is gives null.
+export function lessonDrop(chapters: DraftChapter[], lesson: string, chapter: string, at: number): Op | null {
+  const to = chapters.find((c) => c.key === chapter);
+  if (!to) return null;
+  const from = to.lessons.findIndex((l) => l.key === lesson);
+  if (from >= 0 && (at === from || at === from + 1)) return null;
+  const before = to.lessons.slice(0, at).filter((l) => l.key !== lesson);
+  return { type: 'moveLesson', lesson, chapter, after: before[before.length - 1]?.key ?? '' };
+}
+
+// chapterDrop moves a chapter to place `at`, counted the same way.
+export function chapterDrop(chapters: DraftChapter[], chapter: string, at: number): Op | null {
+  const from = chapters.findIndex((c) => c.key === chapter);
+  if (from < 0 || at === from || at === from + 1) return null;
+  const before = chapters.slice(0, at).filter((c) => c.key !== chapter);
+  return { type: 'moveChapter', chapter, after: before[before.length - 1]?.key ?? '' };
 }
 
 export const hasUpcoming = (c: DraftCourse) => c.chapters.some((ch) => ch.lessons.some((l) => l.upcoming));

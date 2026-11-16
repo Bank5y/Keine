@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, Eye, FilePlus2, FileUp, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Eye, FilePlus2, FileUp, GripVertical, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -9,6 +9,7 @@ import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { Skeleton } from '@/components/skeleton';
 import { UploadDialog } from '@/components/upload-dialog';
 import { LessonPreviewDialog, LessonUploadDialog, type LessonTarget } from '@/components/lesson-upload';
+import { useReorderDrag } from '@/components/reorder-drag';
 import { ApiError } from '@/lib/api';
 import { COMPLETION_LABEL, pad2, type Completion } from '@/lib/courses';
 import {
@@ -44,6 +45,7 @@ export function CourseEditView({ id }: { id: number }) {
     try { setDraft(await f()); return true; } catch (ex) { fail(ex); return false; } finally { setBusy(false); }
   };
   const send = (op: Op | null) => (op ? run(() => addOp(id, op)) : Promise.resolve(false));
+  const drag = useReorderDrag(draft?.course.chapters ?? [], (op) => void send(op), busy);
 
   if (err) return <div className="page enter"><BackLink id={id} /><Empty glyph="阙" title={err} /></div>;
   if (!draft) return <div className="page enter"><BackLink id={id} /><div className="mt-6 space-y-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-5" />)}</div></div>;
@@ -73,11 +75,12 @@ export function CourseEditView({ id }: { id: number }) {
 
       <div className="sections">
         <section className="section">
-          <div className="section-head"><div className="no">01</div><h2>章与讲</h2><p>调整顺序用上移、下移, 或把讲移到别的章。</p></div>
-          <div className="ed">
+          <div className="section-head"><div className="no">01</div><h2>章与讲</h2><p>{drag.enabled ? '拖拽调整章和讲的顺序, 也可以把讲拖到别的章; 或用上移、下移、移到某章。' : '调整顺序用上移、下移, 或把讲移到别的章。'}</p></div>
+          <div className="ed" {...drag.rootProps}>
             {c.chapters.map((ch, ci) => (
-              <div className="ed-chapter" key={ch.key}>
-                <div className="ed-row ed-ch">
+              <div className={cn('ed-chapter', drag.chapterMark(ci), drag.dragging(ch.key) && 'dragging')} key={ch.key} data-drag-chapter>
+                <div className="ed-row ed-ch" {...drag.chapterHandle(ch.key)}>
+                  {drag.enabled ? <GripVertical className="ed-grip" aria-hidden /> : null}
                   <span className="c-no">第 {pad2(ci + 1)} 章</span>
                   <span className="ed-title">{ch.title}</span>
                   {ch.added ? <span className="tag new">新</span> : null}
@@ -89,12 +92,14 @@ export function CourseEditView({ id }: { id: number }) {
                   </div>
                 </div>
                 <div className="ed-lessons">
-                  {!ch.lessons.length ? <div className="ed-empty">这一章还没有讲</div> : null}
+                  {!ch.lessons.length ? <div className={cn('ed-empty', drag.emptyMark(ci))}>这一章还没有讲</div> : null}
                   {ch.lessons.map((l, li) => {
                     const up = lessonUp(c.chapters, ci, li);
                     const down = lessonDown(c.chapters, ci, li);
                     return (
-                      <div className={cn('ed-row ed-l', l.upcoming && 'upcoming')} key={l.key}>
+                      <div className={cn('ed-row ed-l', l.upcoming && 'upcoming', drag.lessonMark(ci, li), drag.dragging(l.key) && 'dragging')} key={l.key}
+                        data-drag-lesson {...drag.lessonHandle(l.key)}>
+                        {drag.enabled ? <GripVertical className="ed-grip" aria-hidden /> : null}
                         <span className="e-no">{pad2(++n)}</span>
                         <span className="ed-title" title={l.title}>{l.title}</span>
                         {l.upcoming ? <span className="upcoming-mark">待更新</span> : null}
