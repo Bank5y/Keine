@@ -71,7 +71,7 @@ export function CourseView({ id }: { id: number }) {
           </div>
           {course?.retention ? (
             <div className="retention-note" role="status">
-              该课程{RETENTION_LABEL[course.retention]}，你已学完的 {course.retainedCount ?? 0} 讲仍可阅读
+              该课程{RETENTION_LABEL[course.retention]}，你保留的 {course.retainedCount ?? 0} 讲仍可阅读
             </div>
           ) : null}
           {!course ? <Lines /> : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} q={q.trim()} /> : <Intro c={course} />}</TabPane>}

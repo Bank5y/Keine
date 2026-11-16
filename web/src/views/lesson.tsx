@@ -108,7 +108,12 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
     if (t.tagName === 'IMG' && t.closest('.prose')) setZoom((t as HTMLImageElement).src);
   };
 
-  const toc = course ? <CourseToc c={course} current={lessonId} /> : <Skeleton className="h-40" />;
+  const toc = course ? (
+    <>
+      <SubscribeButton c={course} onSubscribed={() => void reload()} className="drawer-subscribe" />
+      <CourseToc c={course} current={lessonId} />
+    </>
+  ) : <Skeleton className="h-40" />;
   const onThisPage = <HeadingToc headings={headings} active={active} onPick={(id) => { setDrawer(''); jump(id, 'smooth'); }} />;
 
   return (

@@ -58,7 +58,7 @@ export function MineView() {
       <UploadDialog open={uploading} onClose={() => setUploading(false)} onUploaded={() => { setUploading(false); void load(); }} />
       <Confirm open={!!deleting} title="删除课程" confirm="删除" onClose={() => setDeleting(null)}
         onConfirm={() => act('DELETE', `/api/courses/${deleting!.id}`, `已删除「${deleting!.title}」`)}>
-        确定删除「{deleting?.title}」吗? 课程内容、文件和学习记录都会被删除, 无法恢复。
+        确定删除「{deleting?.title}」吗? 删除后无法恢复; 如果有人订阅过它, 他们仍可阅读各自保留的讲 (已学完或有标注的讲)。
       </Confirm>
       <Confirm open={!!removing} title="取消订阅" confirm="取消订阅" onClose={() => setRemoving(null)}
         onConfirm={() => act('DELETE', `/api/courses/${removing!.id}/subscribe`, `已取消订阅「${removing!.title}」`)}>

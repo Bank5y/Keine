@@ -60,7 +60,7 @@ export function NotesView() {
       <PageHead kicker="Notes" title="笔记" sub="你在各门课程里做的标注和笔记。点原文回到它在讲里的位置。" />
       {err ? <ErrorBox message={err} /> : null}
       {nothingYet ? (
-        <Empty glyph="札" title="还没有标注">在专栏文章里选中一段文字, 就可以划线、用荧光笔标出或写笔记。</Empty>
+        <Empty glyph="札" title="还没有标注">在专栏文章里选中一段文字, 就可以用横线或荧光笔标出, 也可以写笔记。</Empty>
       ) : null}
       {book && !nothingYet ? (
         <div className="notes">
