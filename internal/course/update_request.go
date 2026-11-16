@@ -35,24 +35,72 @@ func (s *Service) SubmitUpdate(ctx context.Context, viewer auth.User, id int64, 
 	if err != nil {
 		return 0, err
 	}
-	dir := fmt.Sprintf("r%d", time.Now().UnixNano())
+	dir := newRequestDir()
 	if err := s.storeFiles(ctx, pp, filesPrefix(id, dir)); err != nil {
 		s.dropFiles(ctx, id, dir)
 		return 0, err
 	}
-	var reqID int64
+	var f filedRequest
 	err = s.tx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
-			VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, id, viewer.ID, dir, sm.FilesDir, pp.raw).Scan(&reqID); err != nil {
-			return err
-		}
-		return tellAdmins(ctx, tx, notify.UpdateRequested, id, reqID, viewer)
+		var err error
+		f, err = fileUpdateRequest(ctx, tx, id, viewer, dir, sm.FilesDir, pp.raw)
+		return err
 	})
 	if err != nil {
 		s.dropFiles(ctx, id, dir)
+		return 0, err
 	}
-	return reqID, err
+	s.dropReplaced(ctx, id, f)
+	return f.id, nil
+}
+
+// newRequestDir names a fresh folder for an update request's files.
+func newRequestDir() string { return fmt.Sprintf("r%d", time.Now().UnixNano()) }
+
+// filedRequest is an update request just recorded, with the folders of the
+// requester's earlier pending requests it replaced, to remove once the
+// transaction commits.
+type filedRequest struct {
+	id       int64
+	replaced []string
+}
+
+// fileUpdateRequest records an update request whose course (manifest) and
+// files (in folder dir) are ready, made against the course version in
+// folder base, and tells the admins. The requester's earlier pending
+// request for the course is withdrawn: admins only review the latest one.
+func fileUpdateRequest(ctx context.Context, tx pgx.Tx, courseID int64, requester auth.User, dir, base string, manifest []byte) (filedRequest, error) {
+	var f filedRequest
+	rows, err := tx.Query(ctx, `
+		UPDATE review_requests SET state = 'withdrawn', decided_at = now()
+		WHERE course_id = $1 AND requester_id = $2 AND kind = 'update' AND state = 'pending'
+		RETURNING coalesce(files_dir, '')`, courseID, requester.ID)
+	if err != nil {
+		return f, err
+	}
+	if f.replaced, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+		return f, err
+	}
+	if len(f.replaced) > 0 {
+		if err := closeRequestNotices(ctx, tx, courseID); err != nil {
+			return f, err
+		}
+	}
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
+		VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, courseID, requester.ID, dir, base, manifest).Scan(&f.id); err != nil {
+		return f, err
+	}
+	return f, tellAdmins(ctx, tx, notify.UpdateRequested, courseID, f.id, requester)
+}
+
+// dropReplaced removes the folders of requests a new one replaced.
+func (s *Service) dropReplaced(ctx context.Context, courseID int64, f filedRequest) {
+	for _, dir := range f.replaced {
+		if dir != "" {
+			s.dropFiles(ctx, courseID, dir)
+		}
+	}
 }
 
 // UpdateRequest is one of the viewer's update requests for a course.
@@ -102,53 +150,16 @@ func (s *Service) WithdrawUpdate(ctx context.Context, viewer auth.User, courseID
 	return err
 }
 
-// Changes compares a manifest's lessons with a course's current ones.
-type Changes struct {
-	Added   []string `json:"added"`
-	Removed []string `json:"removed"`
-	Kept    int      `json:"kept"`
-}
-
-func (s *Service) changes(ctx context.Context, courseID int64, m Manifest) (*Changes, error) {
-	rows, err := s.db.Query(ctx, `
-		SELECT l.key, l.title, `+upcoming+` FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id
-		WHERE l.course_id = $1 ORDER BY ch.position, l.position`, courseID)
+// changes compares update request m, with its files in folder dir, with
+// the course as it is now.
+func (s *Service) changes(ctx context.Context, courseID int64, m Manifest, dir string) (*Changes, error) {
+	cur, curDir, err := currentManifest(ctx, s.db, courseID)
 	if err != nil {
 		return nil, err
 	}
-	type lesson struct {
-		Key, Title string
-		Upcoming   bool
-	}
-	current, err := pgx.CollectRows(rows, pgx.RowToStructByPos[lesson])
+	d, err := s.diffContent(ctx, courseID, cur, curDir, m, dir)
 	if err != nil {
 		return nil, err
 	}
-	// Only lessons with content count: an upcoming lesson that gets content
-	// is added, one that loses it is removed.
-	incoming := map[string]bool{}
-	c := &Changes{Added: []string{}, Removed: []string{}}
-	have := map[string]bool{}
-	for _, l := range current {
-		have[l.Key] = !l.Upcoming
-	}
-	for _, ch := range m.Chapters {
-		for _, l := range ch.Lessons {
-			if l.Upcoming() {
-				continue
-			}
-			incoming[l.Key] = true
-			if have[l.Key] {
-				c.Kept++
-			} else {
-				c.Added = append(c.Added, l.Title)
-			}
-		}
-	}
-	for _, l := range current {
-		if !l.Upcoming && !incoming[l.Key] {
-			c.Removed = append(c.Removed, l.Title)
-		}
-	}
-	return c, nil
+	return &d.changes, nil
 }

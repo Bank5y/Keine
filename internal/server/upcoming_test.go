@@ -155,11 +155,9 @@ func TestAnUpdateRequestFillingAnUpcomingLessonShowsItAsAdded(t *testing.T) {
 
 	bob.mustOK(submitUpdate(t, bob, id, filledOutline()))
 
-	c := updateReviews(t, admin, id)[0]["changes"].(map[string]any)
-	if added := c["added"].([]any); len(added) != 1 || added[0] != "02｜三层意图识别" {
-		t.Fatalf("the review lists the filled lesson as added: %v", c)
+	r := updateReviews(t, admin, id)[0]
+	if c := r["changes"].(map[string]any); c["added"] != float64(1) || c["removed"] != float64(0) {
+		t.Fatalf("filling l02 is one lesson added, the new upcoming l04 is none: %v", c)
 	}
-	if removed := c["removed"].([]any); len(removed) != 0 {
-		t.Fatalf("nothing is removed: %v", c)
-	}
+	expectChanges(t, r, "意图识别: 02｜三层意图识别[added]", "计划: 04｜计划[added] (upcoming)")
 }

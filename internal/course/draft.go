@@ -17,9 +17,6 @@ import (
 var (
 	// ErrDraftEmpty means the draft holds no operation to undo or commit.
 	ErrDraftEmpty = errors.New("the course draft is empty")
-	// ErrDraftRequestUnsupported means the viewer's draft would become an
-	// update request, which drafts cannot do yet.
-	ErrDraftRequestUnsupported = errors.New("committing a draft as an update request is not supported yet")
 )
 
 // How a user's committed draft takes effect.
@@ -69,9 +66,11 @@ type DraftLesson struct {
 }
 
 // CommitResult is what committing a draft did. Outcome is "updated": the
-// course now follows the draft.
+// course now follows the draft; or "requested": the draft became update
+// request RequestID.
 type CommitResult struct {
-	Outcome string `json:"outcome"`
+	Outcome   string `json:"outcome"`
+	RequestID int64  `json:"requestId,omitempty"`
 }
 
 // loadToEdit loads a course the viewer may change through the editor and
@@ -317,8 +316,8 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 	if err != nil {
 		return CommitResult{}, err
 	}
-	if mode != EditDirect {
-		return CommitResult{}, ErrDraftRequestUnsupported
+	if mode == EditRequest {
+		return s.requestDraft(ctx, viewer, id)
 	}
 	next := newFilesDir()
 	var prevDir string
@@ -361,6 +360,59 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 	s.dropUnused(ctx, id, prevDir) // a freeze may still hold it
 	s.dropDraftFiles(ctx, id, row.ID, "")
 	return CommitResult{Outcome: "updated"}, nil
+}
+
+// requestDraft turns the viewer's draft into an update request: the course
+// the draft makes of the latest version, with its files copied into the
+// request's own folder (ADR-0005), so approving it works like approving an
+// uploaded package. The course itself does not change.
+func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) (CommitResult, error) {
+	dir := newRequestDir()
+	var filed filedRequest
+	var row draftRow
+	err := s.tx(ctx, func(tx pgx.Tx) error {
+		// Hold the course's content still while its files are copied: an
+		// approval switching it would drop the folder they come from.
+		var base string
+		if err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 FOR SHARE", id).Scan(&base); err != nil {
+			return err
+		}
+		var err error
+		if row, err = loadDraft(ctx, tx, id, viewer.ID, true); err != nil {
+			return err
+		}
+		if len(row.Ops) == 0 {
+			return ErrDraftEmpty
+		}
+		cur, _, err := currentManifest(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		m, err := applyOps(cur, row.Ops)
+		if err != nil {
+			return err
+		}
+		raw, err := m.encode()
+		if err != nil {
+			return err
+		}
+		from := draftFiles{courseID: id, dir: base, draftID: row.ID, uploads: row.uploads()}
+		if err := s.copyFiles(ctx, from, dir, m); err != nil {
+			return err
+		}
+		if filed, err = fileUpdateRequest(ctx, tx, id, viewer, dir, base, raw); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, "DELETE FROM course_drafts WHERE course_id = $1 AND user_id = $2", id, viewer.ID)
+		return err
+	})
+	if err != nil {
+		s.dropFiles(ctx, id, dir)
+		return CommitResult{}, err
+	}
+	s.dropReplaced(ctx, id, filed)
+	s.dropDraftFiles(ctx, id, row.ID, "")
+	return CommitResult{Outcome: "requested", RequestID: filed.id}, nil
 }
 
 // copyFiles fills folder to with the files course m needs, copied from

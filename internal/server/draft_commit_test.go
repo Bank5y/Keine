@@ -156,24 +156,6 @@ func TestAnAdminCommitsADraftOfAPublicCourseAndSubscribersAreTold(t *testing.T) 
 	}
 }
 
-func TestOthersCannotCommitADraftYet(t *testing.T) {
-	a := newApp(t)
-	alice := a.user("alice")
-	id := publishedCourse(t, a, alice)
-	alice.mustOK(addOp(alice, id, map[string]any{"type": "deleteLesson", "lesson": "l00"}))
-
-	r := commitDraft(alice, id)
-
-	expectError(t, r, http.StatusConflict, "draft_request_unsupported")
-	if !strings.Contains(errorMessage(r), "暂不支持") {
-		t.Fatalf("the user is told clearly: %s", r.body)
-	}
-	expectOutline(t, courseOutline(t, alice, id), "开篇:开篇词", "意图识别:01｜用户输入规范化,02｜三层意图识别")
-	if n := len(draftOps(t, alice, id)); n != 1 {
-		t.Fatalf("the draft stays, got %d operations", n)
-	}
-}
-
 func TestAnEmptyDraftCannotBeCommitted(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
