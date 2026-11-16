@@ -150,53 +150,16 @@ func (s *Service) WithdrawUpdate(ctx context.Context, viewer auth.User, courseID
 	return err
 }
 
-// Changes compares a manifest's lessons with a course's current ones.
-type Changes struct {
-	Added   []string `json:"added"`
-	Removed []string `json:"removed"`
-	Kept    int      `json:"kept"`
-}
-
-func (s *Service) changes(ctx context.Context, courseID int64, m Manifest) (*Changes, error) {
-	rows, err := s.db.Query(ctx, `
-		SELECT l.key, l.title, `+upcoming+` FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id
-		WHERE l.course_id = $1 ORDER BY ch.position, l.position`, courseID)
+// changes compares update request m, with its files in folder dir, with
+// the course as it is now.
+func (s *Service) changes(ctx context.Context, courseID int64, m Manifest, dir string) (*Changes, error) {
+	cur, curDir, err := currentManifest(ctx, s.db, courseID)
 	if err != nil {
 		return nil, err
 	}
-	type lesson struct {
-		Key, Title string
-		Upcoming   bool
-	}
-	current, err := pgx.CollectRows(rows, pgx.RowToStructByPos[lesson])
+	d, err := s.diffContent(ctx, courseID, cur, curDir, m, dir)
 	if err != nil {
 		return nil, err
 	}
-	// Only lessons with content count: an upcoming lesson that gets content
-	// is added, one that loses it is removed.
-	incoming := map[string]bool{}
-	c := &Changes{Added: []string{}, Removed: []string{}}
-	have := map[string]bool{}
-	for _, l := range current {
-		have[l.Key] = !l.Upcoming
-	}
-	for _, ch := range m.Chapters {
-		for _, l := range ch.Lessons {
-			if l.Upcoming() {
-				continue
-			}
-			incoming[l.Key] = true
-			if have[l.Key] {
-				c.Kept++
-			} else {
-				c.Added = append(c.Added, l.Title)
-			}
-		}
-	}
-	for _, l := range current {
-		if !l.Upcoming && !incoming[l.Key] {
-			c.Removed = append(c.Removed, l.Title)
-		}
-	}
-	return c, nil
+	return &d.changes, nil
 }

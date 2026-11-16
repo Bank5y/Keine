@@ -67,7 +67,7 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 // next, lessons keep their progress by key, annotations are carried over,
 // and a public course's subscribers are told what changed.
 func (s *Service) replaceContent(ctx context.Context, tx pgx.Tx, sm Summary, actor auth.User, m Manifest, prevDir, next string) error {
-	before, err := lessonFiles(ctx, tx, sm.ID)
+	before, _, err := currentManifest(ctx, tx, sm.ID)
 	if err != nil {
 		return err
 	}

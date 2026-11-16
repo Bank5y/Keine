@@ -85,7 +85,7 @@ type Review struct {
 	Course    Summary   `json:"course"`
 	Requester Requester `json:"requester"`
 	CreatedAt time.Time `json:"createdAt"`
-	// Changes compares an update request's lessons with the course's.
+	// Changes compares an update request with the course as it is now.
 	Changes *Changes `json:"changes,omitempty"`
 	// Stale marks an update request submitted before the course last
 	// changed: it should be reviewed against the new content.
@@ -100,7 +100,7 @@ type Requester struct {
 // Reviews lists the pending requests, oldest first.
 func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT r.id, r.kind, r.created_at, u.id, u.username, coalesce(r.base_dir, ''), r.manifest, `+summaryColumns("$1")+`
+		SELECT r.id, r.kind, r.created_at, u.id, u.username, coalesce(r.base_dir, ''), coalesce(r.files_dir, ''), r.manifest, `+summaryColumns("$1")+`
 		FROM review_requests r JOIN users u ON u.id = r.requester_id JOIN courses c ON c.id = r.course_id
 		WHERE r.state = 'pending' ORDER BY r.created_at, r.id`, admin.ID)
 	if err != nil {
@@ -109,11 +109,12 @@ func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error
 	type row struct {
 		Review
 		base     string
+		dir      string
 		manifest []byte
 	}
 	list, err := pgx.CollectRows(rows, func(cr pgx.CollectableRow) (row, error) {
 		var r row
-		err := cr.Scan(append([]any{&r.ID, &r.Kind, &r.CreatedAt, &r.Requester.ID, &r.Requester.Username, &r.base, &r.manifest}, summaryFields(&r.Course)...)...)
+		err := cr.Scan(append([]any{&r.ID, &r.Kind, &r.CreatedAt, &r.Requester.ID, &r.Requester.Username, &r.base, &r.dir, &r.manifest}, summaryFields(&r.Course)...)...)
 		r.Course.IsUploader = r.Course.UploaderID == admin.ID
 		return r, err
 	})
@@ -125,7 +126,7 @@ func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error
 		if r.Kind == reviewUpdate {
 			r.Stale = r.base != r.Course.FilesDir
 			m, _ := ParseManifest(r.manifest)
-			if r.Changes, err = s.changes(ctx, r.Course.ID, m); err != nil {
+			if r.Changes, err = s.changes(ctx, r.Course.ID, m, r.dir); err != nil {
 				return nil, err
 			}
 		}
@@ -186,7 +187,7 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 		if len(problems) > 0 {
 			return &InvalidPackage{problems}
 		}
-		before, err := lessonFiles(ctx, tx, r.courseID)
+		before, _, err := currentManifest(ctx, tx, r.courseID)
 		if err != nil {
 			return err
 		}

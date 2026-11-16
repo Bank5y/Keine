@@ -7,6 +7,47 @@ import (
 	"testing"
 )
 
+// changeLines renders a review's changes chapter by chapter, as
+// "chapter[its changes]: lesson[its changes], ...". A lesson moved from
+// another chapter shows "<-that chapter" and an upcoming one "(upcoming)".
+func changeLines(t *testing.T, review map[string]any) []string {
+	t.Helper()
+	tagged := func(x map[string]any) string {
+		s := x["title"].(string)
+		if cs := x["changes"].([]any); len(cs) > 0 {
+			var names []string
+			for _, c := range cs {
+				names = append(names, c.(string))
+			}
+			s += "[" + strings.Join(names, ",") + "]"
+		}
+		if from, _ := x["fromChapter"].(string); from != "" {
+			s += " <-" + from
+		}
+		if x["upcoming"] == true {
+			s += " (upcoming)"
+		}
+		return s
+	}
+	var out []string
+	for _, cx := range review["changes"].(map[string]any)["chapters"].([]any) {
+		ch := cx.(map[string]any)
+		var lessons []string
+		for _, lx := range ch["lessons"].([]any) {
+			lessons = append(lessons, tagged(lx.(map[string]any)))
+		}
+		out = append(out, tagged(ch)+": "+strings.Join(lessons, ", "))
+	}
+	return out
+}
+
+func expectChanges(t *testing.T, review map[string]any, want ...string) {
+	t.Helper()
+	if got := changeLines(t, review); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("unexpected changes:\n got  %q\n want %q", got, want)
+	}
+}
+
 func approveUpdateOf(t *testing.T, admin *client, courseID int) {
 	t.Helper()
 	reviews := updateReviews(t, admin, courseID)
@@ -14,6 +55,42 @@ func approveUpdateOf(t *testing.T, admin *client, courseID int) {
 		t.Fatalf("expected one update review, got %v", reviews)
 	}
 	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/reviews/%d/approve", int(reviews[0]["id"].(float64))), nil))
+}
+
+func TestTheReviewListsRenamedAndMovedLessonsByChapter(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	carol := a.user("carol")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	subscribe(t, carol, id)
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "renameChapter", "chapter": "opening", "title": "序言"}))
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "moveLesson", "lesson": "l00", "chapter": "intent", "after": "l02"}))
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "moveLesson", "lesson": "l02", "chapter": "intent", "after": ""}))
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "renameLesson", "lesson": "l01", "title": "01｜输入"}))
+	alice.mustOK(commitDraft(alice, id))
+
+	r := updateReviews(t, admin, id)[0]
+
+	if c := r["changes"].(map[string]any); c["renamed"] != float64(1) || c["moved"] != float64(2) || c["modified"] != float64(0) || c["kept"] != float64(3) {
+		t.Fatalf("one lesson renamed, two moved, none modified: %v", c)
+	}
+	expectChanges(t, r,
+		"序言[renamed]: ",
+		"意图识别: 02｜三层意图识别[moved], 01｜输入[renamed], 开篇词[moved] <-开篇")
+	ch := r["changes"].(map[string]any)["chapters"].([]any)
+	if prev := ch[0].(map[string]any)["previousTitle"]; prev != "开篇" {
+		t.Fatalf("a renamed chapter shows its old title: %v", ch[0])
+	}
+	if prev := ch[1].(map[string]any)["lessons"].([]any)[1].(map[string]any)["previousTitle"]; prev != "01｜用户输入规范化" {
+		t.Fatalf("a renamed lesson shows its old title: %v", ch[1])
+	}
+
+	approveUpdateOf(t, admin, id)
+
+	if p := onlyNotification(t, carol, "course_updated"); p["renamed"] != float64(1) || p["moved"] != float64(2) {
+		t.Fatalf("subscribers are told of the renamed and moved lessons: %v", p)
+	}
 }
 
 func TestSubmittingAgainReplacesTheRequestersPendingRequest(t *testing.T) {

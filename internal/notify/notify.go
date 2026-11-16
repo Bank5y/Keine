@@ -74,13 +74,16 @@ type PendingPayload struct {
 	LessonID    int64 `json:"lessonId"`
 }
 
-// UpdatedPayload counts the lessons an update added, removed and modified
-// (kept lessons whose text changed).
+// UpdatedPayload counts the lessons an update added, removed, modified
+// (kept lessons whose text changed), renamed and moved (to another chapter,
+// or out of their order).
 type UpdatedPayload struct {
 	CoursePayload
 	Added    int `json:"added"`
 	Removed  int `json:"removed"`
 	Modified int `json:"modified"`
+	Renamed  int `json:"renamed"`
+	Moved    int `json:"moved"`
 }
 
 // DeletedPayload is a deleted course with the lessons the subscriber keeps.
