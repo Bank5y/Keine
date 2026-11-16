@@ -156,3 +156,77 @@ func TestNotificationsArePaged(t *testing.T) {
 		t.Fatalf("unexpected second page: %v", second)
 	}
 }
+
+func notificationsOfKind(t *testing.T, c *client, kind string) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, n := range notificationList(t, c) {
+		if n["kind"] == kind {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func TestRequesterIsNotifiedWhenAnUpdateRequestIsApproved(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	admin := a.admin()
+	id := publishedWith(t, a, alice, func(m map[string]any) { m["completion"] = "incomplete" })
+	_, files := nextVersion()
+	bob.mustOK(submitUpdate(t, bob, id, files))
+
+	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/reviews/%d/approve", int(updateReviews(t, admin, id)[0]["id"].(float64))), nil))
+
+	list := notificationList(t, bob)
+	if len(list) != 1 {
+		t.Fatalf("bob, who is not the uploader, is told: %v", list)
+	}
+	p := list[0]["payload"].(map[string]any)
+	if list[0]["kind"] != "update_approved" || int(p["courseId"].(float64)) != id || p["courseTitle"] != "Agent 系统设计 (第二版)" {
+		t.Fatalf("unexpected notification: %v", list[0])
+	}
+	if n := notificationsOfKind(t, alice, "update_approved"); len(n) != 0 {
+		t.Fatalf("the uploader did not ask, so is not told: %v", n)
+	}
+}
+
+func TestWithdrawingAnUpdateRequestSendsNoNotification(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	id := publishedWith(t, a, alice, func(m map[string]any) { m["completion"] = "incomplete" })
+	_, files := nextVersion()
+	bob.mustOK(submitUpdate(t, bob, id, files))
+	rid := int(myUpdateRequests(t, bob, id)[0].(map[string]any)["id"].(float64))
+
+	bob.mustOK(bob.do("DELETE", fmt.Sprintf("/api/courses/%d/update-requests/%d", id, rid), nil))
+
+	if list := notificationList(t, bob); len(list) != 0 {
+		t.Fatalf("withdrawing tells nobody: %v", list)
+	}
+	if list := notificationList(t, alice); len(list) != 0 {
+		t.Fatalf("the uploader is not told either: %v", list)
+	}
+}
+
+func TestRequesterIsNotifiedWithTheReasonWhenAnUpdateRequestIsRejected(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	_, files := nextVersion()
+	alice.mustOK(submitUpdate(t, alice, id, files))
+
+	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/reviews/%d/reject", int(updateReviews(t, admin, id)[0]["id"].(float64))), map[string]any{"reason": "第 3 讲缺图"}))
+
+	list := notificationsOfKind(t, alice, "update_rejected")
+	if len(list) != 1 {
+		t.Fatalf("expected one rejection notification, got %v", notificationList(t, alice))
+	}
+	p := list[0]["payload"].(map[string]any)
+	if int(p["courseId"].(float64)) != id || p["courseTitle"] != "Agent 系统设计" || p["reason"] != "第 3 讲缺图" {
+		t.Fatalf("unexpected notification: %v", list[0])
+	}
+}

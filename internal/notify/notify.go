@@ -28,6 +28,12 @@ const (
 	// PublishRejected tells an uploader their publish request was turned
 	// down, and why.
 	PublishRejected Kind = "publish_rejected"
+	// UpdateApproved tells a requester their update replaced the course's
+	// content.
+	UpdateApproved Kind = "update_approved"
+	// UpdateRejected tells a requester their update request was turned
+	// down, and why.
+	UpdateRejected Kind = "update_rejected"
 )
 
 // CoursePayload names the course a notification is about, as it was then.
