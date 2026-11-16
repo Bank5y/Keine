@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, BookOpen, PlayCircle, Search } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, BookOpen, ChevronRight, PlayCircle, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { CourseActions } from '@/components/course-actions';
-import { startLearning } from '@/components/peek';
+import { Fold, useChapterFolds } from '@/components/fold';
+import { SubscribeButton } from '@/components/peek';
 import { Highlight } from '@/components/highlight';
+import { TabPane, Tabs, useTabFade } from '@/components/tabs';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
-import { COMPLETION_LABEL, PUBLISH_LABEL, TYPE_LABEL, lessonURL, pad2, type ChapterItem, type CourseDetail } from '@/lib/courses';
+import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, type ChapterItem, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
+import { useScrollFade } from '@/lib/use-scroll-fade';
 import { cn } from '@/lib/utils';
 
 export function useCourse(id: number) {
@@ -22,25 +25,43 @@ export function useCourse(id: number) {
   return { course, err, reload };
 }
 
+type Tab = 'intro' | 'toc';
+
+// readTab is the tab named in the address (?tab=), if any.
+const readTab = (): Tab | null => {
+  const t = new URLSearchParams(location.search).get('tab');
+  return t === 'intro' || t === 'toc' ? t : null;
+};
+
 export function CourseView({ id }: { id: number }) {
   const { course, err, reload } = useCourse(id);
-  const [tab, setTab] = useState<'toc' | 'intro'>('toc');
+  // the table of contents comes first; the chosen tab is kept in the
+  // address so coming back from a lesson returns to it
+  const [tab, setTabState] = useState<Tab>(() => readTab() ?? 'toc');
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    history.replaceState(history.state, '', `${location.pathname}?tab=${t}${location.hash}`);
+  };
+  const [shown, fading] = useTabFade(tab);
   const [q, setQ] = useState('');
+  const colophonBody = useRef<HTMLDivElement>(null);
+  useScrollFade(colophonBody);
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
   return (
     <div className="page enter">
-      <BackLink library={!!course && course.visibility === 'public' && !course.enrolled} />
       <div className="course">
-        <aside className="colophon">{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</aside>
+        <aside className="colophon">
+          <BackLink library={!!course && course.visibility === 'public' && !course.subscribed} />
+          {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
+          <div className="colophon-body side-scroll side-fade" ref={colophonBody}>{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</div>
+        </aside>
         <section>
           <div className="toc-head">
-            <div className="toc-tabs" role="tablist">
-              <button role="tab" aria-selected={tab === 'toc'} className={cn('toc-tab', tab === 'toc' && 'active')} onClick={() => setTab('toc')}>
-                目录{course ? <sup>{course.lessonCount}</sup> : null}
-              </button>
-              <button role="tab" aria-selected={tab === 'intro'} className={cn('toc-tab', tab === 'intro' && 'active')} onClick={() => setTab('intro')}>课程介绍</button>
-            </div>
+            <Tabs className="toc-tabs" tabClassName="toc-tab" value={tab} onChange={setTab} items={[
+              ['intro', '课程介绍'],
+              ['toc', <>目录{course ? <sup>{course.lessonCount}</sup> : null}</>],
+            ]} />
             {tab === 'toc' ? (
               <label className="search-sm">
                 <Search />
@@ -48,23 +69,28 @@ export function CourseView({ id }: { id: number }) {
               </label>
             ) : null}
           </div>
-          {!course ? <Lines /> : (tab === 'toc' ? <Toc c={course} q={q.trim()} /> : <Intro c={course} />)}
+          {course?.retention ? (
+            <div className="retention-note" role="status">
+              该课程{RETENTION_LABEL[course.retention]}，你保留的 {course.retainedCount ?? 0} 讲仍可阅读
+            </div>
+          ) : null}
+          {!course ? <Lines /> : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} q={q.trim()} /> : <Intro c={course} />}</TabPane>}
         </section>
       </div>
     </div>
   );
 }
 
-// ContinueButton opens the lesson studied last, or the first lesson.
+// ContinueButton opens the lesson studied last, or the first readable lesson.
 function ContinueButton({ c }: { c: CourseDetail }) {
-  if (!c.enrolled) return <Button variant="default" size="block" onClick={() => void startLearning(c)}><BookOpen />开始学习</Button>;
-  const first = c.chapters[0]?.lessons[0];
-  const target = c.progress.lastLessonId ?? first?.id;
+  const readable = c.chapters.flatMap((ch) => ch.lessons).filter((l) => !l.unavailable);
+  const last = readable.find((l) => l.id === c.progress.lastLessonId);
+  const target = last?.id ?? readable[0]?.id;
   if (!target) return null;
-  const started = c.progress.lastLessonId != null;
+  const started = last != null;
   return (
     <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target))}>
-      <BookOpen />{started ? '继续学习' : '开始学习'}
+      <BookOpen />{started ? '继续学习' : '开始阅读'}
     </Button>
   );
 }
@@ -86,7 +112,8 @@ function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
         <div className="tags">
           <span className="tag">{TYPE_LABEL[c.type]}</span>
           <span className={cn('tag', c.completion)}>{COMPLETION_LABEL[c.completion]}</span>
-          {c.visibility === 'private' ? <span className={cn('tag private', c.publishState)}>{PUBLISH_LABEL[c.publishState]}</span> : null}
+          {c.retention ? <span className="tag retained">{RETENTION_LABEL[c.retention]}</span>
+            : c.visibility === 'private' ? <span className={cn('tag private', c.publishState)}>{PUBLISH_LABEL[c.publishState]}</span> : null}
         </div>
         <dl className="spec">
           <dt>讲数</dt><dd className="num">{c.lessonCount}</dd>
@@ -99,7 +126,7 @@ function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
           <ProgressBar done={c.progress.done} total={c.progress.total} />
         </div>
         <div className="stack"><ContinueButton c={c} /></div>
-        <CourseActions c={c} onChange={onChange} />
+        {c.retention ? null : <CourseActions c={c} onChange={onChange} />}
       </div>
     </>
   );
@@ -115,7 +142,26 @@ function filterToc(chapters: ChapterItem[], q: string) {
     .filter((ch) => ch.lessons.length);
 }
 
+// progressChapter is the chapter of the lesson studied last, or the first.
+function progressChapter(c: CourseDetail) {
+  const last = c.progress.lastLessonId;
+  return (c.chapters.find((ch) => ch.lessons.some((l) => l.id === last)) ?? c.chapters[0])?.id;
+}
+
+// Toc opens the chapter the reader has got to. A search opens every chapter
+// with a match; clearing it brings back the chapters opened before.
 function Toc({ c, q }: { c: CourseDetail; q: string }) {
+  const folds = useChapterFolds(() => { const ch = progressChapter(c); return ch == null ? [] : [ch]; });
+  const [closed, setClosed] = useState<{ q: string; ids: Set<number> }>({ q: '', ids: new Set() });
+  const searchClosed = closed.q === q ? closed.ids : new Set<number>();
+  const isOpen = (id: number) => (q ? !searchClosed.has(id) : folds.isOpen(id));
+  const toggle = (id: number) => {
+    if (!q) return folds.toggle(id);
+    const ids = new Set(searchClosed);
+    if (!ids.delete(id)) ids.add(id);
+    setClosed({ q, ids });
+  };
+
   // lesson numbers run through the whole course
   const numbers = useMemo(() => {
     const m = new Map<number, number>();
@@ -130,23 +176,34 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
     <div>
       {shown.map((ch) => (
         <div className="chapter" key={ch.id}>
-          <div className="chapter-head">
+          <button type="button" className={cn('chapter-head', isOpen(ch.id) && 'open')} aria-expanded={isOpen(ch.id)} onClick={() => toggle(ch.id)}>
+            <ChevronRight className="chev" />
             <span className="c-no">第 {pad2(chapterNo.get(ch.id)!)} 章</span>
             <span className="c-title"><Highlight text={ch.title} q={q} /></span>
             <span className={cn('c-meta', ch.done === ch.lessons.length && 'complete')}>{ch.done} / {ch.lessons.length}</span>
-          </div>
-          <div className="lessons">
-            {ch.lessons.map((l) => (
-              <Link className="entry" key={l.id} href={lessonURL(c.id, l.id)}>
-                <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
-                {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
-                <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
-                {l.duration ? <span className="e-dur">{l.duration}</span> : null}
-                <span className="e-lead" />
-                <span className="e-state"><StateMark state={l.state} /></span>
-              </Link>
-            ))}
-          </div>
+          </button>
+          <Fold open={isOpen(ch.id)}>
+            <div className="lessons">
+              {ch.lessons.map((l) => l.unavailable ? (
+                <span className="entry unavailable" key={l.id} aria-disabled="true">
+                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
+                  {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
+                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  <span className="e-lead" />
+                  <span className="e-state gone-mark">已下架</span>
+                </span>
+              ) : (
+                <Link className="entry" key={l.id} href={lessonURL(c.id, l.id)}>
+                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
+                  {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
+                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  {l.duration ? <span className="e-dur">{l.duration}</span> : null}
+                  <span className="e-lead" />
+                  <span className="e-state"><StateMark state={l.state} /></span>
+                </Link>
+              ))}
+            </div>
+          </Fold>
         </div>
       ))}
     </div>

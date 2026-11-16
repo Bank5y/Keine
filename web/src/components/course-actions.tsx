@@ -93,11 +93,11 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
 
       <Confirm open={dialog === 'unpublish'} title="下架课程" confirm="下架" onClose={() => setDialog('')}
         onConfirm={() => act('POST', `/api/admin/courses/${c.id}/unpublish`, '已下架, 课程回到上传者的私有课程')}>
-        「{c.title}」会从课程库移除, 变回上传者的私有课程。其他人的学习记录会保留, 但他们将看不到这门课。
+        「{c.title}」会从课程库移除, 变回上传者的私有课程。订阅者仍可阅读各自保留的讲 (已学完或有标注的讲), 其余的讲看不到。
       </Confirm>
       <Confirm open={dialog === 'delete'} title="删除课程" confirm="删除" onClose={() => setDialog('')}
         onConfirm={async () => { try { await api('DELETE', `/api/courses/${c.id}`); toast.success('已删除'); navigate('/library'); } catch (ex) { fail(ex); } }}>
-        确定删除「{c.title}」吗? 课程内容、文件和所有人的学习记录都会被删除, 无法恢复。
+        确定删除「{c.title}」吗? 课程会从课程库和上传者那里消失, 无法恢复; 订阅者仍可阅读各自保留的讲 (已学完或有标注的讲)。
       </Confirm>
       <RejectDialog open={dialog === 'reject'} title="驳回公开申请" onClose={() => setDialog('')}
         onReject={(reason) => act('POST', `/api/admin/reviews/${review?.id}/reject`, '已驳回', { reason })} />

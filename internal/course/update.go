@@ -45,12 +45,37 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
-	err = s.tx(ctx, func(tx pgx.Tx) error { return switchContent(ctx, tx, sm.ID, pp.manifest, next) })
+	var prevDir string
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		// Lock the course, so a concurrent update or approval cannot switch
+		// its content between reading the old files and replacing them.
+		if err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 FOR UPDATE", sm.ID).Scan(&prevDir); err != nil {
+			return err
+		}
+		before, err := lessonFiles(ctx, tx, sm.ID)
+		if err != nil {
+			return err
+		}
+		diff, err := s.diffContent(ctx, sm.ID, before, prevDir, pp.manifest, next)
+		if err != nil {
+			return err
+		}
+		if err := switchContent(ctx, tx, sm.ID, pp.manifest, next); err != nil {
+			return err
+		}
+		if err := carryAnnotations(ctx, tx, sm.ID, diff); err != nil {
+			return err
+		}
+		if sm.Visibility != Public {
+			return nil // only the uploader reads a private course as it is
+		}
+		return notifyUpdated(ctx, tx, sm.ID, viewer.ID, diff.summary())
+	})
 	if err != nil {
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
-	s.dropFiles(ctx, sm.ID, sm.FilesDir)
+	s.dropUnused(ctx, sm.ID, prevDir) // a freeze may still hold it
 	return nil
 }
 

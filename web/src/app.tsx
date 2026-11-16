@@ -9,14 +9,21 @@ import { CourseView } from '@/views/course';
 import { LessonView } from '@/views/lesson';
 import { LibraryView } from '@/views/library';
 import { LoginView } from '@/views/login';
+import { MigrateView } from '@/views/migrate';
 import { MineView } from '@/views/mine';
+import { NotesView } from '@/views/notes';
+import { NotificationsView } from '@/views/notifications';
 
 function routeView(path: string, user: User): ReactNode {
+  const mg = match('/courses/:id/lessons/:lesson/migrate', path);
+  if (mg) return <MigrateView courseId={Number(mg.id)} lessonId={Number(mg.lesson)} />;
   const l = match('/courses/:id/lessons/:lesson', path);
   if (l) return <LessonView courseId={Number(l.id)} lessonId={Number(l.lesson)} />;
   const m = match('/courses/:id', path);
   if (m) return <CourseView id={Number(m.id)} />;
   if (path.startsWith('/mine')) return <MineView />;
+  if (path.startsWith('/notifications')) return <NotificationsView />;
+  if (path.startsWith('/notes')) return <NotesView />;
   if (path.startsWith('/account')) return <AccountView user={user} />;
   if (path.startsWith('/admin') && user.role === 'admin') return <AdminView path={path} user={user} />;
   return <LibraryView />;
@@ -31,6 +38,8 @@ export function App() {
     if (user && (path === '/login' || path === '/')) navigate('/library', { replace: true });
   }, [user, path]);
 
+  // switching lessons keeps the reader mounted, so only the text reloads
+  const viewKey = path.replace(/^(\/courses\/[^/]+\/lessons)\/[^/]+$/, '$1');
   let view: ReactNode = null;
   if (user === null) view = <LoginView />;
   else if (user) view = routeView(path, user);
@@ -38,7 +47,7 @@ export function App() {
   return (
     <>
       <Masthead user={user} path={path} />
-      <main className="main" id="view" tabIndex={-1}>{view && <div key={path} className="contents">{view}</div>}</main>
+      <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
       <Toaster position="top-center" toastOptions={{ style: { background: 'var(--text)', color: 'var(--bg)', border: 0, borderRadius: 'var(--radius)' } }} />
     </>
   );

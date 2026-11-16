@@ -15,10 +15,18 @@ export interface CourseSummary {
   isUploader: boolean;
   lessonCount: number;
   doneCount: number;
-  enrolled: boolean;
+  // subscribed: the library course is in the viewer's my courses
+  subscribed: boolean;
+  // retention: the course left the library; the viewer, a subscriber, reads
+  // only their retained lessons (retainedCount of them)
+  retention?: Retention;
+  retainedCount?: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export type Retention = 'unpublished' | 'deleted';
+export const RETENTION_LABEL: Record<Retention, string> = { unpublished: '已下架', deleted: '已删除' };
 
 export const TYPE_LABEL: Record<CourseType, string> = { column: '专栏', video: '视频课', paper: '论文' };
 export const COMPLETION_LABEL: Record<Completion, string> = { finished: '已完结', ongoing: '连载中', incomplete: '缺失' };
@@ -26,8 +34,8 @@ export const PUBLISH_LABEL: Record<PublishState, string> = { unpublished: '未�
 
 export const coverURL = (id: number) => `/api/courses/${id}/cover`;
 
-export type LessonState = 'unstarted' | 'studying' | 'done';
-export interface LessonItem { id: number; key: string; title: string; video: '' | 'file' | 'url'; duration: string; hasText: boolean; state: LessonState }
+export type LessonState = 'unstarted' | 'done';
+export interface LessonItem { id: number; key: string; title: string; video: '' | 'file' | 'url'; duration: string; hasText: boolean; state: LessonState; unavailable?: boolean }
 export interface ChapterItem { id: number; key: string; title: string; done: number; lessons: LessonItem[] }
 export interface CourseDetail extends CourseSummary {
   intro: string;
@@ -56,5 +64,5 @@ export const lessonURL = (courseId: number, lessonId: number) => `/courses/${cou
 export interface LessonVideo { mode: 'player' | 'embed' | 'link'; src: string }
 export interface LessonText { id: number; key: string; title: string; chapterId: number; markdown: string; base: string; state: LessonState; position: number; video: LessonVideo | null }
 
-export const STATE_LABEL: Record<LessonState, string> = { unstarted: '未学习', studying: '学习中', done: '已学完' };
+export const STATE_LABEL: Record<LessonState, string> = { unstarted: '未学习', done: '已学完' };
 export const percent = (done: number, total: number) => (total ? Math.round((done / total) * 100) : 0);

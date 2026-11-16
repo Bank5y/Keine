@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Bank5y/keine/internal/auth"
+	"github.com/Bank5y/keine/internal/notify"
 	"github.com/Bank5y/keine/internal/storage"
 )
 
@@ -81,8 +82,8 @@ func parsePackage(zr *zip.Reader) (parsedPackage, error) {
 	return parsedPackage{pkg: p, manifest: m, raw: data, files: files}, nil
 }
 
-// Import creates a private course from a course package and enrolls the
-// uploader. Either the whole course is created or nothing is: an invalid
+// Import creates a private course from a course package, subscribed by the
+// uploader so it stays in their courses once published. Either the whole course is created or nothing is: an invalid
 // package returns *InvalidPackage, and a failure while storing removes what
 // was already written.
 func (s *Service) Import(ctx context.Context, uploader auth.User, zr *zip.Reader) (int64, error) {
@@ -102,7 +103,7 @@ func (s *Service) Import(ctx context.Context, uploader auth.User, zr *zip.Reader
 		if err := writeStructure(ctx, tx, id, m); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, "INSERT INTO enrollments (user_id, course_id) VALUES ($1, $2)", uploader.ID, id); err != nil {
+		if _, err := tx.Exec(ctx, "INSERT INTO course_readers (user_id, course_id, subscribed_at) VALUES ($1, $2, now())", uploader.ID, id); err != nil {
 			return err
 		}
 		if err := s.storeFiles(ctx, pp, filesPrefix(id, "v1")); err != nil {
@@ -182,14 +183,23 @@ type Summary struct {
 	UploaderID   int64  `json:"uploaderId"`
 	IsUploader   bool   `json:"isUploader"`
 	LessonCount  int    `json:"lessonCount"`
-	// Enrolled tells whether the viewer has started learning the course.
-	Enrolled bool `json:"enrolled"`
+	// Subscribed tells whether the viewer subscribes to the course.
+	Subscribed bool `json:"subscribed"`
 	// DoneCount is how many lessons the viewer has finished.
 	DoneCount int       `json:"doneCount"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
-	// FilesDir is the folder of the course's files in use.
+	// Retention is set when the course left the library and the viewer, a
+	// subscriber, reads only their retained lessons of it: "unpublished" or
+	// "deleted".
+	Retention RetentionReason `json:"retention,omitempty"`
+	// RetainedCount is how many lessons the viewer retains, with Retention.
+	RetainedCount int `json:"retainedCount,omitempty"`
+	// FilesDir is the folder of the course's files the viewer reads.
 	FilesDir string `json:"-"`
+	// Deleted marks a course deleted while subscribers retain lessons of it:
+	// only they reach it, through its freeze.
+	Deleted bool `json:"-"`
 }
 
 // Detail is a course with its chapters and lessons.
@@ -231,6 +241,9 @@ type LessonDetail struct {
 	Duration string `json:"duration"`
 	HasText  bool   `json:"hasText"`
 	State    string `json:"state"`
+	// Unavailable marks a lesson the viewer did not retain of a course that
+	// left the library: it shows in the contents but cannot be opened.
+	Unavailable bool `json:"unavailable,omitempty"`
 }
 
 // summaryColumns selects a Summary from courses c for the viewer bound to
@@ -242,13 +255,14 @@ func summaryColumns(viewerParam string) string {
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
 	c.created_at, c.updated_at, c.files_dir,
-	EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = ` + viewerParam + ` AND e.removed_at IS NULL)`
+	EXISTS (SELECT 1 FROM course_readers r WHERE r.course_id = c.id AND r.user_id = ` + viewerParam + ` AND r.subscribed_at IS NOT NULL),
+	c.deleted_at IS NOT NULL`
 }
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
 	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesDir, &s.Enrolled}
+		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesDir, &s.Subscribed, &s.Deleted}
 }
 
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
@@ -278,8 +292,18 @@ func (s *Service) loadToChange(ctx context.Context, viewer auth.User, id int64) 
 	return s.loadVisible(ctx, viewer, id, "")
 }
 
-// load loads one course whoever may see it; admins moderate through it.
+// load loads one course whoever may see it; admins moderate through it. A
+// deleted course is ErrNotFound.
 func (s *Service) load(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
+	sm, err := s.loadAny(ctx, viewer, id, extraColumns, extra...)
+	if err == nil && sm.Deleted {
+		return Summary{}, ErrNotFound
+	}
+	return sm, err
+}
+
+// loadAny loads one course, deleted or not.
+func (s *Service) loadAny(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
 	var sm Summary
 	row := s.db.QueryRow(ctx, "SELECT "+summaryColumns("$2")+extraColumns+" FROM courses c WHERE c.id = $1", id, viewer.ID)
 	err := row.Scan(append(summaryFields(&sm), extra...)...)
@@ -295,23 +319,26 @@ func (s *Service) load(ctx context.Context, viewer auth.User, id int64, extraCol
 
 // canView is the single rule for who may see a course: anyone signed in sees
 // public courses; a private course is seen by its uploader, and by admins
-// while it is under review.
+// while it is under review. Nobody sees a deleted course as it is.
 func canView(viewer auth.User, s Summary) bool {
-	return s.Visibility == Public || s.UploaderID == viewer.ID || (viewer.IsAdmin() && s.PublishState == Pending)
+	return !s.Deleted && (s.Visibility == Public || s.UploaderID == viewer.ID || (viewer.IsAdmin() && s.PublishState == Pending))
 }
 
 // Get returns a course with its chapters and lessons.
 func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, error) {
 	var d Detail
-	sm, err := s.loadVisible(ctx, viewer, id, ", c.intro, c.author_intro", &d.Intro, &d.AuthorIntro)
+	sm, ret, err := s.open(ctx, viewer, id, ", c.intro, c.author_intro", &d.Intro, &d.AuthorIntro)
 	if err != nil {
 		return Detail{}, err
 	}
 	d.Summary = sm
+	d.Progress = Progress{Done: sm.DoneCount, Total: sm.LessonCount}
+	if ret != nil {
+		return s.getRetained(ctx, viewer, d, ret)
+	}
 	if d.Chapters, err = s.structure(ctx, viewer, id); err != nil {
 		return Detail{}, err
 	}
-	d.Progress = Progress{Done: sm.DoneCount, Total: sm.LessonCount}
 	rows, err := s.db.Query(ctx, `
 		SELECT u.username FROM course_contributors cc JOIN users u ON u.id = cc.user_id
 		WHERE cc.course_id = $1 ORDER BY cc.created_at`, id)
@@ -329,12 +356,29 @@ func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, 
 		}
 	}
 	err = s.db.QueryRow(ctx, `
-		SELECT l.id FROM enrollments e JOIN lessons l ON l.course_id = e.course_id AND l.key = e.last_lesson_key
-		WHERE e.user_id = $1 AND e.course_id = $2`, viewer.ID, id).Scan(&d.Progress.LastLessonID)
+		SELECT l.id FROM course_readers r JOIN lessons l ON l.course_id = r.course_id AND l.key = r.last_lesson_key
+		WHERE r.user_id = $1 AND r.course_id = $2`, viewer.ID, id).Scan(&d.Progress.LastLessonID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = nil
 	}
 	return d, err
+}
+
+// getRetained fills in a course the viewer reads from its freeze.
+func (s *Service) getRetained(ctx context.Context, viewer auth.User, d Detail, ret *retention) (Detail, error) {
+	d.Intro, d.AuthorIntro = ret.snap.Intro, ret.snap.AuthorIntro
+	d.Chapters = ret.structure()
+	d.Contributors = []string{}
+	var key string
+	err := s.db.QueryRow(ctx, "SELECT coalesce(last_lesson_key, '') FROM course_readers WHERE user_id = $1 AND course_id = $2",
+		viewer.ID, d.ID).Scan(&key)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Detail{}, err
+	}
+	if l, _, ok := ret.find(func(l snapLesson) bool { return l.Key == key }); ok {
+		d.Progress.LastLessonID = &l.ID
+	}
+	return d, nil
 }
 
 func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int64) ([]ChapterDetail, error) {
@@ -371,34 +415,56 @@ func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int6
 
 // MineFilter narrows my courses; empty fields match everything.
 type MineFilter struct {
-	// State is "studying" (not every lesson done yet) or "done".
+	// State is "unfinished" (not every lesson done yet) or "done".
 	State      string
 	Type       string
 	Completion string
 }
 
-// Mine lists the courses a user is learning that they can still see, most
-// recently studied first.
+// Mine lists my courses: the library courses the user subscribes to, the
+// courses that left the library of which they retain lessons, and every
+// private course they uploaded, most recently studied first.
 func (s *Service) Mine(ctx context.Context, viewer auth.User, f MineFilter) ([]Summary, error) {
 	rows, err := s.db.Query(ctx, "SELECT "+summaryColumns("$1")+` FROM courses c
-		JOIN enrollments e ON e.course_id = c.id AND e.user_id = $1 AND e.removed_at IS NULL
-		WHERE (c.visibility = 'public' OR c.uploader_id = $1)
-		  AND ($2 = '' OR c.type = $2)
-		  AND ($3 = '' OR c.completion = $3)
-		ORDER BY e.last_studied_at DESC, c.id DESC`, viewer.ID, f.Type, f.Completion)
+		LEFT JOIN course_readers r ON r.course_id = c.id AND r.user_id = $1
+		WHERE (c.visibility = 'public' AND r.subscribed_at IS NOT NULL)
+		   OR (c.visibility <> 'public' AND c.uploader_id = $1 AND c.deleted_at IS NULL)
+		   OR (c.visibility <> 'public' AND r.subscribed_at IS NOT NULL
+		       AND EXISTS (SELECT 1 FROM retained_lessons rl WHERE rl.course_id = c.id AND rl.user_id = $1))
+		ORDER BY coalesce(r.last_studied_at, c.created_at) DESC, c.id DESC`, viewer.ID)
 	if err != nil {
 		return nil, err
 	}
 	all, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Summary, error) { return scanSummary(r, viewer) })
-	if err != nil || f.State == "" {
-		return all, err
+	if err != nil {
+		return nil, err
+	}
+	readsFrozen := func(c Summary) bool { return c.Visibility != Public && (!c.IsUploader || c.Deleted) }
+	var frozen []int64
+	for _, c := range all {
+		if readsFrozen(c) {
+			frozen = append(frozen, c.ID)
+		}
+	}
+	rets, err := s.retentions(ctx, viewer, frozen)
+	if err != nil {
+		return nil, err
 	}
 	out := []Summary{}
 	for _, c := range all {
-		finished := c.LessonCount > 0 && c.DoneCount == c.LessonCount
-		if (f.State == "done") == finished {
-			out = append(out, c)
+		if readsFrozen(c) {
+			ret := rets[c.ID]
+			if ret == nil {
+				continue
+			}
+			ret.apply(&c) // filters below see the frozen course
 		}
+		finished := c.LessonCount > 0 && c.DoneCount == c.LessonCount
+		if (f.Type != "" && c.Type != f.Type) || (f.Completion != "" && c.Completion != f.Completion) ||
+			(f.State != "" && (f.State == "done") != finished) {
+			continue
+		}
+		out = append(out, c)
 	}
 	return out, nil
 }
@@ -409,9 +475,14 @@ var ErrNoCover = errors.New("course has no cover")
 // summary loads one course's card data with its cover path ("" if none).
 func (s *Service) summary(ctx context.Context, viewer auth.User, id int64) (Summary, string, error) {
 	var cover *string
-	sm, err := s.loadVisible(ctx, viewer, id, ", c.cover", &cover)
-	if err != nil || cover == nil {
+	sm, ret, err := s.open(ctx, viewer, id, ", c.cover", &cover)
+	switch {
+	case err != nil:
 		return sm, "", err
+	case ret != nil:
+		return sm, ret.snap.Cover, nil
+	case cover == nil:
+		return sm, "", nil
 	}
 	return sm, *cover, nil
 }
@@ -432,8 +503,11 @@ func (s *Service) Cover(ctx context.Context, viewer auth.User, id int64) (rc io.
 	return rc, cover, err
 }
 
-// Delete removes a course and its files. The uploader may delete a private
-// course; admins may delete any course.
+// Delete removes a course. The uploader may delete a private course; admins
+// may delete any course. While subscribers retain lessons of it (ADR-0004)
+// the course is only marked deleted: its files and structure are frozen for
+// them, and it is removed once the last of them lets go. Otherwise it goes
+// at once, with its files.
 func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error {
 	sm, err := s.loadToChange(ctx, viewer, id)
 	if err != nil {
@@ -442,13 +516,65 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 	if !viewer.IsAdmin() && !(sm.IsUploader && sm.Visibility == Private) {
 		return ErrForbidden
 	}
-	if _, err := s.db.Exec(ctx, "DELETE FROM courses WHERE id = $1", id); err != nil {
+	const reason = "课程已删除"
+	var kept bool
+	var gone leaving
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if kept, err = freeze(ctx, tx, id, RetentionDeleted); err != nil {
+			return err
+		}
+		if gone, err = settleLeaving(ctx, tx, id, "", reason, viewer.ID); err != nil {
+			return err
+		}
+		subs, err := subscribers(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		withRetained := func(p notify.CoursePayload, user int64) (any, error) {
+			d := notify.DeletedPayload{CoursePayload: p}
+			err := tx.QueryRow(ctx, "SELECT count(*) FROM retained_lessons WHERE course_id = $1 AND user_id = $2", id, user).Scan(&d.RetainedCount)
+			return d, err
+		}
+		if err := notifyLeaving(ctx, tx, gone, notify.CourseDeleted, subs, withRetained); err != nil {
+			return err
+		}
+		if !kept {
+			return purge(ctx, tx, id)
+		}
+		// Only the freeze is read from now on, so the course keeps just its files.
+		_, err = tx.Exec(ctx, `
+			UPDATE courses SET visibility = 'private', publish_state = 'unpublished', deleted_at = now(), updated_at = now(),
+				files_dir = (SELECT files_dir FROM course_freezes WHERE course_id = $1)
+			WHERE id = $1`, id)
+		return err
+	})
+	if err != nil {
 		return err
 	}
-	// The course is gone either way; files left behind by a failure here are
-	// unreachable and only cost space.
-	if err := s.files.DeletePrefix(ctx, coursePrefix(id)); err != nil {
-		slog.Warn("course files not removed", "course", id, "err", err)
+	if !kept {
+		s.dropCourseFiles(ctx, id)
+		return nil
+	}
+	s.dropUnused(ctx, id, sm.FilesDir) // newer than the freeze, if updated since unpublishing
+	for _, r := range gone.settled {
+		if r.filesDir != "" {
+			s.dropFiles(ctx, id, r.filesDir)
+		}
 	}
 	return nil
+}
+
+// purge removes a course for good; its files go with dropCourseFiles once
+// the transaction commits.
+func purge(ctx context.Context, tx pgx.Tx, id int64) error {
+	_, err := tx.Exec(ctx, "DELETE FROM courses WHERE id = $1", id)
+	return err
+}
+
+// dropCourseFiles removes every file of a course that is gone. Files left
+// behind by a failure here are unreachable and only cost space.
+func (s *Service) dropCourseFiles(ctx context.Context, id int64) {
+	if err := s.files.DeletePrefix(context.WithoutCancel(ctx), coursePrefix(id)); err != nil {
+		slog.Warn("course files not removed", "course", id, "err", err)
+	}
 }

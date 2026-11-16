@@ -32,26 +32,10 @@ func (s *Service) Library(ctx context.Context, viewer auth.User, f LibraryFilter
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Summary, error) { return scanSummary(r, viewer) })
 }
 
-// Enroll starts the viewer learning a course they can see; a course removed
-// from my courses comes back with its learning records.
-func (s *Service) Enroll(ctx context.Context, viewer auth.User, id int64) error {
-	if _, err := s.loadVisible(ctx, viewer, id, ""); err != nil {
-		return err
-	}
-	return enroll(ctx, s, viewer, id)
-}
-
-func enroll(ctx context.Context, s *Service, viewer auth.User, courseID int64) error {
-	_, err := s.db.Exec(ctx, `
-		INSERT INTO enrollments (user_id, course_id) VALUES ($1, $2)
-		ON CONFLICT (user_id, course_id) DO UPDATE SET removed_at = NULL`, viewer.ID, courseID)
-	return err
-}
-
-// Unenroll removes a library course from the viewer's courses. Learning
-// records stay, so starting again picks up where the viewer left off. A
-// private course cannot be removed, only deleted.
-func (s *Service) Unenroll(ctx context.Context, viewer auth.User, id int64) error {
+// Subscribe puts a library course in the viewer's courses; a course
+// unsubscribed before comes back with its learning records. Private courses
+// are always in their uploader's courses and cannot be subscribed to.
+func (s *Service) Subscribe(ctx context.Context, viewer auth.User, id int64) error {
 	sm, err := s.loadVisible(ctx, viewer, id, "")
 	if err != nil {
 		return err
@@ -59,6 +43,44 @@ func (s *Service) Unenroll(ctx context.Context, viewer auth.User, id int64) erro
 	if sm.Visibility != Public {
 		return ErrInvalidState
 	}
-	_, err = s.db.Exec(ctx, "UPDATE enrollments SET removed_at = now() WHERE user_id = $1 AND course_id = $2", viewer.ID, id)
+	_, err = s.db.Exec(ctx, `
+		INSERT INTO course_readers (user_id, course_id, subscribed_at) VALUES ($1, $2, now())
+		ON CONFLICT (user_id, course_id) DO UPDATE SET subscribed_at = coalesce(course_readers.subscribed_at, now())`, viewer.ID, id)
+	return err
+}
+
+// Unsubscribe takes a library course out of the viewer's courses. Learning
+// records stay, so subscribing again picks up where the viewer left off. A
+// private course cannot be unsubscribed, only deleted. Unsubscribing from a
+// course that left the library gives up the retained lessons: the viewer
+// can no longer see it, nor subscribe again.
+func (s *Service) Unsubscribe(ctx context.Context, viewer auth.User, id int64) error {
+	sm, ret, err := s.open(ctx, viewer, id, "")
+	if err != nil {
+		return err
+	}
+	if sm.Visibility != Public && ret == nil {
+		return ErrInvalidState
+	}
+	var frozen string
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "UPDATE course_readers SET subscribed_at = NULL WHERE user_id = $1 AND course_id = $2", viewer.ID, id); err != nil {
+			return err
+		}
+		if ret == nil {
+			return nil
+		}
+		if frozen, err = releaseRetainer(ctx, tx, id, viewer.ID); err != nil || frozen == "" || !sm.Deleted {
+			return err
+		}
+		return purge(ctx, tx, id) // the last retainer of a deleted course left
+	})
+	switch {
+	case err != nil:
+	case sm.Deleted && frozen != "":
+		s.dropCourseFiles(ctx, id)
+	default:
+		s.dropUnused(ctx, id, frozen)
+	}
 	return err
 }

@@ -356,8 +356,8 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"courses": list})
 }
 
-func (s *Server) enroll(r *http.Request, id int64) error {
-	return s.courses.Enroll(r.Context(), currentUser(r), id)
+func (s *Server) subscribe(r *http.Request, id int64) error {
+	return s.courses.Subscribe(r.Context(), currentUser(r), id)
 }
 
 func (s *Server) submitUpdate(w http.ResponseWriter, r *http.Request) {
@@ -407,6 +407,6 @@ func (s *Server) withdrawUpdate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) unenroll(r *http.Request, id int64) error {
-	return s.courses.Unenroll(r.Context(), currentUser(r), id)
+func (s *Server) unsubscribe(r *http.Request, id int64) error {
+	return s.courses.Unsubscribe(r.Context(), currentUser(r), id)
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Bank5y/keine/internal/auth"
+	"github.com/Bank5y/keine/internal/notify"
 )
 
 // ErrUpdateNotAllowed means only the uploader may update a finished course.
@@ -40,9 +41,14 @@ func (s *Service) SubmitUpdate(ctx context.Context, viewer auth.User, id int64, 
 		return 0, err
 	}
 	var reqID int64
-	err = s.db.QueryRow(ctx, `
-		INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
-		VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, id, viewer.ID, dir, sm.FilesDir, pp.raw).Scan(&reqID)
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
+			VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, id, viewer.ID, dir, sm.FilesDir, pp.raw).Scan(&reqID); err != nil {
+			return err
+		}
+		return tellAdmins(ctx, tx, notify.UpdateRequested, id, reqID, viewer)
+	})
 	if err != nil {
 		s.dropFiles(ctx, id, dir)
 	}
@@ -85,7 +91,10 @@ func (s *Service) WithdrawUpdate(ctx context.Context, viewer auth.User, courseID
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrReviewNotFound
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return closeRequestNotices(ctx, tx, courseID)
 	})
 	if err == nil && dir != "" {
 		s.dropFiles(ctx, courseID, dir)

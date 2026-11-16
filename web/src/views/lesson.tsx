@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, ListTree, PanelLeft } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronLeft, ChevronRight, ListTree, PanelLeft } from 'lucide-react';
+import { Annotator } from '@/components/annotator';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { Drawer } from '@/components/drawer';
+import { FOLD_MS, Fold, useChapterFolds } from '@/components/fold';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
 import { LessonVideoView } from '@/components/video';
 import { ImageZoom } from '@/components/zoom';
 import { api } from '@/lib/api';
+import { migrateURL } from '@/lib/annotations';
 import { lessonURL, pad2, type CourseDetail, type LessonItem, type LessonState, type LessonText } from '@/lib/courses';
 import { useReadingProgress } from '@/lib/use-reading-progress';
 import { Link, navigate } from '@/lib/router';
 import { useHeadings, type Heading } from '@/lib/use-headings';
+import { useScrollFade } from '@/lib/use-scroll-fade';
 import { cn } from '@/lib/utils';
+import { SubscribeButton } from '@/components/peek';
 import { useCourse } from '@/views/course';
 
 // a text that opens with its own "# title" shows that instead of ours; a
@@ -21,35 +26,71 @@ import { useCourse } from '@/views/course';
 const opensWithTitle = (md: string) => /^\s*#\s/.test(md);
 const withoutTitle = (md: string) => md.replace(/^\s*#\s[^\n]*\n?/, '');
 
-// neighbours finds the lessons before and after one, across chapters.
+// neighbours finds the readable lessons before and after one, across chapters.
 function neighbours(c: CourseDetail | null, lessonId: number) {
-  const flat: LessonItem[] = c ? c.chapters.flatMap((ch) => ch.lessons) : [];
+  const flat: LessonItem[] = c ? c.chapters.flatMap((ch) => ch.lessons).filter((l) => !l.unavailable) : [];
   const i = flat.findIndex((l) => l.id === lessonId);
   return { prev: i > 0 ? flat[i - 1] : null, next: i >= 0 && i < flat.length - 1 ? flat[i + 1] : null };
 }
+
+// how long a switch may keep the previous lesson on screen before the
+// skeleton takes its place
+const STALE_MS = 300;
 
 const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 export function LessonView({ courseId, lessonId }: { courseId: number; lessonId: number }) {
   const { course, reload } = useCourse(courseId);
+  // switching lessons keeps this view (and the course sidebar) mounted: the
+  // previous lesson stays on screen, faded, until the next one arrives
   const [lesson, setLesson] = useState<LessonText | null>(null);
+  const [slow, setSlow] = useState(false);
   const [err, setErr] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<'' | 'toc' | 'headings'>('');
   const doc = useRef<HTMLElement>(null);
-  const { headings, active } = useHeadings(doc, lesson?.id);
+  // the rendered Markdown of the shown lesson, once the renderer has loaded
+  const [prose, setProse] = useState<HTMLElement | null>(null);
+  const right = useRef<HTMLElement>(null);
+  // the rail the notes sit in on wide screens, beside the text of a column
+  const [rail, setRail] = useState<HTMLElement | null>(null);
+  const noted = course?.type === 'column';
+  // how many of the reader's annotations on the current lesson await migration
+  const [pending, setPending] = useState<{ lesson: number; n: number } | null>(null);
+  const current = lesson?.id === lessonId ? lesson : null;
+  // a video gives way at once: kept on screen it would play on unseen, and
+  // its last position would no longer reach the lesson it belongs to
+  const shown = current ?? (slow || lesson?.video ? null : lesson);
+  const { headings: found, active, jump } = useHeadings(doc, shown?.id);
+  const headings = current ? found : [];
+
+  // opened at "#heading": go there once that heading has rendered
+  const hashDone = useRef<number | null>(null);
+  useEffect(() => {
+    if (!current || hashDone.current === current.id || !location.hash) return;
+    let id = location.hash.slice(1);
+    try { id = decodeURIComponent(id); } catch { /* keep it as written */ }
+    if (!headings.some((h) => h.id === id)) return;
+    hashDone.current = current.id;
+    jump(id, 'instant');
+  }, [current, headings, jump]);
   const { prev, next } = useMemo(() => neighbours(course, lessonId), [course, lessonId]);
-  const { state, setDone, autoDone, savePosition } = useReadingProgress(courseId, lesson, doc, reload);
+  const { state, setDone, autoDone, savePosition } = useReadingProgress(courseId, current, doc, reload);
+  useScrollFade(right);
 
   useEffect(() => {
-    setLesson(null);
+    let alive = true;
     setErr('');
     setDrawer('');
+    setZoom(null);
+    setSlow(false);
+    const t = setTimeout(() => setSlow(true), STALE_MS);
     api<LessonText>('GET', `/api/courses/${courseId}/lessons/${lessonId}`).then((l) => {
+      if (!alive) return;
       setLesson(l);
       document.title = `${l.title} · Keine`;
-    }).catch((e) => setErr(e.message));
-    return () => { document.title = 'Keine'; };
+    }).catch((e) => { if (alive) setErr(e.message); }).finally(() => clearTimeout(t));
+    return () => { alive = false; clearTimeout(t); document.title = 'Keine'; };
   }, [courseId, lessonId]);
 
   useEffect(() => {
@@ -67,14 +108,20 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
     if (t.tagName === 'IMG' && t.closest('.prose')) setZoom((t as HTMLImageElement).src);
   };
 
-  const toc = course ? <CourseToc c={course} current={lessonId} /> : <Skeleton className="h-40" />;
-  const onThisPage = <HeadingToc headings={headings} active={active} onPick={() => setDrawer('')} />;
+  const toc = course ? (
+    <>
+      <SubscribeButton c={course} onSubscribed={() => void reload()} className="drawer-subscribe" />
+      <CourseToc c={course} current={lessonId} />
+    </>
+  ) : <Skeleton className="h-40" />;
+  const onThisPage = <HeadingToc headings={headings} active={active} onPick={(id) => { setDrawer(''); jump(id, 'smooth'); }} />;
 
   return (
-    <div className="page enter docs" onClick={onClick}>
+    <div className={cn('page enter docs', noted && 'with-notes')} onClick={onClick}>
       <aside className="docs-side docs-left" aria-label="课程目录">
-        <Link className="back" href={`/courses/${courseId}`}><ArrowLeft />返回课程</Link>
-        {toc}
+        <Link className="back" href={`/courses/${courseId}?tab=toc`}><ArrowLeft />返回课程</Link>
+        {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
+        {course ? <CourseToc c={course} current={lessonId} docked /> : <Skeleton className="h-40" />}
       </aside>
 
       <div className="docs-main">
@@ -83,18 +130,27 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
           {headings.length ? <Button variant="ghost" size="sm" className="docs-bar-headings" onClick={() => setDrawer('headings')}><ListTree />本讲</Button> : null}
         </div>
         {err ? <Empty glyph="阙" title={err} /> : null}
-        {!err && !lesson ? <ReaderSkeleton /> : null}
-        {lesson ? (
-          <article className="reader-doc" ref={doc}>
+        {!err && !shown ? <ReaderSkeleton /> : null}
+        {current && pending?.lesson === current.id && pending.n > 0 ? (
+          <div className="migrate-banner" role="status">
+            <span>本讲内容已更新，你有 {pending.n} 条标注待迁移</span>
+            <Link href={migrateURL(courseId, current.id)}>去迁移<ChevronRight /></Link>
+          </div>
+        ) : null}
+        {!err && shown ? (
+          <article key={shown.id} className={cn('reader-doc', current ? 'fresh' : 'stale')} ref={doc} aria-busy={!current}>
             {course ? <div className="kicker">{course.title}</div> : null}
-            {lesson.video || !opensWithTitle(lesson.markdown) ? <h1>{lesson.title}</h1> : null}
-            {lesson.video ? <LessonVideoView video={lesson.video} position={lesson.position} onPosition={savePosition} onNearlyDone={autoDone} /> : null}
-            {lesson.markdown ? <LazyMarkdown text={lesson.video ? withoutTitle(lesson.markdown) : lesson.markdown} base={lesson.base} className="reader-prose" />
-              : (lesson.video ? null : <p className="text-ink-3">这一讲没有文字内容。</p>)}
+            {shown.video || !opensWithTitle(shown.markdown) ? <h1>{shown.title}</h1> : null}
+            {shown.video ? <LessonVideoView video={shown.video} position={shown.position} onPosition={savePosition} onNearlyDone={autoDone} /> : null}
+            {shown.markdown ? <LazyMarkdown text={shown.video ? withoutTitle(shown.markdown) : shown.markdown} base={shown.base} className="reader-prose" rootRef={setProse} />
+              : (shown.video ? null : <p className="text-ink-3">这一讲没有文字内容。</p>)}
           </article>
         ) : null}
-        {lesson ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
-        {lesson ? (
+        {current && course?.type === 'column' && !current.video && current.markdown
+          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} rail={rail}
+            onPending={(n) => setPending({ lesson: current.id, n })} /> : null}
+        {current ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
+        {!err && shown ? (
           <nav className="reader-nav" aria-label="翻页">
             <NavCard courseId={courseId} item={prev} dir="prev" />
             <NavCard courseId={courseId} item={next} dir="next" />
@@ -102,7 +158,8 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
         ) : null}
       </div>
 
-      <aside className="docs-side docs-right" aria-label="本讲目录">{headings.length ? onThisPage : null}</aside>
+      {noted ? <aside className="docs-notes" ref={setRail} aria-label="笔记" /> : null}
+      <aside className="docs-side docs-right side-fade" ref={right} aria-label="本讲目录">{headings.length ? onThisPage : null}</aside>
 
       <Drawer open={drawer === 'toc'} onOpenChange={(v) => setDrawer(v ? 'toc' : '')} side="left" title="课程目录">{toc}</Drawer>
       <Drawer open={drawer === 'headings'} onOpenChange={(v) => setDrawer(v ? 'headings' : '')} side="right" title="本讲目录">{onThisPage}</Drawer>
@@ -121,40 +178,126 @@ function DoneBar({ state, onToggle }: { state: LessonState; onToggle: () => void
   );
 }
 
-function CourseToc({ c, current }: { c: CourseDetail; current: number }) {
+// CourseToc lists the course by chapter; the chapter of the current lesson
+// opens by itself. Docked in the sidebar it scrolls on its own, fades at the
+// edges and offers a button back to the current lesson once it is out of view.
+function CourseToc({ c, current, docked }: { c: CourseDetail; current: number; docked?: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { ref.current?.querySelector('.current')?.scrollIntoView({ block: 'nearest' }); }, [current]);
+  const chapterOf = useMemo(() => new Map(c.chapters.flatMap((ch) => ch.lessons.map((l) => [l.id, ch.id] as const))), [c]);
+  const folds = useChapterFolds(() => { const ch = chapterOf.get(current); return ch == null ? [] : [ch]; });
+  const [locate, setLocate] = useState<'up' | 'down' | null>(null);
+  const currentCh = chapterOf.get(current);
+  const currentOpen = currentCh != null && folds.isOpen(currentCh);
+
+  // centre brings the current lesson to the middle of the box, after its
+  // chapter has finished opening
+  const centre = (behavior: ScrollBehavior, wait: number) => setTimeout(() => {
+    const b = box.current;
+    const row = b?.querySelector<HTMLElement>('.side-l.current');
+    if (!b || !row) return;
+    const r = row.getBoundingClientRect();
+    const br = b.getBoundingClientRect();
+    b.scrollTo({ top: b.scrollTop + r.top - br.top - (b.clientHeight - r.height) / 2, behavior });
+  }, wait);
+
+  // a new current lesson: open its chapter and, if it is out of view, bring
+  // it in; the drawer just shows it
+  const first = useRef(true);
+  useEffect(() => {
+    const wasOpen = currentOpen;
+    if (currentCh != null) folds.expand(currentCh);
+    if (!docked) {
+      ref.current?.querySelector('.current')?.scrollIntoView({ block: 'nearest' });
+      return undefined;
+    }
+    if (first.current) { first.current = false; const t = centre('instant', 0); return () => clearTimeout(t); }
+    const b = box.current;
+    const row = b?.querySelector('.side-l.current');
+    if (!b || !row) return undefined;
+    const r = row.getBoundingClientRect();
+    const br = b.getBoundingClientRect();
+    if (wasOpen && r.top >= br.top && r.bottom <= br.bottom) return undefined;
+    const t = centre('smooth', wasOpen ? 0 : FOLD_MS);
+    return () => clearTimeout(t);
+  }, [current]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the button shows while the current lesson is hidden in a closed chapter
+  // or scrolled out of view, pointing the way to it
+  const check = () => {
+    const b = box.current;
+    if (!b || currentCh == null) return;
+    const target = b.querySelector<HTMLElement>(currentOpen ? '.side-l.current' : `[data-chapter="${currentCh}"]`);
+    if (!target) return;
+    const r = target.getBoundingClientRect();
+    const br = b.getBoundingClientRect();
+    const dir = r.top < br.top ? 'up' : (r.bottom > br.bottom ? 'down' : null);
+    setLocate(currentOpen ? dir : (dir ?? 'down'));
+  };
+  useScrollFade(docked ? box : noBox, check);
+  useEffect(check); // the open chapters may have changed
+
   let n = 0;
-  return (
+  const list = (
     <div className="side-toc" ref={ref}>
       <div className="side-title">{c.title}</div>
       <div className="side-progress"><ProgressBar done={c.progress.done} total={c.progress.total} /><span>{c.progress.done} / {c.progress.total}</span></div>
-      {c.chapters.map((ch, i) => (
-        <div className="side-ch" key={ch.id}>
-          <div className="side-ch-head"><span className="no">{pad2(i + 1)}</span>{ch.title}</div>
-          {ch.lessons.map((l) => {
-            n++;
-            return (
-              <Link key={l.id} href={lessonURL(c.id, l.id)} className={cn('side-l', l.id === current && 'current')} aria-current={l.id === current ? 'page' : undefined}>
-                <span className="no">{pad2(n)}</span>
-                <span className="t">{l.title}</span>
-                <StateMark state={l.state} compact />
-              </Link>
-            );
-          })}
-        </div>
-      ))}
+      {c.chapters.map((ch, i) => {
+        const open = folds.isOpen(ch.id);
+        return (
+          <div className="side-ch" key={ch.id}>
+            <button type="button" className={cn('side-ch-head', open && 'open')} data-chapter={ch.id} aria-expanded={open} onClick={() => folds.toggle(ch.id)}>
+              <ChevronRight className="chev" /><span className="no">{pad2(i + 1)}</span><span className="t">{ch.title}</span>
+              <span className={cn('meta', ch.done === ch.lessons.length && 'complete')}>{ch.done}/{ch.lessons.length}</span>
+            </button>
+            <Fold open={open}>
+              {ch.lessons.map((l) => {
+                n++;
+                if (l.unavailable) {
+                  return (
+                    <span key={l.id} className="side-l unavailable" aria-disabled="true">
+                      <span className="no">{pad2(n)}</span>
+                      <span className="t">{l.title}</span>
+                      <span className="gone-mark">已下架</span>
+                    </span>
+                  );
+                }
+                return (
+                  <Link key={l.id} href={lessonURL(c.id, l.id)} className={cn('side-l', l.id === current && 'current')} aria-current={l.id === current ? 'page' : undefined}>
+                    <span className="no">{pad2(n)}</span>
+                    <span className="t">{l.title}</span>
+                    <StateMark state={l.state} compact />
+                  </Link>
+                );
+              })}
+            </Fold>
+          </div>
+        );
+      })}
     </div>
+  );
+  if (!docked) return list;
+  return (
+    <>
+      <div className="side-scroll side-fade" ref={box}>{list}</div>
+      {locate ? (
+        <button type="button" className="side-locate" onClick={() => { if (currentCh != null) folds.expand(currentCh); centre('smooth', currentOpen ? 0 : FOLD_MS); }}>
+          {locate === 'up' ? <ArrowUp /> : <ArrowDown />}当前讲
+        </button>
+      ) : null}
+    </>
   );
 }
 
-function HeadingToc({ headings, active, onPick }: { headings: Heading[]; active: string; onPick: () => void }) {
+const noBox = { current: null };
+
+function HeadingToc({ headings, active, onPick }: { headings: Heading[]; active: string; onPick: (id: string) => void }) {
   return (
     <div className="on-page">
       <div className="on-page-title">本讲目录</div>
       {headings.map((h) => (
         <a key={h.id} href={'#' + h.id} className={cn('op-item', h.level === 3 && 'sub', h.id === active && 'active')}
-          onClick={(e) => { e.preventDefault(); document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#' + h.id); onPick(); }}>
+          onClick={(e) => { e.preventDefault(); history.replaceState(null, '', '#' + h.id); onPick(h.id); }}>
           {h.text}
         </a>
       ))}

@@ -12,32 +12,39 @@ import (
 // Lesson states, as the viewer sees a lesson.
 const (
 	StateUnstarted = "unstarted"
-	StateStudying  = "studying"
 	StateDone      = "done"
 )
 
 // lessonState is the SQL for a lesson's state from its lesson_progress row p.
-const lessonState = `CASE WHEN p.done THEN 'done' WHEN p.lesson_key IS NOT NULL THEN 'studying' ELSE 'unstarted' END`
+const lessonState = `CASE WHEN p.done THEN 'done' ELSE 'unstarted' END`
 
 // ErrBadProgress rejects a progress update that makes no sense.
 var ErrBadProgress = errors.New("invalid progress")
 
 // lessonKey returns the stable key of a lesson of a course the viewer may see.
 func (s *Service) lessonKey(ctx context.Context, viewer auth.User, courseID, lessonID int64) (string, error) {
-	if _, err := s.loadVisible(ctx, viewer, courseID, ""); err != nil {
+	_, ret, err := s.open(ctx, viewer, courseID, "")
+	if err != nil {
 		return "", err
 	}
+	if ret != nil {
+		l, _, ok := ret.retainedLesson(lessonID)
+		if !ok {
+			return "", ErrLessonNotFound
+		}
+		return l.Key, nil
+	}
 	var key string
-	err := s.db.QueryRow(ctx, "SELECT key FROM lessons WHERE id = $1 AND course_id = $2", lessonID, courseID).Scan(&key)
+	err = s.db.QueryRow(ctx, "SELECT key FROM lessons WHERE id = $1 AND course_id = $2", lessonID, courseID).Scan(&key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrLessonNotFound
 	}
 	return key, err
 }
 
-// Visit records that the viewer opened a lesson: an unstarted lesson
-// becomes studying, it becomes the course's last studied lesson, and a
-// course not started yet is started.
+// Visit records that the viewer opened a lesson: it becomes the course's
+// last studied lesson. Neither the lesson's state nor the viewer's
+// subscription changes.
 func (s *Service) Visit(ctx context.Context, viewer auth.User, courseID, lessonID int64) error {
 	key, err := s.lessonKey(ctx, viewer, courseID, lessonID)
 	if err != nil {
@@ -48,15 +55,15 @@ func (s *Service) Visit(ctx context.Context, viewer auth.User, courseID, lessonI
 		ON CONFLICT DO NOTHING`, viewer.ID, courseID, key); err != nil {
 		return err
 	}
-	if err := enroll(ctx, s, viewer, courseID); err != nil {
-		return err
-	}
 	return s.touch(ctx, viewer, courseID, key)
 }
 
-// touch moves the course to the top of the viewer's courses.
+// touch remembers the lesson as the viewer's last one in the course and
+// moves the course to the top of the viewer's courses.
 func (s *Service) touch(ctx context.Context, viewer auth.User, courseID int64, key string) error {
-	_, err := s.db.Exec(ctx, "UPDATE enrollments SET last_lesson_key = $3, last_studied_at = now() WHERE user_id = $1 AND course_id = $2",
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO course_readers (user_id, course_id, last_lesson_key) VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, course_id) DO UPDATE SET last_lesson_key = $3, last_studied_at = now()`,
 		viewer.ID, courseID, key)
 	return err
 }
@@ -68,7 +75,7 @@ type ProgressUpdate struct {
 }
 
 // SetProgress marks a lesson done or not done and/or remembers the
-// position in it. Undoing done leaves the lesson studying.
+// position in it. Undoing done leaves the lesson unstarted.
 func (s *Service) SetProgress(ctx context.Context, viewer auth.User, courseID, lessonID int64, u ProgressUpdate) error {
 	if u.Position != nil && *u.Position < 0 {
 		return ErrBadProgress
