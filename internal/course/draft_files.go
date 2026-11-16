@@ -403,6 +403,18 @@ func (s *Service) dropDraftFiles(ctx context.Context, courseID, draftID int64, u
 	}
 }
 
+// dropDrafts deletes every draft of a course that stays in the database
+// though nobody edits it any more (a deleted one), returning their ids for
+// dropDraftFiles once the transaction commits. A purged course needs none:
+// its drafts and their areas go with it.
+func dropDrafts(ctx context.Context, tx pgx.Tx, courseID int64) ([]int64, error) {
+	rows, err := tx.Query(ctx, "DELETE FROM course_drafts WHERE course_id = $1 RETURNING id", courseID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
 // unusedUpload is the upload of a dropped operation once no other
 // operation of the draft uses it; "" otherwise.
 func unusedUpload(dropped Op, rest []Op) string {

@@ -539,6 +539,7 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 	const reason = "课程已删除"
 	var kept bool
 	var gone leaving
+	var drafts []int64
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		if kept, err = freeze(ctx, tx, id, RetentionDeleted); err != nil {
 			return err
@@ -561,6 +562,9 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 		if !kept {
 			return purge(ctx, tx, id)
 		}
+		if drafts, err = dropDrafts(ctx, tx, id); err != nil {
+			return err
+		}
 		// Only the freeze is read from now on, so the course keeps just its files.
 		_, err = tx.Exec(ctx, `
 			UPDATE courses SET visibility = 'private', publish_state = 'unpublished', deleted_at = now(), updated_at = now(),
@@ -576,6 +580,9 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 		return nil
 	}
 	s.dropUnused(ctx, id, sm.FilesDir) // newer than the freeze, if updated since unpublishing
+	for _, d := range drafts {
+		s.dropDraftFiles(ctx, id, d, "")
+	}
 	for _, r := range gone.settled {
 		if r.filesDir != "" {
 			s.dropFiles(ctx, id, r.filesDir)
