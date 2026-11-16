@@ -46,7 +46,7 @@ func rollBackSubscriptions(t *testing.T, dbURL, setup string) {
 		`ALTER TABLE course_readers RENAME TO enrollments`,
 		`ALTER TABLE enrollments DROP COLUMN subscribed_at`,
 		`ALTER TABLE enrollments ADD COLUMN removed_at timestamptz`,
-		`DELETE FROM schema_migrations WHERE name = '0008_subscriptions.sql'`,
+		`DELETE FROM schema_migrations WHERE name = '0009_subscriptions.sql'`,
 		setup,
 	} {
 		if _, err := conn.Exec(ctx, q); err != nil {
