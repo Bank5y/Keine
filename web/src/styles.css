@@ -651,6 +651,20 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .mig-prose { font-size: 15.5px; }
 .mig-img-gone { display: block; margin: 16px 0; padding: 18px; text-align: center; font-size: 13px; color: var(--text-3); border: 1px dashed var(--rule); border-radius: var(--radius); }
 .mig-done { color: var(--brand); }
+/* the cards' stand-in at the bottom of the screen once they scroll away */
+.mig-dock {
+  position: sticky; bottom: 12px; z-index: 2; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin;
+  margin-top: 16px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+  box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--text) 45%, transparent); animation: rise .2s ease-out both;
+}
+.mig-chip {
+  flex: 0 0 auto; max-width: 240px; padding: 4px 10px; border: 1px solid var(--line); border-left: 3px solid var(--rule); border-radius: 4px;
+  background: var(--bg); font-family: var(--serif); font-size: 13.5px; line-height: 1.6; color: var(--text); text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: grab;
+}
+.mig-chip:hover { border-color: var(--rule); }
+.mig-chip.active { border-color: var(--brand); border-left-color: var(--brand); }
+@media (prefers-reduced-motion: reduce) { .mig-dock { animation: none; } }
 /* the magic wand: suggested places in the new text */
 ::highlight(mig-suggest) { background-color: color-mix(in srgb, var(--brand) 22%, transparent); text-decoration-line: underline; text-decoration-style: dashed; text-decoration-color: var(--brand); text-decoration-thickness: 1.5px; }
 .wand-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; font-size: 14px; color: var(--text-2); }
@@ -678,6 +692,8 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
   .mig-head h1 { font-size: 26px; }
   .mig-pane-head > span:first-child { display: none; }
   .mig-list { grid-template-columns: minmax(0, 1fr); }
+  .mig-dock { bottom: 8px; padding: 6px; }
+  .mig-chip { max-width: 70vw; }
 }
 .nb-meta time { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .nb-quote { display: block; margin: 10px 0 0; font-family: var(--serif); font-size: 16px; line-height: 1.85; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -730,7 +746,7 @@ a.nb-quote:hover .nq-text { color: var(--brand); }
 .side-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .docs-left > .back, .colophon > .back { flex-shrink: 0; align-self: flex-start; }
 /* reading a library course without subscribing: subscribing sits at the top of the sidebar */
-.docs-left > .side-subscribe, .colophon > .side-subscribe { flex-shrink: 0; margin-bottom: 16px; }
+.docs-left > .side-subscribe, .colophon > .side-subscribe, .drawer-subscribe { flex-shrink: 0; margin-bottom: 16px; }
 .side-locate {
   position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 1;
   display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px;

@@ -282,6 +282,17 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
 
   const drop = useDropPlace(newRoot, newMap, (a) => setChosen(a.id));
 
+  // once the cards scroll out of view, a dock at the bottom of the screen
+  // keeps every annotation reachable to choose, or to drag onto a long text
+  const [list, setList] = useState<HTMLElement | null>(null);
+  const [listAway, setListAway] = useState(false);
+  useEffect(() => {
+    if (!list || typeof IntersectionObserver === 'undefined') { setListAway(false); return undefined; }
+    const io = new IntersectionObserver(([e]) => setListAway(!e.isIntersecting && e.boundingClientRect.top < 0));
+    io.observe(list);
+    return () => io.disconnect();
+  }, [list]);
+
   const unpick = () => { getSelection()?.removeAllRanges(); setPick(null); };
   const placeHere = async () => {
     if (!active || !pick) return;
@@ -303,7 +314,7 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
         <h1>{lesson.title}</h1>
         <p className="sub">
           {pending.length
-            ? <>这一讲更新后，你有 <b>{pending.length}</b> 条标注没能自动对回原文。选中一条，在新正文里选中对应的文字，点「放到这里」；也可以把它保留为原文摘录，或者删除。</>
+            ? <>这一讲更新后，你有 <b>{pending.length}</b> 条标注没能自动对回原文。点一条标注，在新正文里选中对应的文字，再点「放到这里」；也可以直接把标注拖到新正文里，或者用「魔棒」找建议位置。实在对不上的，可以保留为原文摘录，或者删除。</>
             : '这一讲的标注都已处理完。'}
         </p>
       </header>
@@ -311,7 +322,7 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
       {pending.length ? (
         <>
           <WandBar ran={wand.ran} busy={wand.busy || accepting} count={suggestedCount} onRun={wand.run} onAcceptAll={acceptAll} />
-          <ul className="mig-list" aria-label="待迁移的标注">
+          <ul className="mig-list" aria-label="待迁移的标注" ref={setList}>
             {pending.map((a) => (
               <li key={a.id} className={cn('mig-card', a.id === active?.id && 'active')} data-annotation={a.id} {...drop.card(a)}>
                 <button type="button" className="mig-pick" aria-pressed={a.id === active?.id} onClick={() => choose(a)}>
@@ -350,6 +361,16 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
                 : <p className="text-ink-3">这一讲现在没有文字。</p>}
             </section>
           </div>
+          {listAway ? (
+            <div className="mig-dock" role="group" aria-label="待迁移的标注（快捷）">
+              {pending.map((a) => (
+                <button type="button" key={a.id} className={cn('mig-chip', a.id === active?.id && 'active')} aria-pressed={a.id === active?.id}
+                  title={a.quote} onClick={() => choose(a)} {...drop.card(a)}>
+                  <span className={cn('nq-text', `look-${lookName(a)}`)}>{a.quote}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </>
       ) : (
         <Empty glyph="毕" title="没有待迁移的标注">
