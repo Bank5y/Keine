@@ -369,6 +369,7 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) (CommitResult, error) {
 	dir := newRequestDir()
 	var filed filedRequest
+	var row draftRow
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		// Hold the course's content still while its files are copied: an
 		// approval switching it would drop the folder they come from.
@@ -376,18 +377,18 @@ func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) 
 		if err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 FOR SHARE", id).Scan(&base); err != nil {
 			return err
 		}
-		ops, err := draftOps(ctx, tx, id, viewer.ID, true)
-		if err != nil {
+		var err error
+		if row, err = loadDraft(ctx, tx, id, viewer.ID, true); err != nil {
 			return err
 		}
-		if len(ops) == 0 {
+		if len(row.Ops) == 0 {
 			return ErrDraftEmpty
 		}
 		cur, _, err := currentManifest(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		m, err := applyOps(cur, ops)
+		m, err := applyOps(cur, row.Ops)
 		if err != nil {
 			return err
 		}
@@ -395,7 +396,8 @@ func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) 
 		if err != nil {
 			return err
 		}
-		if err := s.copyFiles(ctx, id, base, dir, m); err != nil {
+		from := draftFiles{courseID: id, dir: base, draftID: row.ID, uploads: row.uploads()}
+		if err := s.copyFiles(ctx, from, dir, m); err != nil {
 			return err
 		}
 		if filed, err = fileUpdateRequest(ctx, tx, id, viewer, dir, base, raw); err != nil {
@@ -409,6 +411,7 @@ func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) 
 		return CommitResult{}, err
 	}
 	s.dropReplaced(ctx, id, filed)
+	s.dropDraftFiles(ctx, id, row.ID, "")
 	return CommitResult{Outcome: "requested", RequestID: filed.id}, nil
 }
 

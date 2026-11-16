@@ -174,3 +174,32 @@ func TestAPublicCoursesUploaderCommitsADraftAsAnUpdateRequest(t *testing.T) {
 	}
 	expectStatus(t, bob.do("GET", fmt.Sprintf("/api/courses/%d/files/images/1/a.png", id), nil), http.StatusOK)
 }
+
+func TestARequestedDraftCarriesItsUploadedLessons(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	u := uploadFiles(t, alice, id, map[string]string{"03.md": "# 03\n\n![](c.png)\n", "c.png": "c-bytes"})
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "addLesson", "chapter": "intent", "title": "03｜记忆", "content": map[string]any{"upload": u}}))
+	key := draftKeys(t, alice, id)["03｜记忆"]
+
+	if r := alice.mustOK(commitDraft(alice, id)).json(); r["outcome"] != "requested" {
+		t.Fatalf("the draft becomes an update request: %v", r)
+	}
+	if left := draftArea(a, id); len(left) != 0 {
+		t.Fatalf("the requested draft's area is removed: %v", left)
+	}
+
+	approveUpdateOf(t, admin, id)
+
+	expectOutline(t, courseOutline(t, bob, id), "开篇:开篇词", "意图识别:01｜用户输入规范化,02｜三层意图识别,03｜记忆")
+	lesson := bob.mustOK(bob.do("GET", fmt.Sprintf("/api/courses/%d/lessons/%d", id, lessonIDs(t, bob, id)[key]), nil)).json()
+	if lesson["markdown"] != "# 03\n\n![](c.png)\n" {
+		t.Fatalf("the approved course reads the uploaded text: %v", lesson["markdown"])
+	}
+	if r := bob.mustOK(bob.do("GET", fmt.Sprintf("/api/courses/%d/files/%s/c.png", id, u), nil)); string(r.body) != "c-bytes" {
+		t.Fatalf("the approved course serves the uploaded image: %q", r.body)
+	}
+}

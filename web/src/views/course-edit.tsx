@@ -59,7 +59,7 @@ export function CourseEditView({ id }: { id: number }) {
       <PageHead
         kicker="编辑课程"
         title={c.title}
-        sub={<span className="draft-status" role="status">{changes ? <>编辑稿里有 <b>{changes}</b> 处修改, 提交后一次生效</> : '还没有修改。修改会先存进编辑稿, 换台设备也还在'}</span>}
+        sub={<span className="draft-status" role="status">{changes ? <>编辑稿里有 <b>{changes}</b> 处修改, {draft.mode === 'request' ? '提交后成为一份更新申请' : '提交后一次生效'}</> : '还没有修改。修改会先存进编辑稿, 换台设备也还在'}</span>}
         actions={<>
           <Button variant="ghost" disabled={!changes || busy} onClick={() => run(() => undoOp(id))}><Undo2 />撤销上一步</Button>
           <Button variant="ghost" disabled={!changes || busy} onClick={() => setDialog('discard')}>放弃编辑稿</Button>
