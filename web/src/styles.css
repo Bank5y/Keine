@@ -33,6 +33,7 @@
   --mark-green: color-mix(in srgb, var(--mark-green-solid) 50%, transparent);
   --mark-blue: color-mix(in srgb, var(--mark-blue-solid) 50%, transparent);
   --mark-pink: color-mix(in srgb, var(--mark-pink-solid) 50%, transparent);
+  --mark-active: color-mix(in srgb, var(--brand) 28%, transparent);
 
   --serif: "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", sans-serif;
@@ -536,6 +537,48 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .ann-swatch.c-blue { background: var(--mark-blue-solid); }
 .ann-swatch.c-pink { background: var(--mark-pink-solid); }
 .ann-sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--line); }
+.ann-bar { flex-wrap: wrap; }
+.ann-row { flex-wrap: wrap; }
+.ann-btn.primary { color: var(--on-brand); background: var(--brand); }
+.ann-btn.primary:hover { background: var(--brand-hover); color: var(--on-brand); }
+.ann-btn:disabled { opacity: .45; pointer-events: none; }
+.ann-item { display: flex; flex-direction: column; gap: 4px; }
+.ann-bar.stacked .ann-item + .ann-item { border-top: 1px solid var(--line); padding-top: 4px; }
+/* the annotation in focus: its card picked, or its note being written */
+::highlight(ann-active) { background-color: var(--mark-active); }
+
+/* notes: in the bar on narrow screens, as cards in the rail on wide ones */
+.ann-note, .ann-editor { width: min(340px, calc(100vw - 26px)); padding: 2px 4px 0; white-space: normal; }
+.ann-note { border-top: 1px dashed var(--line); padding-top: 6px; }
+.note-text { margin: 0; color: var(--text); font-family: var(--serif); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ann-note .note-text { max-height: 40vh; overflow-y: auto; }
+.note-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin-top: 4px; }
+.note-actions .hint { flex: 1; color: var(--text-3); font-size: 11px; }
+.note-input {
+  display: block; width: 100%; min-height: 88px; max-height: 40vh; resize: vertical; padding: 8px 10px; border-radius: 4px;
+  border: 1px solid var(--rule); background: var(--bg); color: var(--text); font-family: var(--serif); font-size: 14px; line-height: 1.6; outline: none;
+}
+.note-input:focus { border-color: var(--brand); }
+.docs-notes { display: none; }
+.note-card {
+  position: absolute; left: 0; right: 0; padding: 8px 10px 6px; border-radius: 6px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--rule);
+  transition: top .18s ease-out, border-color .12s, box-shadow .12s;
+}
+.note-card:hover { border-color: var(--rule); }
+.note-card.active { border-color: var(--brand); border-left-color: var(--brand); box-shadow: 0 6px 18px -10px color-mix(in srgb, var(--text) 40%, transparent); z-index: 1; }
+.note-card .note-quote { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid var(--rule); color: var(--text-3); font-family: var(--serif); font-size: 12px; }
+.note-card .note-quote.look-underline { border-left-color: var(--brand); }
+.note-card .note-quote.look-yellow { border-left-color: var(--mark-yellow-solid); }
+.note-card .note-quote.look-green { border-left-color: var(--mark-green-solid); }
+.note-card .note-quote.look-blue { border-left-color: var(--mark-blue-solid); }
+.note-card .note-quote.look-pink { border-left-color: var(--mark-pink-solid); }
+.note-card .note-text { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.note-card.active .note-text { display: block; }
+.note-card .note-actions { position: absolute; top: 3px; right: 4px; margin: 0; border-radius: 4px; background: var(--surface); opacity: 0; transition: opacity .12s; }
+.note-card:hover .note-actions, .note-card.active .note-actions, .note-card:focus-within .note-actions { opacity: 1; }
+.note-card .ann-btn { height: 24px; padding: 0 6px; color: var(--text-3); }
+@media (prefers-reduced-motion: reduce) { .note-card { transition: none; } }
 
 /* code highlighting (highlight.js classes), on the code palette */
 .hljs-comment, .hljs-quote { color: var(--code-comment); font-style: italic; }
@@ -582,6 +625,13 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 }
 @media (min-width: 861px) { .docs-bar > :first-child { display: none; } }
 @media (min-width: 1181px) { .docs-bar { display: none; } }
+/* a column's notes take a rail between the text and the on-page toc once
+   there is room for it (NOTE_RAIL_MEDIA in annotator.tsx) */
+@media (min-width: 1440px) {
+  .main:has(> .contents > .docs.with-notes) { max-width: 1720px; }
+  .docs.with-notes { grid-template-columns: 230px minmax(0, 1fr) 220px 190px; gap: 32px; }
+  .docs.with-notes .docs-notes { display: block; position: relative; align-self: stretch; }
+}
 
 .side-title { font-family: var(--serif); font-weight: 700; font-size: 16px; line-height: 1.4; padding-bottom: 12px; border-bottom: 1.5px solid var(--text); }
 .side-ch { margin-top: 6px; }

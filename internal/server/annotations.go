@@ -80,3 +80,31 @@ func (s *Server) deleteAnnotation(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (s *Server) writeNote(w http.ResponseWriter, r *http.Request) {
+	id, ok := annotationIDParam(w, r)
+	if !ok {
+		return
+	}
+	var in struct {
+		Note string `json:"note"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if !writeAnnotationError(w, r, s.courses.WriteNote(r.Context(), currentUser(r), id, in.Note)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {
+	id, ok := annotationIDParam(w, r)
+	if !ok {
+		return
+	}
+	if !writeAnnotationError(w, r, s.courses.DeleteNote(r.Context(), currentUser(r), id)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -51,6 +51,9 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   // the rendered Markdown of the shown lesson, once the renderer has loaded
   const [prose, setProse] = useState<HTMLElement | null>(null);
   const right = useRef<HTMLElement>(null);
+  // the rail the notes sit in on wide screens, beside the text of a column
+  const [rail, setRail] = useState<HTMLElement | null>(null);
+  const noted = course?.type === 'column';
   const current = lesson?.id === lessonId ? lesson : null;
   // a video gives way at once: kept on screen it would play on unseen, and
   // its last position would no longer reach the lesson it belongs to
@@ -106,7 +109,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const onThisPage = <HeadingToc headings={headings} active={active} onPick={(id) => { setDrawer(''); jump(id, 'smooth'); }} />;
 
   return (
-    <div className="page enter docs" onClick={onClick}>
+    <div className={cn('page enter docs', noted && 'with-notes')} onClick={onClick}>
       <aside className="docs-side docs-left" aria-label="课程目录">
         <Link className="back" href={`/courses/${courseId}?tab=toc`}><ArrowLeft />返回课程</Link>
         {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
@@ -130,7 +133,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
           </article>
         ) : null}
         {current && course?.type === 'column' && !current.video && current.markdown
-          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} /> : null}
+          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} rail={rail} /> : null}
         {current ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
         {!err && shown ? (
           <nav className="reader-nav" aria-label="翻页">
@@ -140,6 +143,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
         ) : null}
       </div>
 
+      {noted ? <aside className="docs-notes" ref={setRail} aria-label="笔记" /> : null}
       <aside className="docs-side docs-right side-fade" ref={right} aria-label="本讲目录">{headings.length ? onThisPage : null}</aside>
 
       <Drawer open={drawer === 'toc'} onOpenChange={(v) => setDrawer(v ? 'toc' : '')} side="left" title="课程目录">{toc}</Drawer>

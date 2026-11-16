@@ -3,6 +3,7 @@ package course
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -32,6 +33,7 @@ var (
 const (
 	maxQuote   = 20000
 	maxContext = 200
+	maxNote    = 20000
 )
 
 // Annotation is one of the viewer's annotations on a lesson.
@@ -57,6 +59,8 @@ type NewAnnotation struct {
 	Quote  string `json:"quote"`
 	Prefix string `json:"prefix"`
 	Suffix string `json:"suffix"`
+	// Note is optional; a blank one is no note.
+	Note string `json:"note"`
 }
 
 // AnnotationStyle restyles an annotation.
@@ -143,6 +147,13 @@ func (s *Service) Annotate(ctx context.Context, viewer auth.User, courseID, less
 	if anchor.NewText(in.Quote).String() == "" || utf8.RuneCountInString(in.Quote) > maxQuote || utf8.RuneCountInString(in.Prefix) > maxContext || utf8.RuneCountInString(in.Suffix) > maxContext {
 		return Annotation{}, ErrBadInput
 	}
+	var note *string
+	if strings.TrimSpace(in.Note) != "" {
+		if utf8.RuneCountInString(in.Note) > maxNote {
+			return Annotation{}, ErrBadInput
+		}
+		note = &in.Note
+	}
 	l, text, err := s.annotatable(ctx, viewer, courseID, lessonID)
 	if err != nil {
 		return Annotation{}, err
@@ -152,9 +163,9 @@ func (s *Service) Annotate(ctx context.Context, viewer auth.User, courseID, less
 		return Annotation{}, ErrQuoteNotFound
 	}
 	err = scanAnnotation(s.db.QueryRow(ctx, `
-		INSERT INTO annotations (user_id, course_id, lesson_key, style, color, quote, prefix, suffix)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING `+annotationColumns,
-		viewer.ID, courseID, l.Key, in.Style, color, in.Quote, in.Prefix, in.Suffix), &a)
+		INSERT INTO annotations (user_id, course_id, lesson_key, style, color, quote, prefix, suffix, note)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING `+annotationColumns,
+		viewer.ID, courseID, l.Key, in.Style, color, in.Quote, in.Prefix, in.Suffix, note), &a)
 	return a, err
 }
 
@@ -166,6 +177,30 @@ func (s *Service) Restyle(ctx context.Context, viewer auth.User, id int64, in An
 	}
 	tag, err := s.db.Exec(ctx, "UPDATE annotations SET style = $3, color = $4, updated_at = now() WHERE id = $1 AND user_id = $2",
 		id, viewer.ID, in.Style, color)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrAnnotationNotFound
+	}
+	return err
+}
+
+// WriteNote writes, or rewrites, the note on one of the viewer's
+// annotations; a note is never blank.
+func (s *Service) WriteNote(ctx context.Context, viewer auth.User, id int64, note string) error {
+	if strings.TrimSpace(note) == "" || utf8.RuneCountInString(note) > maxNote {
+		return ErrBadInput
+	}
+	return s.setNote(ctx, viewer, id, &note)
+}
+
+// DeleteNote takes the note off one of the viewer's annotations; the
+// annotation stays.
+func (s *Service) DeleteNote(ctx context.Context, viewer auth.User, id int64) error {
+	return s.setNote(ctx, viewer, id, nil)
+}
+
+func (s *Service) setNote(ctx context.Context, viewer auth.User, id int64, note *string) error {
+	tag, err := s.db.Exec(ctx, "UPDATE annotations SET note = $3, updated_at = now() WHERE id = $1 AND user_id = $2",
+		id, viewer.ID, note)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrAnnotationNotFound
 	}
