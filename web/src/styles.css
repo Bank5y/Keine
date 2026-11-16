@@ -974,3 +974,30 @@ a.rn:hover .t { color: var(--brand); }
 .notif-dismiss svg { width: 12px; height: 12px; }
 .notif-dismiss:hover { color: var(--text); background: var(--surface-2); }
 .notif-dismiss:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+/* ---------- course editor ---------- */
+.course-edit .draft-status b { font-family: var(--mono); color: var(--brand); }
+.course-edit .edit-note { flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 24px; }
+.ed { min-width: 0; }
+.ed-chapter { margin-bottom: 18px; }
+.ed-row { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.ed-ch { padding: 8px 0 6px; border-bottom: 1.5px solid var(--text); }
+.ed-ch .c-no { font-family: var(--mono); font-size: 12px; color: var(--brand); letter-spacing: .12em; font-weight: 600; flex-shrink: 0; }
+.ed-ch .ed-title { font-family: var(--serif); font-weight: 700; font-size: 18px; }
+.ed-title { flex: 1 1 0; min-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-lessons { padding-left: 28px; border-left: 1px solid var(--rule); margin-left: 6px; }
+.ed-l { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.ed-l .e-no { font-family: var(--mono); font-size: 11px; color: var(--text-3); width: 26px; text-align: right; flex-shrink: 0; }
+.ed-l.upcoming .ed-title { color: var(--text-3); }
+.ed-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; flex-shrink: 0; }
+.ed-move { height: 30px; width: auto; max-width: 9em; padding: 0 8px; font-size: 12px; color: var(--text-2); margin: 0 4px; }
+.ed-empty { padding: 10px 0; font-size: 13px; color: var(--text-3); border-bottom: 1px solid var(--border); }
+.ed-add { margin-top: 10px; }
+.ed-add svg { width: 14px; height: 14px; }
+.ed-hint { color: var(--text-3); font-size: 12px; margin: 0; }
+.tag.new { background: var(--success-soft); color: var(--success); padding: 0 6px; font-size: 11px; flex-shrink: 0; }
+@media (max-width: 560px) {
+  .ed-lessons { padding-left: 12px; margin-left: 0; }
+  .ed-tools { width: 100%; justify-content: flex-end; }
+  .ed-l { padding: 6px 0; }
+}
