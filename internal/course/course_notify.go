@@ -85,11 +85,13 @@ func settleLeaving(ctx context.Context, tx pgx.Tx, courseID int64, kind, reason 
 		return l, err
 	}
 	var r turnedDown
-	_, err = pgx.ForEachRow(rows, []any{&r.requester, &r.kind, &r.filesDir}, func() error {
+	if _, err = pgx.ForEachRow(rows, []any{&r.requester, &r.kind, &r.filesDir}, func() error {
 		l.settled = append(l.settled, r)
 		return nil
-	})
-	return l, err
+	}); err != nil {
+		return l, err
+	}
+	return l, closeRequestNotices(ctx, tx)
 }
 
 // notifyLeaving tells the users of a course leaving the library (kind
@@ -148,4 +150,38 @@ func subscribers(ctx context.Context, tx pgx.Tx, courseID int64) ([]int64, error
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
+// tellAdmins tells every admin about a request waiting for them.
+func tellAdmins(ctx context.Context, tx pgx.Tx, kind notify.Kind, courseID, requestID int64, requester string) error {
+	c, err := coursePayload(ctx, tx, courseID)
+	if err != nil {
+		return err
+	}
+	return notify.SendToAdmins(ctx, tx, kind, notify.RequestPayload{CoursePayload: c, Requester: requester, RequestID: requestID})
+}
+
+// closeRequestNotices marks read every admin's notice about a request that
+// is no longer pending, so whoever decided (or the requester withdrawing)
+// clears it for all admins.
+func closeRequestNotices(ctx context.Context, tx pgx.Tx) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE notifications n SET read_at = now()
+		FROM review_requests r
+		WHERE n.read_at IS NULL AND n.kind IN ($1, $2)
+		  AND r.id = (n.payload->>'requestId')::bigint AND r.state <> $3`,
+		string(notify.PublishRequested), string(notify.UpdateRequested), reviewPending)
+	return err
+}
+
+// clearPendingNotice takes the user's annotations_pending notices about a
+// course out of their inbox once none of their annotations there awaits
+// migration any more.
+func (s *Service) clearPendingNotice(ctx context.Context, userID, courseID int64) error {
+	var left bool
+	if err := s.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM annotations WHERE user_id = $1 AND course_id = $2 AND state = $3)",
+		userID, courseID, AnnotationPending).Scan(&left); err != nil || left {
+		return err
+	}
+	return notify.ClearPending(ctx, s.db, userID, courseID)
 }

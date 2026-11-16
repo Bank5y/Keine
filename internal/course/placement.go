@@ -84,16 +84,23 @@ func (s *Service) Place(ctx context.Context, viewer auth.User, id int64, p Place
 		previous_text_id = NULL, updated_at = now() WHERE id = $1 AND user_id = $2 RETURNING `+annotationColumns,
 		id, viewer.ID, p.Quote, p.Prefix, p.Suffix, AnnotationAttached), &a)
 	a.Range = moved.Range
-	return a, err
+	if err != nil {
+		return a, err
+	}
+	return a, s.clearPendingNotice(ctx, viewer.ID, courseID)
 }
 
 // KeepAsExcerpt keeps one of the viewer's annotations that awaits migration
 // as an excerpt: it leaves the text, its quote and note stay, and the notes
 // page tells its text changed.
 func (s *Service) KeepAsExcerpt(ctx context.Context, viewer auth.User, id int64) error {
-	tag, err := s.db.Exec(ctx, "UPDATE annotations SET state = $3, updated_at = now() WHERE id = $1 AND user_id = $2 AND state = $4",
-		id, viewer.ID, AnnotationChanged, AnnotationPending)
-	if err != nil || tag.RowsAffected() > 0 {
+	var courseID int64
+	err := s.db.QueryRow(ctx, "UPDATE annotations SET state = $3, updated_at = now() WHERE id = $1 AND user_id = $2 AND state = $4 RETURNING course_id",
+		id, viewer.ID, AnnotationChanged, AnnotationPending).Scan(&courseID)
+	if err == nil {
+		return s.clearPendingNotice(ctx, viewer.ID, courseID)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
 	if _, _, _, err := s.ownAnnotation(ctx, viewer, id); err != nil {

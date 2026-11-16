@@ -113,6 +113,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/notifications/unread-count", s.signedIn(s.unreadNotifications))
 	s.mux.HandleFunc("POST /api/notifications/read-all", s.signedIn(s.readAllNotifications))
 	s.mux.HandleFunc("POST /api/notifications/{id}/read", s.signedIn(s.readNotification))
+	s.mux.HandleFunc("POST /api/notifications/{id}/dismiss", s.signedIn(s.dismissNotification))
 	s.mux.HandleFunc("GET /api/manifest/prompt", s.signedIn(s.manifestPrompt))
 	s.mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "接口不存在")

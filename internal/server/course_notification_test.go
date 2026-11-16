@@ -87,7 +87,7 @@ func TestUploaderAndSubscribersAreToldOfUnpublishing(t *testing.T) {
 	if n := notificationList(t, dave); len(n) != 0 {
 		t.Fatalf("a reader who never subscribed is not told: %v", n)
 	}
-	if n := notificationList(t, admin); len(n) != 0 {
+	if n := notificationsOfKind(t, admin, "course_unpublished"); len(n) != 0 {
 		t.Fatalf("the admin who unpublished is not told: %v", n)
 	}
 	if p := onlyNotification(t, bob, "update_rejected"); p["reason"] != "课程已从课程库下架" || int(p["courseId"].(float64)) != id {
@@ -126,7 +126,7 @@ func TestSubscribersAreToldOfDeletionWithTheLessonsTheyRetain(t *testing.T) {
 	if n := notificationList(t, dave); len(n) != 0 {
 		t.Fatalf("a reader who never subscribed is not told: %v", n)
 	}
-	if n := notificationList(t, admin); len(n) != 0 {
+	if n := notificationsOfKind(t, admin, "course_deleted"); len(n) != 0 {
 		t.Fatalf("whoever deleted it is not told: %v", n)
 	}
 	if p := onlyNotification(t, erin, "update_rejected"); p["reason"] != "课程已删除" {

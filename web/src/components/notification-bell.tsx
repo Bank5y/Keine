@@ -4,12 +4,13 @@ import { Popover } from 'radix-ui';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/lib/router';
 import { NotificationItem } from '@/components/notification-item';
-import { listNotifications, markAllRead, refreshUnread, useUnread, type Notification } from '@/lib/notifications';
+import { dismissNotification, listNotifications, markAllRead, refreshUnread, useUnread, type Notification } from '@/lib/notifications';
 
 const PREVIEW = 8;
 
 // NotificationBell shows the unread count, refreshed on every page change
-// and once a minute, and drops down the latest notifications.
+// and once a minute, and drops down the inbox: unread notifications, with
+// the sticky ones (annotations awaiting migration) first until dismissed.
 export function NotificationBell({ path }: { path: string }) {
   const unread = useUnread();
   const [open, setOpen] = useState(false);
@@ -23,12 +24,17 @@ export function NotificationBell({ path }: { path: string }) {
   useEffect(() => { setOpen(false); }, [path]);
   useEffect(() => {
     if (!open) return;
-    listNotifications(1, PREVIEW).then((p) => setList(p.notifications), () => setList([]));
+    listNotifications(1, PREVIEW, true).then((p) => setList(p.notifications), () => setList([]));
   }, [open]);
 
   async function readAll() {
     await markAllRead();
-    setList((l) => l && l.map((n) => ({ ...n, read: true })));
+    setList((l) => l && l.filter((n) => n.sticky).map((n) => ({ ...n, read: true })));
+  }
+
+  async function dismiss(n: Notification) {
+    await dismissNotification(n);
+    setList((l) => l && l.filter((x) => x.id !== n.id));
   }
 
   const label = unread ? `通知 (${unread} 条未读)` : '通知';
@@ -48,8 +54,8 @@ export function NotificationBell({ path }: { path: string }) {
           </div>
           <div className="notif-pop-list">
             {list === null ? <div className="notif-none">加载中…</div>
-              : list.length === 0 ? <div className="notif-none">还没有通知</div>
-              : list.map((n) => <NotificationItem key={n.id} n={n} compact />)}
+              : list.length === 0 ? <div className="notif-none">没有未读通知</div>
+              : list.map((n) => <NotificationItem key={n.id} n={n} compact onDismiss={(x) => void dismiss(x)} />)}
           </div>
           <Link className="notif-pop-foot" href="/notifications">查看全部通知</Link>
         </Popover.Content>

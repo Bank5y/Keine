@@ -229,9 +229,13 @@ func (s *Service) setNote(ctx context.Context, viewer auth.User, id int64, note 
 
 // DeleteAnnotation removes one of the viewer's annotations.
 func (s *Service) DeleteAnnotation(ctx context.Context, viewer auth.User, id int64) error {
-	tag, err := s.db.Exec(ctx, "DELETE FROM annotations WHERE id = $1 AND user_id = $2", id, viewer.ID)
-	if err == nil && tag.RowsAffected() == 0 {
+	var courseID int64
+	err := s.db.QueryRow(ctx, "DELETE FROM annotations WHERE id = $1 AND user_id = $2 RETURNING course_id", id, viewer.ID).Scan(&courseID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrAnnotationNotFound
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return s.clearPendingNotice(ctx, viewer.ID, courseID)
 }

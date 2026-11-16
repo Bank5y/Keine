@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { NotificationItem } from '@/components/notification-item';
 import { ApiError } from '@/lib/api';
-import { listNotifications, markAllRead, useUnread, type NotificationPage } from '@/lib/notifications';
+import { dismissNotification, listNotifications, markAllRead, useUnread, type Notification, type NotificationPage } from '@/lib/notifications';
 
 const PAGE_SIZE = 20;
 
@@ -27,6 +27,12 @@ export function NotificationsView() {
     setData((d) => d && { ...d, unread: 0, notifications: d.notifications.map((n) => ({ ...n, read: true })) });
   }
 
+  // dismissing here keeps the notification in the full list, only no longer sticky
+  async function dismiss(n: Notification) {
+    await dismissNotification(n);
+    setData((d) => d && { ...d, notifications: d.notifications.map((x) => (x.id === n.id ? { ...x, read: true, sticky: false } : x)) });
+  }
+
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
   return (
     <div className="page enter">
@@ -40,7 +46,7 @@ export function NotificationsView() {
       {data && data.total === 0 ? <Empty glyph="讯" title="还没有通知">申请的审核结果会出现在这里。</Empty> : null}
       {data && data.notifications.length ? (
         <div className="notif-list">
-          {data.notifications.map((n) => <NotificationItem key={n.id} n={n} />)}
+          {data.notifications.map((n) => <NotificationItem key={n.id} n={n} onDismiss={(x) => void dismiss(x)} />)}
         </div>
       ) : null}
       {pages > 1 ? (

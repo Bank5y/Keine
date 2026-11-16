@@ -46,7 +46,23 @@ const (
 	// AnnotationsPending tells an annotator that a course update left some
 	// of their annotations awaiting annotation migration, and how many.
 	AnnotationsPending Kind = "annotations_pending"
+	// PublishRequested tells every admin someone asked for a course to join
+	// the library; it is marked read once the request is decided.
+	PublishRequested Kind = "publish_requested"
+	// UpdateRequested tells every admin someone submitted an update request;
+	// it is marked read once the request is decided or withdrawn.
+	UpdateRequested Kind = "update_requested"
 )
+
+// sticky kinds stay in the inbox after they are read, until dismissed.
+var sticky = []string{string(AnnotationsPending)}
+
+// RequestPayload is a request waiting for an admin.
+type RequestPayload struct {
+	CoursePayload
+	Requester string `json:"requester"`
+	RequestID int64  `json:"requestId"`
+}
 
 // PendingPayload counts the annotations, and the lessons they are in, that
 // one course update left awaiting migration for a user; LessonID is the
@@ -101,12 +117,35 @@ func Send(ctx context.Context, db Execer, userID int64, kind Kind, payload any) 
 	return err
 }
 
+// SendToAdmins records the same notification for every admin.
+func SendToAdmins(ctx context.Context, db Execer, kind Kind, payload any) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(ctx, "INSERT INTO notifications (user_id, kind, payload) SELECT id, $1, $2 FROM users WHERE role = 'admin'", string(kind), b)
+	return err
+}
+
+// ClearPending takes a user's annotations_pending notices about a course out
+// of their inbox, once nothing there awaits migration any more.
+func ClearPending(ctx context.Context, db Execer, userID, courseID int64) error {
+	_, err := db.Exec(ctx, `
+		UPDATE notifications SET dismissed_at = now(), read_at = coalesce(read_at, now())
+		WHERE user_id = $1 AND kind = $2 AND (payload->>'courseId')::bigint = $3 AND dismissed_at IS NULL`,
+		userID, string(AnnotationsPending), courseID)
+	return err
+}
+
 type Notification struct {
-	ID        int64           `json:"id"`
-	Kind      Kind            `json:"kind"`
-	Payload   json.RawMessage `json:"payload"`
-	Read      bool            `json:"read"`
-	CreatedAt time.Time       `json:"createdAt"`
+	ID      int64           `json:"id"`
+	Kind    Kind            `json:"kind"`
+	Payload json.RawMessage `json:"payload"`
+	Read    bool            `json:"read"`
+	// Sticky is set while the notification stays in the inbox until
+	// dismissed, read or not.
+	Sticky    bool      `json:"sticky"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type Page struct {
@@ -127,27 +166,34 @@ type Service struct{ db *pgxpool.Pool }
 func NewService(db *pgxpool.Pool) *Service { return &Service{db: db} }
 
 // List returns one page of a user's notifications, newest first; page
-// counts from 1.
-func (s *Service) List(ctx context.Context, userID int64, page, size int) (Page, error) {
+// counts from 1. The inbox (what the bell drops down) holds only the unread
+// ones and the sticky ones not yet dismissed, sticky first.
+func (s *Service) List(ctx context.Context, userID int64, page, size int, inbox bool) (Page, error) {
 	if size <= 0 {
 		size = DefaultPageSize
 	}
 	size = min(size, MaxPageSize)
 	page = max(page, 1)
 	p := Page{Page: page, PageSize: size}
-	if err := s.db.QueryRow(ctx, "SELECT count(*), count(*) FILTER (WHERE read_at IS NULL) FROM notifications WHERE user_id = $1", userID).
+	const stuck = "(kind = ANY($2) AND dismissed_at IS NULL)"
+	where := "user_id = $1 AND ($3 = false OR read_at IS NULL OR " + stuck + ")"
+	if err := s.db.QueryRow(ctx, "SELECT count(*), count(*) FILTER (WHERE read_at IS NULL) FROM notifications WHERE "+where, userID, sticky, inbox).
 		Scan(&p.Total, &p.Unread); err != nil {
 		return p, err
 	}
+	order := "id DESC"
+	if inbox {
+		order = stuck + " DESC, id DESC"
+	}
 	rows, err := s.db.Query(ctx, `
-		SELECT id, kind, payload, read_at IS NOT NULL, created_at FROM notifications
-		WHERE user_id = $1 ORDER BY id DESC LIMIT $2 OFFSET $3`, userID, size, (page-1)*size)
+		SELECT id, kind, payload, read_at IS NOT NULL, `+stuck+`, created_at FROM notifications
+		WHERE `+where+` ORDER BY `+order+` LIMIT $4 OFFSET $5`, userID, sticky, inbox, size, (page-1)*size)
 	if err != nil {
 		return p, err
 	}
 	p.Notifications, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (Notification, error) {
 		var n Notification
-		return n, r.Scan(&n.ID, &n.Kind, &n.Payload, &n.Read, &n.CreatedAt)
+		return n, r.Scan(&n.ID, &n.Kind, &n.Payload, &n.Read, &n.Sticky, &n.CreatedAt)
 	})
 	if p.Notifications == nil {
 		p.Notifications = []Notification{}
@@ -165,6 +211,16 @@ func (s *Service) Unread(ctx context.Context, userID int64) (int, error) {
 // is harmless.
 func (s *Service) MarkRead(ctx context.Context, userID, id int64) error {
 	tag, err := s.db.Exec(ctx, "UPDATE notifications SET read_at = coalesce(read_at, now()) WHERE id = $1 AND user_id = $2", id, userID)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+// Dismiss takes one of the user's notifications out of their inbox for
+// good, reading it too.
+func (s *Service) Dismiss(ctx context.Context, userID, id int64) error {
+	tag, err := s.db.Exec(ctx, "UPDATE notifications SET read_at = coalesce(read_at, now()), dismissed_at = coalesce(dismissed_at, now()) WHERE id = $1 AND user_id = $2", id, userID)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}

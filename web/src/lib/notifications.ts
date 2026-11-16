@@ -11,6 +11,8 @@ export interface Notification {
   kind: string;
   payload: any;
   read: boolean;
+  // sticky notifications stay in the bell's inbox, read or not, until dismissed
+  sticky: boolean;
   createdAt: string;
 }
 
@@ -51,6 +53,8 @@ const kinds: Record<string, (p: any) => Rendered> = {
     detail: p.retainedCount > 0 ? `你保留了其中 ${p.retainedCount} 讲，仍可阅读。` : '你没有保留这门课的任何一讲。',
     href: p.retainedCount > 0 ? `/courses/${p.courseId}` : '/library',
   }),
+  publish_requested: (p) => ({ title: `${p.requester} 申请公开「${p.courseTitle}」`, detail: '等待审核。', href: '/admin/reviews' }),
+  update_requested: (p) => ({ title: `${p.requester} 提交了「${p.courseTitle}」的更新申请`, detail: '等待审核。', href: '/admin/reviews' }),
   annotations_pending: (p) => ({
     title: `「${p.courseTitle}」更新后，你有标注待迁移`,
     detail: `涉及 ${p.lessons} 讲、${p.annotations} 条标注。`,
@@ -82,8 +86,10 @@ export async function refreshUnread() {
   } catch { /* keep the last count */ }
 }
 
-export async function listNotifications(page: number, pageSize: number) {
-  const p = await api<NotificationPage>('GET', `/api/notifications?page=${page}&pageSize=${pageSize}`);
+// listNotifications pages through every notification, or, for the bell,
+// through the inbox: the unread ones and the sticky ones not yet dismissed.
+export async function listNotifications(page: number, pageSize: number, inbox = false) {
+  const p = await api<NotificationPage>('GET', `/api/notifications?page=${page}&pageSize=${pageSize}${inbox ? '&inbox=1' : ''}`);
   setUnread(p.unread);
   return p;
 }
@@ -91,6 +97,12 @@ export async function listNotifications(page: number, pageSize: number) {
 export async function markAllRead() {
   await api('POST', '/api/notifications/read-all');
   setUnread(0);
+}
+
+// dismissNotification takes a sticky notification out of the inbox for good.
+export async function dismissNotification(n: Notification) {
+  await api('POST', `/api/notifications/${n.id}/dismiss`);
+  if (!n.read) setUnread(Math.max(0, unread - 1));
 }
 
 // open marks a notification read and goes where it points.
