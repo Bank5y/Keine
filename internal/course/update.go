@@ -52,24 +52,7 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		if err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 FOR UPDATE", sm.ID).Scan(&prevDir); err != nil {
 			return err
 		}
-		before, err := lessonFiles(ctx, tx, sm.ID)
-		if err != nil {
-			return err
-		}
-		diff, err := s.diffContent(ctx, sm.ID, before, prevDir, pp.manifest, next)
-		if err != nil {
-			return err
-		}
-		if err := switchContent(ctx, tx, sm.ID, pp.manifest, next); err != nil {
-			return err
-		}
-		if err := carryAnnotations(ctx, tx, sm.ID, diff); err != nil {
-			return err
-		}
-		if sm.Visibility != Public {
-			return nil // only the uploader reads a private course as it is
-		}
-		return notifyUpdated(ctx, tx, sm.ID, viewer.ID, diff.summary())
+		return s.replaceContent(ctx, tx, sm, viewer, pp.manifest, prevDir, next)
 	})
 	if err != nil {
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
@@ -77,6 +60,31 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 	}
 	s.dropUnused(ctx, sm.ID, prevDir) // a freeze may still hold it
 	return nil
+}
+
+// replaceContent is a course update (the course row already locked): the
+// course switches from its files in prevDir to manifest m with files in
+// next, lessons keep their progress by key, annotations are carried over,
+// and a public course's subscribers are told what changed.
+func (s *Service) replaceContent(ctx context.Context, tx pgx.Tx, sm Summary, actor auth.User, m Manifest, prevDir, next string) error {
+	before, err := lessonFiles(ctx, tx, sm.ID)
+	if err != nil {
+		return err
+	}
+	diff, err := s.diffContent(ctx, sm.ID, before, prevDir, m, next)
+	if err != nil {
+		return err
+	}
+	if err := switchContent(ctx, tx, sm.ID, m, next); err != nil {
+		return err
+	}
+	if err := carryAnnotations(ctx, tx, sm.ID, diff); err != nil {
+		return err
+	}
+	if sm.Visibility != Public {
+		return nil // only the uploader reads a private course as it is
+	}
+	return notifyUpdated(ctx, tx, sm.ID, actor.ID, diff.summary())
 }
 
 // switchContent makes a course follow manifest m, with its files in the
