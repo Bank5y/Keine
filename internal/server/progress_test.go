@@ -50,7 +50,7 @@ func TestLessonsStartUnstudied(t *testing.T) {
 	}
 }
 
-func TestOpeningALessonMarksItStudying(t *testing.T) {
+func TestOpeningALessonKeepsItUnstartedButRemembersIt(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -58,8 +58,8 @@ func TestOpeningALessonMarksItStudying(t *testing.T) {
 
 	visit(t, alice, id, ids["l01"])
 
-	if s := lessonStates(t, alice, id)["l01"]; s != "studying" {
-		t.Fatalf("expected studying, got %s", s)
+	if s := lessonStates(t, alice, id)["l01"]; s != "unstarted" {
+		t.Fatalf("opening a lesson must not change its state, got %s", s)
 	}
 	if p := courseProgress(t, alice, id); p["lastLessonId"] != float64(ids["l01"]) || p["done"] != float64(0) {
 		t.Fatalf("unexpected progress: %v", p)
@@ -92,7 +92,7 @@ func TestFinishedLessonsCountTowardsChapterAndCourse(t *testing.T) {
 	}
 }
 
-func TestUndoingDoneGoesBackToStudying(t *testing.T) {
+func TestUndoingDoneGoesBackToUnstarted(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -101,8 +101,8 @@ func TestUndoingDoneGoesBackToStudying(t *testing.T) {
 
 	alice.mustOK(setProgress(alice, id, ids["l01"], map[string]any{"done": false}))
 
-	if s := lessonStates(t, alice, id)["l01"]; s != "studying" {
-		t.Fatalf("expected studying after undo, got %s", s)
+	if s := lessonStates(t, alice, id)["l01"]; s != "unstarted" {
+		t.Fatalf("expected unstarted after undo, got %s", s)
 	}
 	if p := courseProgress(t, alice, id); p["done"] != float64(0) {
 		t.Fatalf("undone lesson should not count: %v", p)
@@ -133,8 +133,8 @@ func TestPositionInALessonIsRemembered(t *testing.T) {
 	alice.mustOK(setProgress(alice, id, ids["l02"], map[string]any{"position": 0.42}))
 
 	l := alice.mustOK(alice.do("GET", fmt.Sprintf("/api/courses/%d/lessons/%d", id, ids["l02"]), nil)).json()
-	if l["position"] != 0.42 || l["state"] != "studying" {
-		t.Fatalf("expected position 0.42 while studying, got %v", l)
+	if l["position"] != 0.42 || l["state"] != "unstarted" {
+		t.Fatalf("expected position 0.42 on an unstarted lesson, got %v", l)
 	}
 	if p := courseProgress(t, alice, id); p["lastLessonId"] != float64(ids["l02"]) {
 		t.Fatalf("expected l02 as the last lesson, got %v", p)

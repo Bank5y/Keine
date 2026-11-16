@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { BookOpen, PlayCircle } from 'lucide-react';
+import { BookOpen, BookmarkPlus, PlayCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -16,22 +16,32 @@ const loadDetail = (id: number) => {
   return cache.get(id)!;
 };
 
-// startLearning adds a library course to my courses and opens it.
-export async function startLearning(c: Pick<CourseSummary, 'id' | 'enrolled'>) {
+// subscribe puts a library course in my courses; it tells whether it did.
+export async function subscribe(c: Pick<CourseSummary, 'id'>) {
   try {
-    if (!c.enrolled) {
-      await api('POST', `/api/courses/${c.id}/enroll`);
-      cache.delete(c.id);
-      toast.success('已加入我的课程');
-    }
-    navigate(`/courses/${c.id}`);
+    await api('POST', `/api/courses/${c.id}/subscribe`);
+    cache.delete(c.id);
+    toast.success('已订阅, 课程已加入我的课程');
+    return true;
   } catch (ex) {
     toast.error(ex instanceof ApiError ? ex.message : '操作失败');
+    return false;
   }
 }
 
+// SubscribeButton offers to subscribe to a library course the viewer reads
+// without subscribing; it shows nothing otherwise.
+export function SubscribeButton({ c, onSubscribed, className }: { c: Pick<CourseSummary, 'id' | 'visibility' | 'subscribed'>; onSubscribed: () => void; className?: string }) {
+  if (c.visibility !== 'public' || c.subscribed) return null;
+  return (
+    <Button variant="default" size="block" className={className} onClick={() => void subscribe(c).then((ok) => { if (ok) onSubscribed(); })}>
+      <BookmarkPlus />订阅课程
+    </Button>
+  );
+}
+
 // Peek previews a library course: its introduction and its table of
-// contents, with a way to start (or continue) learning it.
+// contents, with a way to subscribe to it (or continue learning it).
 export function Peek({ course }: { course: CourseSummary }) {
   const [tab, setTab] = useState<'intro' | 'toc'>('intro');
   const [shown, fading] = useTabFade(tab);
@@ -73,12 +83,15 @@ export function Peek({ course }: { course: CourseSummary }) {
       <Tabs className="peek-tabs" value={tab} onChange={setTab} items={[['intro', '课程介绍'], ['toc', '课程目录']]} />
       <TabPane fading={fading} className="peek-pane">{body}</TabPane>
       <div className="peek-foot">
-        <Button variant="default" size="sm" className="w-full" onClick={() => {
-          if (course.enrolled && d?.progress.lastLessonId) navigate(lessonURL(course.id, d.progress.lastLessonId));
-          else void startLearning(course);
-        }}>
-          <BookOpen />{course.enrolled ? '继续学习' : '开始学习'}
-        </Button>
+        {course.subscribed ? (
+          <Button variant="default" size="sm" className="w-full" onClick={() => navigate(d?.progress.lastLessonId ? lessonURL(course.id, d.progress.lastLessonId) : `/courses/${course.id}`)}>
+            <BookOpen />继续学习
+          </Button>
+        ) : (
+          <Button variant="default" size="sm" className="w-full" onClick={() => void subscribe(course).then((ok) => { if (ok) navigate(`/courses/${course.id}`); })}>
+            <BookmarkPlus />订阅课程
+          </Button>
+        )}
       </div>
     </div>
   );

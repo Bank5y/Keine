@@ -9,7 +9,7 @@ const scrollRatio = () => {
   return max > 0 ? Math.min(1, window.scrollY / max) : 0;
 };
 
-// useReadingProgress records studying a lesson: opening it, where the reader
+// useReadingProgress records reading a lesson: opening it, where the reader
 // is and finishing it. For a text lesson the position is the scroll ratio and
 // reaching the end of the text finishes it; a video lesson leaves both to its
 // player (position in seconds, via savePosition and autoDone). Undoing "done"
@@ -22,11 +22,11 @@ export function useReadingProgress(courseId: number, lesson: LessonText | null, 
   const url = lesson ? `/api/courses/${courseId}/lessons/${lesson.id}` : '';
   const text = !!lesson && !lesson.video;
 
-  // opening: mark studying and jump back to where the reader left off
+  // opening: record the visit and jump back to where the reader left off
   useEffect(() => {
     if (!lesson) return undefined;
     manual.current = false;
-    setState(lesson.state === 'unstarted' ? 'studying' : lesson.state);
+    setState(lesson.state);
     api('POST', url + '/visit').then(onChange).catch(() => {});
     if (text && lesson.position > 0 && lesson.position < 1) {
       // the text renders lazily and images grow it; restore once it settled
@@ -86,7 +86,7 @@ export function useReadingProgress(courseId: number, lesson: LessonText | null, 
 
   async function setDone(done: boolean) {
     manual.current = true;
-    setState(done ? 'done' : 'studying');
+    setState(done ? 'done' : 'unstarted');
     await api('PUT', url + '/progress', { done }).catch(() => {});
     onChange();
   }
