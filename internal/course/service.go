@@ -510,12 +510,12 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 	}
 	const reason = "课程已删除"
 	var kept bool
-	var settled []turnedDown
+	var gone leaving
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		if kept, err = freeze(ctx, tx, id, RetentionDeleted); err != nil {
 			return err
 		}
-		if settled, err = settleLeaving(ctx, tx, id, "", reason, viewer.ID); err != nil {
+		if gone, err = settleLeaving(ctx, tx, id, "", reason, viewer.ID); err != nil {
 			return err
 		}
 		subs, err := subscribers(ctx, tx, id)
@@ -527,7 +527,7 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 			err := tx.QueryRow(ctx, "SELECT count(*) FROM retained_lessons WHERE course_id = $1 AND user_id = $2", id, user).Scan(&d.RetainedCount)
 			return d, err
 		}
-		if err := notifyLeaving(ctx, tx, id, viewer.ID, notify.CourseDeleted, subs, withRetained, settled, reason); err != nil {
+		if err := notifyLeaving(ctx, tx, gone, notify.CourseDeleted, subs, withRetained); err != nil {
 			return err
 		}
 		if !kept {
@@ -548,7 +548,7 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 		return nil
 	}
 	s.dropUnused(ctx, id, sm.FilesDir) // newer than the freeze, if updated since unpublishing
-	for _, r := range settled {
+	for _, r := range gone.settled {
 		if r.filesDir != "" {
 			s.dropFiles(ctx, id, r.filesDir)
 		}

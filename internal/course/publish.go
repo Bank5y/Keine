@@ -27,6 +27,7 @@ const (
 	reviewPublish = "publish"
 	reviewUpdate  = "update"
 
+	reviewPending   = "pending"
 	reviewApproved  = "approved"
 	reviewRejected  = "rejected"
 	reviewWithdrawn = "withdrawn"
@@ -65,7 +66,7 @@ func (s *Service) WithdrawPublish(ctx context.Context, viewer auth.User, id int6
 		return ErrInvalidState
 	}
 	return s.tx(ctx, func(tx pgx.Tx) error {
-		if err := settleRequests(ctx, tx, id, reviewPublish, reviewWithdrawn, nil); err != nil {
+		if _, err := settleRequests(ctx, tx, id, reviewPublish, reviewWithdrawn, nil); err != nil {
 			return err
 		}
 		return setPublishState(ctx, tx, id, Unpublished)
@@ -141,7 +142,7 @@ func pendingReview(ctx context.Context, tx pgx.Tx, id int64) (reviewRow, error) 
 	var r reviewRow
 	err := tx.QueryRow(ctx, `
 		SELECT kind, course_id, requester_id, coalesce(files_dir, ''), manifest
-		FROM review_requests WHERE id = $1 AND state = 'pending' FOR UPDATE`, id).
+		FROM review_requests WHERE id = $1 AND state = $2 FOR UPDATE`, id, reviewPending).
 		Scan(&r.kind, &r.courseID, &r.requesterID, &r.filesDir, &r.manifest)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, ErrReviewNotFound
@@ -170,7 +171,7 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 			if drop.dir, err = publish(ctx, tx, r.courseID); err != nil {
 				return err
 			}
-			return notifyCourse(ctx, tx, r.requesterID, notify.PublishApproved, r.courseID, "")
+			return notifyApproved(ctx, tx, r.requesterID, notify.PublishApproved, r.courseID)
 		}
 		var uploader int64
 		if err := tx.QueryRow(ctx, "SELECT uploader_id, files_dir FROM courses WHERE id = $1 FOR UPDATE", r.courseID).Scan(&uploader, &drop.dir); err != nil {
@@ -195,7 +196,7 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 			return err
 		}
 		drop.courseID = r.courseID
-		if err := notifyCourse(ctx, tx, r.requesterID, notify.UpdateApproved, r.courseID, ""); err != nil {
+		if err := notifyApproved(ctx, tx, r.requesterID, notify.UpdateApproved, r.courseID); err != nil {
 			return err
 		}
 		if err := notifyUpdated(ctx, tx, r.courseID, r.requesterID, diff.summary()); err != nil {
@@ -232,9 +233,9 @@ func (s *Service) Reject(ctx context.Context, admin auth.User, reviewID int64, r
 			if err := setPublishState(ctx, tx, r.courseID, Rejected); err != nil {
 				return err
 			}
-			return notifyCourse(ctx, tx, r.requesterID, notify.PublishRejected, r.courseID, reason)
+			return notifyRejected(ctx, tx, r.requesterID, notify.PublishRejected, r.courseID, reason)
 		}
-		return notifyCourse(ctx, tx, r.requesterID, notify.UpdateRejected, r.courseID, reason)
+		return notifyRejected(ctx, tx, r.requesterID, notify.UpdateRejected, r.courseID, reason)
 	})
 	if err == nil && r.filesDir != "" {
 		s.dropFiles(ctx, r.courseID, r.filesDir)
@@ -254,20 +255,19 @@ func (s *Service) Publish(ctx context.Context, admin auth.User, id int64) error 
 	}
 	var frozen string
 	err = s.tx(ctx, func(tx pgx.Tx) error {
-		var requester int64
-		err := tx.QueryRow(ctx, `
-			UPDATE review_requests SET state = 'approved', decided_at = now(), decided_by = $2
-			WHERE course_id = $1 AND kind = 'publish' AND state = 'pending' RETURNING requester_id`, id, admin.ID).Scan(&requester)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		requesters, err := settleRequests(ctx, tx, id, reviewPublish, reviewApproved, &admin)
+		if err != nil {
 			return err
 		}
 		if frozen, err = publish(ctx, tx, id); err != nil {
 			return err
 		}
-		if requester == 0 {
-			return nil // nobody asked, so nobody is told
+		for _, u := range requesters { // nobody asked, nobody is told
+			if err := notifyApproved(ctx, tx, u, notify.PublishApproved, id); err != nil {
+				return err
+			}
 		}
-		return notifyCourse(ctx, tx, requester, notify.PublishApproved, id, "")
+		return nil
 	})
 	if err == nil {
 		s.dropUnused(ctx, id, frozen)
@@ -289,7 +289,7 @@ func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) erro
 		return ErrInvalidState
 	}
 	const reason = "课程已从课程库下架"
-	var settled []turnedDown
+	var gone leaving
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "UPDATE courses SET visibility = 'private', publish_state = 'unpublished', updated_at = now() WHERE id = $1", id); err != nil {
 			return err
@@ -297,7 +297,7 @@ func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) erro
 		if _, err := freeze(ctx, tx, id, RetentionUnpublished); err != nil {
 			return err
 		}
-		if settled, err = settleLeaving(ctx, tx, id, reviewUpdate, reason, admin.ID); err != nil {
+		if gone, err = settleLeaving(ctx, tx, id, reviewUpdate, reason, admin.ID); err != nil {
 			return err
 		}
 		subs, err := subscribers(ctx, tx, id)
@@ -305,13 +305,12 @@ func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) erro
 			return err
 		}
 		told := append([]int64{sm.UploaderID}, subs...)
-		same := func(p notify.CoursePayload, _ int64) (any, error) { return p, nil }
-		return notifyLeaving(ctx, tx, id, admin.ID, notify.CourseUnpublished, told, same, settled, reason)
+		return notifyLeaving(ctx, tx, gone, notify.CourseUnpublished, told, nil)
 	})
 	if err != nil {
 		return err
 	}
-	for _, r := range settled {
+	for _, r := range gone.settled {
 		if r.filesDir != "" {
 			s.dropFiles(ctx, id, r.filesDir)
 		}
@@ -355,18 +354,24 @@ func (s *Service) EditInfo(ctx context.Context, admin auth.User, id int64, e Edi
 	return err
 }
 
-// notifyCourse tells a user about one of their requests on a course; a
-// non-empty reason makes it a rejection.
-func notifyCourse(ctx context.Context, tx pgx.Tx, userID int64, kind notify.Kind, courseID int64, reason string) error {
-	var p notify.CoursePayload
-	p.CourseID = courseID
-	if err := tx.QueryRow(ctx, "SELECT title FROM courses WHERE id = $1", courseID).Scan(&p.CourseTitle); err != nil {
+// notifyApproved tells a user one of their requests on a course was
+// granted (kind publish_approved or update_approved).
+func notifyApproved(ctx context.Context, tx pgx.Tx, userID int64, kind notify.Kind, courseID int64) error {
+	p, err := coursePayload(ctx, tx, courseID)
+	if err != nil {
 		return err
 	}
-	if reason != "" {
-		return notify.Send(ctx, tx, userID, kind, notify.RejectedPayload{CoursePayload: p, Reason: reason})
-	}
 	return notify.Send(ctx, tx, userID, kind, p)
+}
+
+// notifyRejected tells a user one of their requests on a course was turned
+// down, and why (kind publish_rejected or update_rejected).
+func notifyRejected(ctx context.Context, tx pgx.Tx, userID int64, kind notify.Kind, courseID int64, reason string) error {
+	p, err := coursePayload(ctx, tx, courseID)
+	if err != nil {
+		return err
+	}
+	return notify.Send(ctx, tx, userID, kind, notify.RejectedPayload{CoursePayload: p, Reason: reason})
 }
 
 // publish puts a course into the library and ends its freeze, if any:
@@ -394,16 +399,22 @@ func decide(ctx context.Context, tx pgx.Tx, reviewID int64, state, reason string
 	return err
 }
 
-// settleRequests decides every pending request of one kind for a course.
-func settleRequests(ctx context.Context, tx pgx.Tx, courseID int64, kind, state string, by *auth.User) error {
+// settleRequests decides every pending request of one kind for a course,
+// returning their requesters (each once).
+func settleRequests(ctx context.Context, tx pgx.Tx, courseID int64, kind, state string, by *auth.User) ([]int64, error) {
 	var byID *int64
 	if by != nil {
 		byID = &by.ID
 	}
-	_, err := tx.Exec(ctx, `
-		UPDATE review_requests SET state = $3, decided_at = now(), decided_by = $4
-		WHERE course_id = $1 AND kind = $2 AND state = 'pending'`, courseID, kind, state, byID)
-	return err
+	rows, err := tx.Query(ctx, `
+		WITH settled AS (
+			UPDATE review_requests SET state = $3, decided_at = now(), decided_by = $4
+			WHERE course_id = $1 AND kind = $2 AND state = $5 RETURNING requester_id)
+		SELECT DISTINCT requester_id FROM settled ORDER BY requester_id`, courseID, kind, state, byID, reviewPending)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }
 
 func (s *Service) tx(ctx context.Context, f func(pgx.Tx) error) error {
