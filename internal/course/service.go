@@ -81,8 +81,8 @@ func parsePackage(zr *zip.Reader) (parsedPackage, error) {
 	return parsedPackage{pkg: p, manifest: m, raw: data, files: files}, nil
 }
 
-// Import creates a private course from a course package and enrolls the
-// uploader. Either the whole course is created or nothing is: an invalid
+// Import creates a private course from a course package, subscribed by the
+// uploader so it stays in their courses once published. Either the whole course is created or nothing is: an invalid
 // package returns *InvalidPackage, and a failure while storing removes what
 // was already written.
 func (s *Service) Import(ctx context.Context, uploader auth.User, zr *zip.Reader) (int64, error) {
@@ -102,7 +102,7 @@ func (s *Service) Import(ctx context.Context, uploader auth.User, zr *zip.Reader
 		if err := writeStructure(ctx, tx, id, m); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, "INSERT INTO enrollments (user_id, course_id) VALUES ($1, $2)", uploader.ID, id); err != nil {
+		if _, err := tx.Exec(ctx, "INSERT INTO course_readers (user_id, course_id, subscribed_at) VALUES ($1, $2, now())", uploader.ID, id); err != nil {
 			return err
 		}
 		if err := s.storeFiles(ctx, pp, filesPrefix(id, "v1")); err != nil {
@@ -182,8 +182,8 @@ type Summary struct {
 	UploaderID   int64  `json:"uploaderId"`
 	IsUploader   bool   `json:"isUploader"`
 	LessonCount  int    `json:"lessonCount"`
-	// Enrolled tells whether the viewer has started learning the course.
-	Enrolled bool `json:"enrolled"`
+	// Subscribed tells whether the viewer subscribes to the course.
+	Subscribed bool `json:"subscribed"`
 	// DoneCount is how many lessons the viewer has finished.
 	DoneCount int       `json:"doneCount"`
 	CreatedAt time.Time `json:"createdAt"`
@@ -242,13 +242,13 @@ func summaryColumns(viewerParam string) string {
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
 	c.created_at, c.updated_at, c.files_dir,
-	EXISTS (SELECT 1 FROM enrollments e WHERE e.course_id = c.id AND e.user_id = ` + viewerParam + ` AND e.removed_at IS NULL)`
+	EXISTS (SELECT 1 FROM course_readers r WHERE r.course_id = c.id AND r.user_id = ` + viewerParam + ` AND r.subscribed_at IS NOT NULL)`
 }
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
 	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesDir, &s.Enrolled}
+		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesDir, &s.Subscribed}
 }
 
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
@@ -329,8 +329,8 @@ func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, 
 		}
 	}
 	err = s.db.QueryRow(ctx, `
-		SELECT l.id FROM enrollments e JOIN lessons l ON l.course_id = e.course_id AND l.key = e.last_lesson_key
-		WHERE e.user_id = $1 AND e.course_id = $2`, viewer.ID, id).Scan(&d.Progress.LastLessonID)
+		SELECT l.id FROM course_readers r JOIN lessons l ON l.course_id = r.course_id AND l.key = r.last_lesson_key
+		WHERE r.user_id = $1 AND r.course_id = $2`, viewer.ID, id).Scan(&d.Progress.LastLessonID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = nil
 	}
@@ -371,21 +371,21 @@ func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int6
 
 // MineFilter narrows my courses; empty fields match everything.
 type MineFilter struct {
-	// State is "studying" (not every lesson done yet) or "done".
+	// State is "unfinished" (not every lesson done yet) or "done".
 	State      string
 	Type       string
 	Completion string
 }
 
-// Mine lists the courses a user is learning that they can still see, most
-// recently studied first.
+// Mine lists my courses: the library courses the user subscribes to and
+// every private course they uploaded, most recently studied first.
 func (s *Service) Mine(ctx context.Context, viewer auth.User, f MineFilter) ([]Summary, error) {
 	rows, err := s.db.Query(ctx, "SELECT "+summaryColumns("$1")+` FROM courses c
-		JOIN enrollments e ON e.course_id = c.id AND e.user_id = $1 AND e.removed_at IS NULL
-		WHERE (c.visibility = 'public' OR c.uploader_id = $1)
+		LEFT JOIN course_readers r ON r.course_id = c.id AND r.user_id = $1
+		WHERE ((c.visibility = 'public' AND r.subscribed_at IS NOT NULL) OR (c.visibility <> 'public' AND c.uploader_id = $1))
 		  AND ($2 = '' OR c.type = $2)
 		  AND ($3 = '' OR c.completion = $3)
-		ORDER BY e.last_studied_at DESC, c.id DESC`, viewer.ID, f.Type, f.Completion)
+		ORDER BY coalesce(r.last_studied_at, c.created_at) DESC, c.id DESC`, viewer.ID, f.Type, f.Completion)
 	if err != nil {
 		return nil, err
 	}
