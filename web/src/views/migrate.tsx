@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ImgHTMLAttributes } from 'react';
-import { ArrowLeft, Archive, MapPin, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ImgHTMLAttributes } from 'react';
+import { ArrowLeft, Archive, MapPin, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Floating, firstLine, spotOf, supported, useTextMap, type Spot } from '@/components/annotator';
 import { Empty } from '@/components/common';
@@ -7,7 +7,7 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
 import { Tabs } from '@/components/tabs';
 import { api, ApiError } from '@/lib/api';
-import { HIGHLIGHT_COLORS, keepAsExcerpt, lookName, placeAnnotation, type Annotation, type Quote, type TextMap } from '@/lib/annotations';
+import { HIGHLIGHT_COLORS, keepAsExcerpt, lookName, placeAnnotation, visibleLength, type Annotation, type Quote, type TextMap } from '@/lib/annotations';
 import { lessonURL, type LessonText } from '@/lib/courses';
 import { diffText } from '@/lib/diff';
 import { Link } from '@/lib/router';
@@ -74,6 +74,78 @@ function usePaint(name: string, ranges: Range[], priority = 0) {
 
 const rangesOf = (map: TextMap | null, spans: { start: number; end: number }[]) =>
   map ? spans.flatMap((s) => map.domRanges(s.start, s.end) ?? []) : [];
+
+// the DOM boundary point under the pointer
+function pointAt(x: number, y: number): { node: Node; offset: number } | null {
+  if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(x, y);
+    return p && { node: p.offsetNode, offset: p.offset };
+  }
+  const r = document.caretRangeFromPoint?.(x, y);
+  return r ? { node: r.startContainer, offset: r.startOffset } : null;
+}
+
+const DRAG_TYPE = 'application/x-keine-annotation';
+
+// useDropPlace lets an annotation awaiting migration be dragged from its card
+// onto the new text. While it is over the text, where it would land shows;
+// dropped, that place becomes the selection, as long as the annotation was,
+// for the reader to refine and confirm like any selection. Esc or a drop
+// anywhere else changes nothing.
+function useDropPlace(root: HTMLElement | null, map: TextMap | null, onStart: (a: Annotation) => void) {
+  const dragged = useRef<Annotation | null>(null);
+  const last = useRef('');
+  const [preview, setPreview] = useState<Range[]>([]);
+  usePaint('mig-drop', preview, 3);
+  const show = (key: string, ranges: Range[]) => {
+    if (key === last.current) return;
+    last.current = key;
+    setPreview(ranges);
+  };
+  const spanAt = (x: number, y: number) => {
+    const a = dragged.current;
+    const p = a && map && root ? pointAt(x, y) : null;
+    return p && root!.contains(p.node) ? map!.dropAt(p.node, p.offset, visibleLength(a!.quote)) : null;
+  };
+  const end = () => { dragged.current = null; show('', []); };
+  return {
+    card: (a: Annotation) => ({
+      draggable: true,
+      onDragStart: (e: DragEvent) => {
+        dragged.current = a;
+        e.dataTransfer.setData(DRAG_TYPE, String(a.id));
+        e.dataTransfer.effectAllowed = 'move';
+        onStart(a);
+      },
+      onDragEnd: end,
+    }),
+    target: {
+      onDragOver: (e: DragEvent) => {
+        const s = spanAt(e.clientX, e.clientY);
+        if (!s || !map) { show('', []); return; }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        show(`${s.start}-${s.end}`, map.domRanges(s.start, s.end) ?? []);
+      },
+      onDragLeave: (e: DragEvent) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) show('', []);
+      },
+      onDrop: (e: DragEvent) => {
+        const s = spanAt(e.clientX, e.clientY);
+        const rs = s && map?.domRanges(s.start, s.end);
+        end();
+        if (!rs?.length) return;
+        e.preventDefault();
+        const r = document.createRange();
+        r.setStart(rs[0].startContainer, rs[0].startOffset);
+        r.setEnd(rs[rs.length - 1].endContainer, rs[rs.length - 1].endOffset);
+        const sel = getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(r);
+      },
+    },
+  };
+}
 
 // an image of a previous text may point at files a later update dropped
 function OldImage({ node: _n, ...p }: ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) {
@@ -177,12 +249,12 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
     return () => { clearTimeout(t); document.removeEventListener('selectionchange', onChange); };
   }, [newMap, newRoot]);
 
+  const drop = useDropPlace(newRoot, newMap, (a) => setChosen(a.id));
+
+  const unpick = () => { getSelection()?.removeAllRanges(); setPick(null); };
   const placeHere = async () => {
     if (!active || !pick) return;
-    if (await place(active.id, pick.quote)) {
-      getSelection()?.removeAllRanges();
-      setPick(null);
-    }
+    if (await place(active.id, pick.quote)) unpick();
   };
 
   const error = loadErr || err;
@@ -209,7 +281,7 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
         <>
           <ul className="mig-list" aria-label="待迁移的标注">
             {pending.map((a) => (
-              <li key={a.id} className={cn('mig-card', a.id === active?.id && 'active')} data-annotation={a.id}>
+              <li key={a.id} className={cn('mig-card', a.id === active?.id && 'active')} data-annotation={a.id} {...drop.card(a)}>
                 <button type="button" className="mig-pick" aria-pressed={a.id === active?.id} onClick={() => choose(a)}>
                   <span className={cn('nq-text', `look-${lookName(a)}`)}>{a.quote}</span>
                   {a.note ? <span className="mig-note">{a.note}</span> : null}
@@ -234,8 +306,8 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
                 ? <LazyMarkdown key={oldText.id} text={oldText.markdown} base={lesson.base} className="reader-prose mig-prose" components={oldComponents} rootRef={setOldRoot} />
                 : <p className="text-ink-3">更新前这一讲没有文字。</p>}
             </section>
-            <section className="mig-pane new" aria-label="新正文">
-              <div className="mig-pane-head"><span>新正文</span><span className="mig-hint">选中文字，把标注放到这里</span></div>
+            <section className="mig-pane new" aria-label="新正文" {...drop.target}>
+              <div className="mig-pane-head"><span>新正文</span><span className="mig-hint">选中文字，或把标注拖到这里</span></div>
               {lesson.markdown
                 ? <LazyMarkdown text={lesson.markdown} base={lesson.base} className="reader-prose mig-prose" rootRef={setNewRoot} />
                 : <p className="text-ink-3">这一讲现在没有文字。</p>}
@@ -252,6 +324,7 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
         <Floating spot={pick.spot} ref={bar} label="迁移标注">
           <span className="ann-quote" title={active.quote}>{active.quote}</span>
           <button type="button" className="ann-btn primary" onClick={placeHere}><MapPin />放到这里</button>
+          <button type="button" className="ann-btn" onClick={unpick} aria-label="取消"><X /></button>
         </Floating>
       ) : null}
     </div>
