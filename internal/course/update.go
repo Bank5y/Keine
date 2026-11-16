@@ -45,7 +45,23 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
-	err = s.tx(ctx, func(tx pgx.Tx) error { return switchContent(ctx, tx, sm.ID, pp.manifest, next) })
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		before, err := lessonFiles(ctx, tx, sm.ID)
+		if err != nil {
+			return err
+		}
+		summary, err := s.updateSummary(ctx, sm.ID, before, sm.FilesDir, pp.manifest, next)
+		if err != nil {
+			return err
+		}
+		if err := switchContent(ctx, tx, sm.ID, pp.manifest, next); err != nil {
+			return err
+		}
+		if sm.Visibility != Public {
+			return nil // only the uploader reads a private course as it is
+		}
+		return notifyUpdated(ctx, tx, sm.ID, viewer.ID, summary)
+	})
 	if err != nil {
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err

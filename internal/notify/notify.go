@@ -34,7 +34,31 @@ const (
 	// UpdateRejected tells a requester their update request was turned
 	// down, and why.
 	UpdateRejected Kind = "update_rejected"
+	// CourseUpdated tells a subscriber a course's content was replaced, and
+	// how many lessons that added, removed and changed.
+	CourseUpdated Kind = "course_updated"
+	// CourseUnpublished tells the uploader and subscribers a course left the
+	// library.
+	CourseUnpublished Kind = "course_unpublished"
+	// CourseDeleted tells a subscriber a course was deleted, and how many of
+	// its lessons they retain.
+	CourseDeleted Kind = "course_deleted"
 )
+
+// UpdatedPayload counts the lessons an update added, removed and modified
+// (kept lessons whose text changed).
+type UpdatedPayload struct {
+	CoursePayload
+	Added    int `json:"added"`
+	Removed  int `json:"removed"`
+	Modified int `json:"modified"`
+}
+
+// DeletedPayload is a deleted course with the lessons the subscriber keeps.
+type DeletedPayload struct {
+	CoursePayload
+	RetainedCount int `json:"retainedCount"`
+}
 
 // CoursePayload names the course a notification is about, as it was then.
 type CoursePayload struct {

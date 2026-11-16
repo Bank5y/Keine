@@ -180,11 +180,22 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 		if len(problems) > 0 {
 			return &InvalidPackage{problems}
 		}
+		before, err := lessonFiles(ctx, tx, r.courseID)
+		if err != nil {
+			return err
+		}
+		summary, err := s.updateSummary(ctx, r.courseID, before, drop.dir, m, r.filesDir)
+		if err != nil {
+			return err
+		}
 		if err := switchContent(ctx, tx, r.courseID, m, r.filesDir); err != nil {
 			return err
 		}
 		drop.courseID = r.courseID
 		if err := notifyCourse(ctx, tx, r.requesterID, notify.UpdateApproved, r.courseID, ""); err != nil {
+			return err
+		}
+		if err := notifyUpdated(ctx, tx, r.courseID, r.requesterID, summary); err != nil {
 			return err
 		}
 		if r.requesterID == uploader {
@@ -274,7 +285,8 @@ func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) erro
 	if sm.Visibility != Public {
 		return ErrInvalidState
 	}
-	var dirs []string
+	const reason = "课程已从课程库下架"
+	var settled []turnedDown
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "UPDATE courses SET visibility = 'private', publish_state = 'unpublished', updated_at = now() WHERE id = $1", id); err != nil {
 			return err
@@ -282,22 +294,26 @@ func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) erro
 		if _, err := freeze(ctx, tx, id, RetentionUnpublished); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `
-			UPDATE review_requests SET state = 'rejected', reason = '课程已从课程库下架', decided_at = now(), decided_by = $2
-			WHERE course_id = $1 AND kind = 'update' AND state = 'pending'
-			RETURNING coalesce(files_dir, '')`, id, admin.ID)
+		if settled, err = settleLeaving(ctx, tx, id, reviewUpdate, reason, admin.ID); err != nil {
+			return err
+		}
+		subs, err := subscribers(ctx, tx, id)
 		if err != nil {
 			return err
 		}
-		dirs, err = pgx.CollectRows(rows, pgx.RowTo[string])
-		return err
+		told := append([]int64{sm.UploaderID}, subs...)
+		same := func(p notify.CoursePayload, _ int64) (any, error) { return p, nil }
+		return notifyLeaving(ctx, tx, id, admin.ID, notify.CourseUnpublished, told, same, settled, reason)
 	})
-	for _, d := range dirs {
-		if d != "" {
-			s.dropFiles(ctx, id, d)
+	if err != nil {
+		return err
+	}
+	for _, r := range settled {
+		if r.filesDir != "" {
+			s.dropFiles(ctx, id, r.filesDir)
 		}
 	}
-	return err
+	return nil
 }
 
 // Edit changes a course's information; nil fields stay as they are.

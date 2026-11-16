@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Bank5y/keine/internal/auth"
+	"github.com/Bank5y/keine/internal/notify"
 	"github.com/Bank5y/keine/internal/storage"
 )
 
@@ -507,30 +508,36 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 	if !viewer.IsAdmin() && !(sm.IsUploader && sm.Visibility == Private) {
 		return ErrForbidden
 	}
+	const reason = "课程已删除"
 	var kept bool
-	var dirs []string
+	var settled []turnedDown
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		if kept, err = freeze(ctx, tx, id, RetentionDeleted); err != nil {
+			return err
+		}
+		if settled, err = settleLeaving(ctx, tx, id, "", reason, viewer.ID); err != nil {
+			return err
+		}
+		subs, err := subscribers(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		withRetained := func(p notify.CoursePayload, user int64) (any, error) {
+			d := notify.DeletedPayload{CoursePayload: p}
+			err := tx.QueryRow(ctx, "SELECT count(*) FROM retained_lessons WHERE course_id = $1 AND user_id = $2", id, user).Scan(&d.RetainedCount)
+			return d, err
+		}
+		if err := notifyLeaving(ctx, tx, id, viewer.ID, notify.CourseDeleted, subs, withRetained, settled, reason); err != nil {
 			return err
 		}
 		if !kept {
 			return purge(ctx, tx, id)
 		}
 		// Only the freeze is read from now on, so the course keeps just its files.
-		if _, err := tx.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 			UPDATE courses SET visibility = 'private', publish_state = 'unpublished', deleted_at = now(), updated_at = now(),
 				files_dir = (SELECT files_dir FROM course_freezes WHERE course_id = $1)
-			WHERE id = $1`, id); err != nil {
-			return err
-		}
-		rows, err := tx.Query(ctx, `
-			UPDATE review_requests SET state = 'rejected', reason = '课程已删除', decided_at = now(), decided_by = $2
-			WHERE course_id = $1 AND state = 'pending'
-			RETURNING coalesce(files_dir, '')`, id, viewer.ID)
-		if err != nil {
-			return err
-		}
-		dirs, err = pgx.CollectRows(rows, pgx.RowTo[string])
+			WHERE id = $1`, id)
 		return err
 	})
 	if err != nil {
@@ -541,9 +548,9 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 		return nil
 	}
 	s.dropUnused(ctx, id, sm.FilesDir) // newer than the freeze, if updated since unpublishing
-	for _, d := range dirs {
-		if d != "" {
-			s.dropFiles(ctx, id, d)
+	for _, r := range settled {
+		if r.filesDir != "" {
+			s.dropFiles(ctx, id, r.filesDir)
 		}
 	}
 	return nil
