@@ -55,6 +55,11 @@ const kinds: Record<string, (p: any) => Rendered> = {
   }),
   publish_requested: (p) => ({ title: `${p.requester} 申请公开「${p.courseTitle}」`, detail: '等待审核。', href: '/admin/reviews' }),
   update_requested: (p) => ({ title: `${p.requester} 提交了「${p.courseTitle}」的更新申请`, detail: '等待审核。', href: '/admin/reviews' }),
+  draft_expiring: (p) => ({
+    title: `「${p.courseTitle}」的编辑稿 5 天后将被删除`,
+    detail: '编辑稿 30 天没有任何操作就会连同上传的文件一起删除，继续编辑会重新计时。',
+    href: `/courses/${p.courseId}/edit`,
+  }),
   annotations_pending: (p) => ({
     title: `「${p.courseTitle}」更新后，你有标注待迁移`,
     detail: `涉及 ${p.lessons} 讲、${p.annotations} 条标注。`,

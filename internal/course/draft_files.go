@@ -131,8 +131,8 @@ func (s *Service) StartDraftUpload(ctx context.Context, viewer auth.User, id int
 		return "", err
 	}
 	_, err = s.db.Exec(ctx, `
-		INSERT INTO course_drafts (course_id, user_id, base_dir) VALUES ($1, $2, $3)
-		ON CONFLICT (course_id, user_id) DO UPDATE SET updated_at = now()`, id, viewer.ID, sm.FilesDir)
+		INSERT INTO course_drafts (course_id, user_id, base_dir, updated_at) VALUES ($1, $2, $3, $4)
+		ON CONFLICT (course_id, user_id) DO UPDATE SET updated_at = EXCLUDED.updated_at`, id, viewer.ID, sm.FilesDir, s.now())
 	return newKey("u"), err
 }
 
