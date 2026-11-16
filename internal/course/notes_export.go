@@ -13,17 +13,18 @@ type NotesExport struct {
 	Markdown string
 }
 
-// detachedState names why an entry is a detached annotation, or "" when the
-// text still holds it.
-//
-// TODO(#37): once annotations carry their own state (待迁移, 原文已变化,
-// 原文已删除), read it here instead of inferring it from the lesson and range.
-func detachedState(e NoteEntry) string {
+// exportState is the mark an entry's annotation gets in the export, after
+// its stored state: why it is a detached annotation, that it awaits
+// migration, or "" when it shows in the text. An annotation whose lesson is
+// gone counts as deleted whatever its state, as on the notes page.
+func exportState(e NoteEntry) string {
 	switch {
-	case e.Lesson == nil:
-		return "原文已删除"
-	case e.Range == nil:
-		return "原文已变化"
+	case e.State == AnnotationDeleted || e.Lesson == nil:
+		return "原文摘录：原文已删除"
+	case e.State == AnnotationPending:
+		return "待迁移"
+	case e.State == AnnotationChanged:
+		return "原文摘录：原文已变化"
 	}
 	return ""
 }
@@ -61,8 +62,8 @@ func (s *Service) ExportNotes(ctx context.Context, viewer auth.User, courseID in
 			}
 		}
 		b.WriteString("\n" + quoteBlock(e.Quote) + "\n")
-		if st := detachedState(e); st != "" {
-			b.WriteString("\n*原文摘录：" + st + "*\n")
+		if st := exportState(e); st != "" {
+			b.WriteString("\n*" + st + "*\n")
 		}
 		if e.Note != nil && strings.TrimSpace(*e.Note) != "" {
 			b.WriteString("\n" + strings.TrimSpace(*e.Note) + "\n")

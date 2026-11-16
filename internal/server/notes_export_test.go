@@ -53,7 +53,8 @@ func TestNotesExportKeepsDetachedAnnotationsWithTheirState(t *testing.T) {
 	annotate(t, alice, id, lessons["l01"], map[string]any{"style": "underline", "quote": "第一行\n\n第二行"})
 	annotate(t, alice, id, lessons["l02"], map[string]any{"style": "underline", "quote": "02"})
 
-	// the update drops the opening lesson and rewrites l01
+	// the update drops the opening lesson and rewrites l01, leaving its
+	// annotation pending
 	_, next := nextVersion()
 	alice.mustOK(updateCourse(t, alice, id, next))
 
@@ -61,7 +62,7 @@ func TestNotesExportKeepsDetachedAnnotationsWithTheirState(t *testing.T) {
 	expectStatus(t, r, http.StatusOK)
 	want := "# Agent 系统设计 (第二版)\n\n" +
 		"## 意图识别 · 01｜用户输入规范化 (修订)\n\n" +
-		"> 第一行\n>\n> 第二行\n\n*原文摘录：原文已变化*\n\n" +
+		"> 第一行\n>\n> 第二行\n\n*待迁移*\n\n" +
 		"## 意图识别 · 02｜三层意图识别\n\n" +
 		"> 02\n\n" +
 		"## 已删除的讲\n\n" +
