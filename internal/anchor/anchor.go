@@ -28,10 +28,22 @@ type Range struct {
 // Text is a lesson's visible text, prepared for locating quotes in.
 type Text struct {
 	chars []rune
+	// raw is the text with its whitespace; at[i] is where chars[i] starts in it
+	raw string
+	at  []int
 }
 
 // NewText prepares plain text.
-func NewText(s string) Text { return Text{chars: visible(s)} }
+func NewText(s string) Text {
+	t := Text{chars: make([]rune, 0, len(s)), raw: s, at: make([]int, 0, len(s))}
+	for i, r := range s {
+		if !isSpace(r) {
+			t.chars = append(t.chars, r)
+			t.at = append(t.at, i)
+		}
+	}
+	return t
+}
 
 // isSpace is whitespace as both the server and the reader skip it.
 func isSpace(r rune) bool { return unicode.IsSpace(r) || r == 0xFEFF }

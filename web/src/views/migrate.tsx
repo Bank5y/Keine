@@ -6,6 +6,7 @@ import { Empty } from '@/components/common';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
 import { Tabs } from '@/components/tabs';
+import { placementOf, useWand, WandBar, WandSuggestion, type Suggestion } from '@/components/wand';
 import { api, ApiError } from '@/lib/api';
 import { HIGHLIGHT_COLORS, keepAsExcerpt, lookName, placeAnnotation, type Annotation, type Quote, type TextMap } from '@/lib/annotations';
 import { lessonURL, type LessonText } from '@/lib/courses';
@@ -36,11 +37,11 @@ export function useMigration(courseId: number, lessonId: number) {
   const update = (id: number, f: (a: Annotation) => Annotation | null) =>
     setAnns((list) => (list ?? []).flatMap((a) => (a.id === id ? (f(a) ?? []) : [a])));
 
-  const place = useCallback(async (id: number, at: Quote) => {
+  const place = useCallback(async (id: number, at: Quote, quiet = false) => {
     try {
       const a = await placeAnnotation(id, at);
       update(id, () => a);
-      toast.success('已迁移到新正文');
+      if (!quiet) toast.success('已迁移到新正文');
       return true;
     } catch (ex) { failed(ex); return false; }
   }, []);
@@ -101,6 +102,8 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
   const newMap = useTextMap(newRoot);
   const [pick, setPick] = useState<{ spot: Spot; quote: Quote } | null>(null);
   const bar = useRef<HTMLDivElement>(null);
+  const wand = useWand(courseId, lessonId);
+  const [accepting, setAccepting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -153,6 +156,34 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
   usePaint('ann-pink', looks.pink);
   const activeRanges = useMemo(() => (active ? onOld.get(active.id) ?? [] : []), [active, onOld]);
   usePaint('ann-active', activeRanges, 2);
+
+  // the wand's suggestion for the chosen annotation is marked in the new text
+  const suggested = active ? wand.byId.get(active.id) : undefined;
+  const suggestedRanges = useMemo(() => rangesOf(newMap, suggested ? [suggested.range] : []), [newMap, suggested]);
+  usePaint('mig-suggest', suggestedRanges, 1);
+  const showSuggestion = (a: Annotation, s: Suggestion) => {
+    setChosen(a.id);
+    setSide('new');
+    const line = firstLine(rangesOf(newMap, [s.range]));
+    if (line) window.scrollTo({ top: line.top + scrollY - innerHeight / 3, behavior: 'smooth' });
+  };
+  const accept = async (a: Annotation, s: Suggestion) => {
+    setAccepting(true);
+    await place(a.id, placementOf(s));
+    setAccepting(false);
+  };
+  // accepting every suggestion places each like accepting it alone
+  const acceptAll = async () => {
+    setAccepting(true);
+    let n = 0;
+    for (const a of pending) {
+      const s = wand.byId.get(a.id);
+      if (s && await place(a.id, placementOf(s), true)) n++;
+    }
+    setAccepting(false);
+    if (n) toast.success(`已按建议迁移 ${n} 条标注`);
+  };
+  const suggestedCount = pending.filter((a) => wand.byId.has(a.id)).length;
 
   // choosing an annotation brings its place in the previous text into view
   const choose = (a: Annotation) => {
@@ -207,6 +238,7 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
 
       {pending.length ? (
         <>
+          <WandBar ran={wand.ran} busy={wand.busy || accepting} count={suggestedCount} onRun={wand.run} onAcceptAll={acceptAll} />
           <ul className="mig-list" aria-label="待迁移的标注">
             {pending.map((a) => (
               <li key={a.id} className={cn('mig-card', a.id === active?.id && 'active')} data-annotation={a.id}>
@@ -215,6 +247,11 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
                   {a.note ? <span className="mig-note">{a.note}</span> : null}
                   {a.previousTextId != null && !onOld.has(a.id) && a.previousTextId === oldText?.id ? <span className="mig-lost">旧版正文里也找不到这段文字</span> : null}
                 </button>
+                {wand.ran ? (
+                  <WandSuggestion suggestion={wand.byId.get(a.id)} busy={accepting}
+                    onShow={() => { const s = wand.byId.get(a.id); if (s) showSuggestion(a, s); }}
+                    onAccept={() => { const s = wand.byId.get(a.id); if (s) accept(a, s); }} />
+                ) : null}
                 <div className="mig-actions">
                   <button type="button" className="ann-btn" onClick={() => keep(a.id)}><Archive />保留为原文摘录</button>
                   <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>

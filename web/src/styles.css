@@ -649,6 +649,22 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .mig-prose { font-size: 15.5px; }
 .mig-img-gone { display: block; margin: 16px 0; padding: 18px; text-align: center; font-size: 13px; color: var(--text-3); border: 1px dashed var(--rule); border-radius: var(--radius); }
 .mig-done { color: var(--brand); }
+/* the magic wand: suggested places in the new text */
+::highlight(mig-suggest) { background-color: color-mix(in srgb, var(--brand) 22%, transparent); text-decoration-line: underline; text-decoration-style: dashed; text-decoration-color: var(--brand); text-decoration-thickness: 1.5px; }
+.wand-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; font-size: 14px; color: var(--text-2); }
+.wand-sum b { color: var(--brand); }
+.wand-run { color: var(--brand); border: 1px solid color-mix(in srgb, var(--brand) 40%, transparent); }
+.wand-run:hover { color: var(--brand); background: var(--brand-soft); }
+.wand-sug { margin: 4px 12px 2px; padding: 6px 8px; border-radius: 4px; background: var(--brand-soft); font-size: 13px; }
+.wand-quote { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; color: var(--text); overflow-wrap: anywhere; }
+.wand-label { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--brand); }
+.wand-label svg { width: 13px; height: 13px; }
+.wand-text { font-family: var(--serif); font-size: 14px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wand-quote:hover .wand-text { color: var(--brand); }
+.wand-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.wand-conf { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
+.wand-foot .ann-btn { height: 24px; padding: 0 8px; font-size: 12px; }
+.wand-none { margin: 4px 12px 2px; font-size: 12px; color: var(--text-3); }
 @media (max-width: 900px) {
   .mig-tabs { position: relative; display: flex; gap: 26px; margin-bottom: 0; border-bottom: 1.5px solid var(--text); }
   .mig-tab { padding: 6px 0 10px; font-size: 14px; color: var(--text-3); transition: color .15s; }

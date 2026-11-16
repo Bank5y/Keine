@@ -39,6 +39,20 @@ func (s *Server) listAnnotations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"annotations": list})
 }
 
+// listSuggestions is the magic wand of annotation migration: a proposed
+// place for each of the viewer's annotations on the lesson that await it.
+func (s *Server) listSuggestions(w http.ResponseWriter, r *http.Request) {
+	id, lessonID, ok := lessonParams(w, r)
+	if !ok {
+		return
+	}
+	list, err := s.courses.Suggestions(r.Context(), currentUser(r), id, lessonID)
+	if !writeAnnotationError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"suggestions": list})
+}
+
 func (s *Server) listPreviousTexts(w http.ResponseWriter, r *http.Request) {
 	id, lessonID, ok := lessonParams(w, r)
 	if !ok {
