@@ -124,3 +124,73 @@ func TestACommittedVersionWritesOnlyTheUploadedFiles(t *testing.T) {
 		t.Fatalf("the new lesson's image is served: %q", img.body)
 	}
 }
+
+func TestMissingImagesAreListedOneByOne(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, columnFiles(columnManifest()))
+	u := uploadFiles(t, alice, id, map[string]string{
+		"03.md": "# 03\n\n![](img/c.png)\n\n![](img/d.png)\n\n<img src=\"e.jpg\">\n\n![](https://example.com/web.png)\n",
+		"c.png": "c-bytes",
+	})
+	add := map[string]any{"type": "addLesson", "chapter": "intent", "title": "03｜记忆", "content": map[string]any{"upload": u}}
+
+	r := addOp(alice, id, add)
+
+	expectError(t, r, http.StatusUnprocessableEntity, "draft_op_rejected")
+	var missing []string
+	for _, p := range r.json()["error"].(map[string]any)["problems"].([]any) {
+		missing = append(missing, p.(map[string]any)["message"].(string))
+	}
+	if want := []string{"引用的图片不存在: img/d.png", "引用的图片不存在: e.jpg"}; !slices.Equal(missing, want) {
+		t.Fatalf("each missing image is listed:\n got  %v\n want %v", missing, want)
+	}
+	if n := len(draftOps(t, alice, id)); n != 0 {
+		t.Fatalf("the lesson is not added yet, got %d operations", n)
+	}
+
+	alice.mustOK(putFile(alice, id, u, "d.png", "d-bytes"))
+	alice.mustOK(putFile(alice, id, u, "e.jpg", "e-bytes"))
+	alice.mustOK(addOp(alice, id, add))
+}
+
+func TestALessonIsAddedFromASingleLessonZip(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, columnFiles(columnManifest()))
+	u := newUpload(t, alice, id)
+	lesson := zipOf(t, map[string]string{
+		"03_记忆/03.md":            "# 03\n\n![](images/c.png)\n",
+		"03_记忆/images/c.png":     "c-bytes",
+		"__MACOSX/03_记忆/._03.md": "junk",
+	})
+	alice.mustOK(putFile(alice, id, u, "03_记忆.zip", string(lesson)))
+
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "addLesson", "chapter": "intent", "title": "03｜记忆", "content": map[string]any{"upload": u}}))
+
+	p := alice.mustOK(preview(alice, id, draftKeys(t, alice, id)["03｜记忆"])).json()
+	if p["markdown"] != "# 03\n\n![](images/c.png)\n" {
+		t.Fatalf("the zip's text is the lesson's: %v", p)
+	}
+	if img := alice.mustOK(alice.do("GET", p["base"].(string)+"images/c.png", nil)); string(img.body) != "c-bytes" {
+		t.Fatalf("the zip's image is served: %q", img.body)
+	}
+	expectError(t, putFile(alice, id, u, "broken.zip", "not a zip"), http.StatusUnprocessableEntity, "draft_op_rejected")
+}
+
+func TestAColumnLessonNeedsExactlyOneText(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, columnFiles(columnManifest()))
+	add := func(content map[string]any) resp {
+		return addOp(alice, id, map[string]any{"type": "addLesson", "chapter": "intent", "title": "03", "content": content})
+	}
+
+	expectError(t, add(map[string]any{"upload": uploadFiles(t, alice, id, map[string]string{"a.md": "a", "b.md": "b"})}), http.StatusUnprocessableEntity, "draft_op_rejected")
+	expectError(t, add(map[string]any{"upload": uploadFiles(t, alice, id, map[string]string{"c.png": "c"})}), http.StatusUnprocessableEntity, "draft_op_rejected")
+	expectError(t, add(map[string]any{"upload": newUpload(t, alice, id)}), http.StatusUnprocessableEntity, "draft_op_rejected")
+	expectError(t, add(map[string]any{"videoUrl": "https://example.com/v.mp4"}), http.StatusUnprocessableEntity, "draft_op_rejected")
+	if n := len(draftOps(t, alice, id)); n != 0 {
+		t.Fatalf("nothing is added, got %d operations", n)
+	}
+}
