@@ -188,7 +188,12 @@ type Summary struct {
 	DoneCount int       `json:"doneCount"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
-	// FilesDir is the folder of the course's files in use.
+	// Retention is set when the course left the library and the viewer, a
+	// subscriber, reads only their retained lessons of it: "unpublished".
+	Retention string `json:"retention,omitempty"`
+	// RetainedCount is how many lessons the viewer retains, with Retention.
+	RetainedCount int `json:"retainedCount,omitempty"`
+	// FilesDir is the folder of the course's files the viewer reads.
 	FilesDir string `json:"-"`
 }
 
@@ -231,6 +236,9 @@ type LessonDetail struct {
 	Duration string `json:"duration"`
 	HasText  bool   `json:"hasText"`
 	State    string `json:"state"`
+	// Unavailable marks a lesson the viewer did not retain of a course that
+	// left the library: it shows in the contents but cannot be opened.
+	Unavailable bool `json:"unavailable,omitempty"`
 }
 
 // summaryColumns selects a Summary from courses c for the viewer bound to
@@ -303,15 +311,18 @@ func canView(viewer auth.User, s Summary) bool {
 // Get returns a course with its chapters and lessons.
 func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, error) {
 	var d Detail
-	sm, err := s.loadVisible(ctx, viewer, id, ", c.intro, c.author_intro", &d.Intro, &d.AuthorIntro)
+	sm, ret, err := s.open(ctx, viewer, id, ", c.intro, c.author_intro", &d.Intro, &d.AuthorIntro)
 	if err != nil {
 		return Detail{}, err
 	}
 	d.Summary = sm
+	d.Progress = Progress{Done: sm.DoneCount, Total: sm.LessonCount}
+	if ret != nil {
+		return s.getRetained(ctx, viewer, d, ret)
+	}
 	if d.Chapters, err = s.structure(ctx, viewer, id); err != nil {
 		return Detail{}, err
 	}
-	d.Progress = Progress{Done: sm.DoneCount, Total: sm.LessonCount}
 	rows, err := s.db.Query(ctx, `
 		SELECT u.username FROM course_contributors cc JOIN users u ON u.id = cc.user_id
 		WHERE cc.course_id = $1 ORDER BY cc.created_at`, id)
@@ -335,6 +346,23 @@ func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, 
 		err = nil
 	}
 	return d, err
+}
+
+// getRetained fills in a course the viewer reads from its freeze.
+func (s *Service) getRetained(ctx context.Context, viewer auth.User, d Detail, ret *retention) (Detail, error) {
+	d.Intro, d.AuthorIntro = ret.snap.Intro, ret.snap.AuthorIntro
+	d.Chapters = ret.structure()
+	d.Contributors = []string{}
+	var key string
+	err := s.db.QueryRow(ctx, "SELECT coalesce(last_lesson_key, '') FROM course_readers WHERE user_id = $1 AND course_id = $2",
+		viewer.ID, d.ID).Scan(&key)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Detail{}, err
+	}
+	if l, _, ok := ret.find(func(l snapLesson) bool { return l.Key == key }); ok {
+		d.Progress.LastLessonID = &l.ID
+	}
+	return d, nil
 }
 
 func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int64) ([]ChapterDetail, error) {
@@ -377,28 +405,42 @@ type MineFilter struct {
 	Completion string
 }
 
-// Mine lists my courses: the library courses the user subscribes to and
-// every private course they uploaded, most recently studied first.
+// Mine lists my courses: the library courses the user subscribes to, the
+// courses that left the library of which they retain lessons, and every
+// private course they uploaded, most recently studied first.
 func (s *Service) Mine(ctx context.Context, viewer auth.User, f MineFilter) ([]Summary, error) {
 	rows, err := s.db.Query(ctx, "SELECT "+summaryColumns("$1")+` FROM courses c
 		LEFT JOIN course_readers r ON r.course_id = c.id AND r.user_id = $1
-		WHERE ((c.visibility = 'public' AND r.subscribed_at IS NOT NULL) OR (c.visibility <> 'public' AND c.uploader_id = $1))
-		  AND ($2 = '' OR c.type = $2)
-		  AND ($3 = '' OR c.completion = $3)
-		ORDER BY coalesce(r.last_studied_at, c.created_at) DESC, c.id DESC`, viewer.ID, f.Type, f.Completion)
+		WHERE (c.visibility = 'public' AND r.subscribed_at IS NOT NULL)
+		   OR (c.visibility <> 'public' AND c.uploader_id = $1)
+		   OR (c.visibility <> 'public' AND r.subscribed_at IS NOT NULL
+		       AND EXISTS (SELECT 1 FROM retained_lessons rl WHERE rl.course_id = c.id AND rl.user_id = $1))
+		ORDER BY coalesce(r.last_studied_at, c.created_at) DESC, c.id DESC`, viewer.ID)
 	if err != nil {
 		return nil, err
 	}
 	all, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Summary, error) { return scanSummary(r, viewer) })
-	if err != nil || f.State == "" {
-		return all, err
+	if err != nil {
+		return nil, err
 	}
 	out := []Summary{}
 	for _, c := range all {
-		finished := c.LessonCount > 0 && c.DoneCount == c.LessonCount
-		if (f.State == "done") == finished {
-			out = append(out, c)
+		if c.Visibility != Public && !c.IsUploader {
+			ret, err := s.retentionOf(ctx, viewer, c.ID)
+			if err != nil {
+				return nil, err
+			}
+			if ret == nil {
+				continue
+			}
+			ret.apply(&c) // filters below see the frozen course
 		}
+		finished := c.LessonCount > 0 && c.DoneCount == c.LessonCount
+		if (f.Type != "" && c.Type != f.Type) || (f.Completion != "" && c.Completion != f.Completion) ||
+			(f.State != "" && (f.State == "done") != finished) {
+			continue
+		}
+		out = append(out, c)
 	}
 	return out, nil
 }
@@ -409,9 +451,14 @@ var ErrNoCover = errors.New("course has no cover")
 // summary loads one course's card data with its cover path ("" if none).
 func (s *Service) summary(ctx context.Context, viewer auth.User, id int64) (Summary, string, error) {
 	var cover *string
-	sm, err := s.loadVisible(ctx, viewer, id, ", c.cover", &cover)
-	if err != nil || cover == nil {
+	sm, ret, err := s.open(ctx, viewer, id, ", c.cover", &cover)
+	switch {
+	case err != nil:
 		return sm, "", err
+	case ret != nil:
+		return sm, ret.snap.Cover, nil
+	case cover == nil:
+		return sm, "", nil
 	}
 	return sm, *cover, nil
 }

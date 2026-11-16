@@ -11,7 +11,7 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
-import { COMPLETION_LABEL, PUBLISH_LABEL, TYPE_LABEL, lessonURL, pad2, type ChapterItem, type CourseDetail } from '@/lib/courses';
+import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, type ChapterItem, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { cn } from '@/lib/utils';
@@ -72,6 +72,11 @@ export function CourseView({ id }: { id: number }) {
               </label>
             ) : null}
           </div>
+          {course?.retention ? (
+            <div className="retention-note" role="status">
+              该课程{RETENTION_LABEL[course.retention]}，你已学完的 {course.retainedCount ?? 0} 讲仍可阅读
+            </div>
+          ) : null}
           {!course ? <Lines /> : (tab === 'toc' ? <Toc c={course} q={q.trim()} /> : <Intro c={course} />)}
         </section>
       </div>
@@ -79,12 +84,13 @@ export function CourseView({ id }: { id: number }) {
   );
 }
 
-// ContinueButton opens the lesson studied last, or the first lesson.
+// ContinueButton opens the lesson studied last, or the first readable lesson.
 function ContinueButton({ c }: { c: CourseDetail }) {
-  const first = c.chapters[0]?.lessons[0];
-  const target = c.progress.lastLessonId ?? first?.id;
+  const readable = c.chapters.flatMap((ch) => ch.lessons).filter((l) => !l.unavailable);
+  const last = readable.find((l) => l.id === c.progress.lastLessonId);
+  const target = last?.id ?? readable[0]?.id;
   if (!target) return null;
-  const started = c.progress.lastLessonId != null;
+  const started = last != null;
   return (
     <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target))}>
       <BookOpen />{started ? '继续学习' : '开始阅读'}
@@ -109,7 +115,8 @@ function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
         <div className="tags">
           <span className="tag">{TYPE_LABEL[c.type]}</span>
           <span className={cn('tag', c.completion)}>{COMPLETION_LABEL[c.completion]}</span>
-          {c.visibility === 'private' ? <span className={cn('tag private', c.publishState)}>{PUBLISH_LABEL[c.publishState]}</span> : null}
+          {c.retention ? <span className="tag retained">{RETENTION_LABEL[c.retention]}</span>
+            : c.visibility === 'private' ? <span className={cn('tag private', c.publishState)}>{PUBLISH_LABEL[c.publishState]}</span> : null}
         </div>
         <dl className="spec">
           <dt>讲数</dt><dd className="num">{c.lessonCount}</dd>
@@ -122,7 +129,7 @@ function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
           <ProgressBar done={c.progress.done} total={c.progress.total} />
         </div>
         <div className="stack"><ContinueButton c={c} /></div>
-        <CourseActions c={c} onChange={onChange} />
+        {c.retention ? null : <CourseActions c={c} onChange={onChange} />}
       </div>
     </>
   );
@@ -180,7 +187,15 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
           </button>
           <Fold open={isOpen(ch.id)}>
             <div className="lessons">
-              {ch.lessons.map((l) => (
+              {ch.lessons.map((l) => l.unavailable ? (
+                <span className="entry unavailable" key={l.id} aria-disabled="true">
+                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
+                  {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
+                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  <span className="e-lead" />
+                  <span className="e-state gone-mark">已下架</span>
+                </span>
+              ) : (
                 <Link className="entry" key={l.id} href={lessonURL(c.id, l.id)}>
                   <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
                   {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}

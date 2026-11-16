@@ -51,15 +51,29 @@ func (s *Service) Subscribe(ctx context.Context, viewer auth.User, id int64) err
 
 // Unsubscribe takes a library course out of the viewer's courses. Learning
 // records stay, so subscribing again picks up where the viewer left off. A
-// private course cannot be unsubscribed, only deleted.
+// private course cannot be unsubscribed, only deleted. Unsubscribing from a
+// course that left the library gives up the retained lessons: the viewer
+// can no longer see it, nor subscribe again.
 func (s *Service) Unsubscribe(ctx context.Context, viewer auth.User, id int64) error {
-	sm, err := s.loadVisible(ctx, viewer, id, "")
+	sm, ret, err := s.open(ctx, viewer, id, "")
 	if err != nil {
 		return err
 	}
-	if sm.Visibility != Public {
+	if sm.Visibility != Public && ret == nil {
 		return ErrInvalidState
 	}
-	_, err = s.db.Exec(ctx, "UPDATE course_readers SET subscribed_at = NULL WHERE user_id = $1 AND course_id = $2", viewer.ID, id)
+	var frozen string
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "UPDATE course_readers SET subscribed_at = NULL WHERE user_id = $1 AND course_id = $2", viewer.ID, id); err != nil {
+			return err
+		}
+		if ret != nil {
+			frozen, err = releaseRetainer(ctx, tx, id, viewer.ID)
+		}
+		return err
+	})
+	if err == nil {
+		s.dropUnused(ctx, id, frozen)
+	}
 	return err
 }

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { BookmarkMinus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/progress';
-import { COMPLETION_LABEL, PUBLISH_LABEL, TYPE_LABEL, coverURL, type CourseSummary } from '@/lib/courses';
+import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, coverURL, type CourseSummary } from '@/lib/courses';
 import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
@@ -41,7 +41,8 @@ export function CourseCard({ course, href, onDelete, onRemove, showProgress }: {
         <Go className="block" tabIndex={-1}>
           <div className="book-cover">
             <Cover course={course} />
-            {isPrivate ? <span className={cn('book-badge', course.publishState)}>{PUBLISH_LABEL[course.publishState]}</span> : null}
+            {course.retention ? <span className="book-badge retained">{RETENTION_LABEL[course.retention]}</span>
+              : isPrivate ? <span className={cn('book-badge', course.publishState)}>{PUBLISH_LABEL[course.publishState]}</span> : null}
             {!isPrivate && course.subscribed && !showProgress ? <span className="book-badge subscribed">已订阅</span> : null}
             {course.completion !== 'finished' ? <span className={cn('book-flag', course.completion)}>{COMPLETION_LABEL[course.completion]}</span> : null}
           </div>
@@ -51,7 +52,7 @@ export function CourseCard({ course, href, onDelete, onRemove, showProgress }: {
             <Button variant="icon" size="icon" title="删除课程" aria-label={`删除 ${course.title}`} onClick={() => onDelete(course)}><Trash2 /></Button>
           </div>
         ) : null}
-        {onRemove && !isPrivate ? (
+        {onRemove && (!isPrivate || course.retention) ? (
           <div className="book-tools">
             <Button variant="icon" size="icon" title="取消订阅" aria-label={`取消订阅 ${course.title}`} onClick={() => onRemove(course)}><BookmarkMinus /></Button>
           </div>
