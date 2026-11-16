@@ -89,7 +89,7 @@ func (s *Service) lessonMarkdown(ctx context.Context, courseID int64, dir, file 
 // (ADR-0003): it keeps the text each modified lesson had, puts every
 // annotation on it back where its quote is found with confidence and marks
 // the others pending, and turns the annotations of deleted lessons into
-// excerpts. Each user with annotations it newly marked pending is told so,
+// excerpts. Every changed text is kept, an empty one too. Each user with annotations it newly marked pending is told so,
 // once (ticket #38).
 func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentDiff) error {
 	if len(d.removed) > 0 {
@@ -100,14 +100,10 @@ func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentD
 	}
 	var pending []int64
 	for _, ch := range d.modified {
-		var prev *int64
-		if ch.old != "" {
-			var id int64
-			if err := tx.QueryRow(ctx, "INSERT INTO previous_texts (course_id, lesson_key, markdown) VALUES ($1, $2, $3) RETURNING id",
-				courseID, ch.key, ch.old).Scan(&id); err != nil {
-				return err
-			}
-			prev = &id
+		var prev int64
+		if err := tx.QueryRow(ctx, "INSERT INTO previous_texts (course_id, lesson_key, markdown) VALUES ($1, $2, $3) RETURNING id",
+			courseID, ch.key, ch.old).Scan(&prev); err != nil {
+			return err
 		}
 		ids, err := relocate(ctx, tx, courseID, ch.key, anchor.MarkdownText(ch.new), prev)
 		if err != nil {
@@ -163,7 +159,7 @@ func notifyPending(ctx context.Context, tx pgx.Tx, courseID int64, pending []int
 // its new text. One that cannot be put back is pending against prev, the
 // text it was shown in; one already pending keeps the text it was made on.
 // It returns the annotations it newly marked pending.
-func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text anchor.Text, prev *int64) ([]int64, error) {
+func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text anchor.Text, prev int64) ([]int64, error) {
 	rows, err := tx.Query(ctx, `SELECT id, state, quote, prefix, suffix FROM annotations
 		WHERE course_id = $1 AND lesson_key = $2 AND state IN ($3, $4)`, courseID, key, AnnotationAttached, AnnotationPending)
 	if err != nil {

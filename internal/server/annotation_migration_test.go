@@ -209,3 +209,15 @@ func TestPreviousTextsAreReadOnlyByWhoeverMayReadTheLesson(t *testing.T) {
 		t.Fatalf("another user's private course stays hidden, got %d", r.status)
 	}
 }
+
+func TestAnEmptyTextThatChangedIsKeptToo(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, annotatedFiles(""))
+	l00 := lessonIDs(t, alice, id)["l00"]
+	alice.mustOK(updateCourse(t, alice, id, annotatedFiles(openingText)))
+
+	if pt := previousTexts(t, alice, id, l00); len(pt) != 1 || pt[0]["markdown"] != "" {
+		t.Fatalf("expected the empty old text to be kept, got %v", pt)
+	}
+}
