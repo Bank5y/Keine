@@ -111,24 +111,32 @@ type Changes struct {
 
 func (s *Service) changes(ctx context.Context, courseID int64, m Manifest) (*Changes, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT l.key, l.title FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id
+		SELECT l.key, l.title, `+upcoming+` FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id
 		WHERE l.course_id = $1 ORDER BY ch.position, l.position`, courseID)
 	if err != nil {
 		return nil, err
 	}
-	type lesson struct{ Key, Title string }
+	type lesson struct {
+		Key, Title string
+		Upcoming   bool
+	}
 	current, err := pgx.CollectRows(rows, pgx.RowToStructByPos[lesson])
 	if err != nil {
 		return nil, err
 	}
+	// Only lessons with content count: an upcoming lesson that gets content
+	// is added, one that loses it is removed.
 	incoming := map[string]bool{}
 	c := &Changes{Added: []string{}, Removed: []string{}}
 	have := map[string]bool{}
 	for _, l := range current {
-		have[l.Key] = true
+		have[l.Key] = !l.Upcoming
 	}
 	for _, ch := range m.Chapters {
 		for _, l := range ch.Lessons {
+			if l.Upcoming() {
+				continue
+			}
 			incoming[l.Key] = true
 			if have[l.Key] {
 				c.Kept++
@@ -138,7 +146,7 @@ func (s *Service) changes(ctx context.Context, courseID int64, m Manifest) (*Cha
 		}
 	}
 	for _, l := range current {
-		if !incoming[l.Key] {
+		if !l.Upcoming && !incoming[l.Key] {
 			c.Removed = append(c.Removed, l.Title)
 		}
 	}

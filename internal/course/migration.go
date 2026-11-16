@@ -45,18 +45,28 @@ func (d contentDiff) summary() notify.UpdatedPayload {
 
 // diffContent compares a course's lessons (before, with their files in
 // oldDir) with manifest m (files in newDir): a kept lesson is modified when
-// its text changed.
-func (s *Service) diffContent(ctx context.Context, courseID int64, before map[string]string, oldDir string, m Manifest, newDir string) (contentDiff, error) {
+// its text changed. Upcoming lessons have no content: one that gets content
+// is added, one whose content is taken away is removed, and coming or going
+// as upcoming changes nothing.
+func (s *Service) diffContent(ctx context.Context, courseID int64, before map[string]currentLesson, oldDir string, m Manifest, newDir string) (contentDiff, error) {
 	var d contentDiff
 	incoming := map[string]bool{}
 	for _, ch := range m.Chapters {
 		for _, l := range ch.Lessons {
 			incoming[l.Key] = true
-			oldFile, kept := before[l.Key]
-			if !kept {
+			prev, kept := before[l.Key]
+			hadContent := kept && !prev.upcoming
+			switch {
+			case l.Upcoming():
+				if hadContent {
+					d.removed = append(d.removed, l.Key)
+				}
+				continue
+			case !hadContent:
 				d.added++
 				continue
 			}
+			oldFile := prev.file
 			old, err := s.lessonMarkdown(ctx, courseID, oldDir, oldFile)
 			if err != nil {
 				return d, err
@@ -70,8 +80,8 @@ func (s *Service) diffContent(ctx context.Context, courseID int64, before map[st
 			}
 		}
 	}
-	for k := range before {
-		if !incoming[k] {
+	for k, prev := range before {
+		if !incoming[k] && !prev.upcoming {
 			d.removed = append(d.removed, k)
 		}
 	}

@@ -10,17 +10,23 @@ import (
 	"github.com/Bank5y/keine/internal/notify"
 )
 
-// lessonFiles maps each of a course's current lessons to its text file
-// ("" for a lesson without text).
-func lessonFiles(ctx context.Context, tx pgx.Tx, courseID int64) (map[string]string, error) {
-	rows, err := tx.Query(ctx, "SELECT key, coalesce(file, '') FROM lessons WHERE course_id = $1", courseID)
+// currentLesson is a course's lesson as an update finds it.
+type currentLesson struct {
+	file     string // its text file, "" for a lesson without text
+	upcoming bool
+}
+
+// lessonFiles maps each of a course's current lessons by key.
+func lessonFiles(ctx context.Context, tx pgx.Tx, courseID int64) (map[string]currentLesson, error) {
+	rows, err := tx.Query(ctx, "SELECT l.key, coalesce(l.file, ''), "+upcoming+" FROM lessons l WHERE l.course_id = $1", courseID)
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]string{}
-	var key, file string
-	_, err = pgx.ForEachRow(rows, []any{&key, &file}, func() error {
-		out[key] = file
+	out := map[string]currentLesson{}
+	var key string
+	var l currentLesson
+	_, err = pgx.ForEachRow(rows, []any{&key, &l.file, &l.upcoming}, func() error {
+		out[key] = l
 		return nil
 	})
 	return out, err

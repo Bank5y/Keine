@@ -106,3 +106,60 @@ func TestAnUpcomingLessonCannotBeRead(t *testing.T) {
 	expectError(t, alice.do("POST", fmt.Sprintf("/api/courses/%d/lessons/%d/visit", id, upcoming), nil), http.StatusConflict, "lesson_upcoming")
 	expectError(t, setProgress(alice, id, upcoming, map[string]any{"done": true}), http.StatusConflict, "lesson_upcoming")
 }
+
+// filledOutline is the outline once l02 has its text: l01 and l03 stay as
+// they were, and the plan chapter gains an upcoming lesson l04.
+func filledOutline() map[string]string {
+	m := outlineManifest()
+	chapters := m["chapters"].([]any)
+	chapters[0].(map[string]any)["lessons"].([]any)[1].(map[string]any)["file"] = "02.md"
+	chapters[1].(map[string]any)["lessons"] = []any{map[string]any{"id": "l04", "title": "04｜计划"}}
+	files := outlineFiles(m)
+	files["02.md"] = "# 02\n"
+	return files
+}
+
+func TestFillingAnUpcomingLessonCountsAsAddingIt(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	admin := a.admin()
+	id := uploadCourse(t, alice, outlineFiles(outlineManifest()))
+	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/publish", id), nil))
+	subscribe(t, bob, id)
+	before := lessonIDs(t, bob, id)
+
+	admin.mustOK(updateCourse(t, admin, id, filledOutline()))
+
+	after := lessonIDs(t, bob, id)
+	if after["l02"] != before["l02"] {
+		t.Fatalf("the filled lesson keeps its id: %v → %v", before, after)
+	}
+	bob.mustOK(lessonText(bob, id, after["l02"]))
+	if p := courseProgress(t, bob, id); p["total"] != float64(3) {
+		t.Fatalf("the filled lesson now counts: %v", p)
+	}
+	p := onlyNotification(t, bob, "course_updated")
+	if p["added"] != float64(1) || p["removed"] != float64(0) || p["modified"] != float64(0) {
+		t.Fatalf("filling l02 is one lesson added, the new upcoming l04 is none: %v", p)
+	}
+}
+
+func TestAnUpdateRequestFillingAnUpcomingLessonShowsItAsAdded(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	admin := a.admin()
+	id := uploadCourse(t, alice, outlineFiles(outlineManifest()))
+	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/publish", id), nil))
+
+	bob.mustOK(submitUpdate(t, bob, id, filledOutline()))
+
+	c := updateReviews(t, admin, id)[0]["changes"].(map[string]any)
+	if added := c["added"].([]any); len(added) != 1 || added[0] != "02｜三层意图识别" {
+		t.Fatalf("the review lists the filled lesson as added: %v", c)
+	}
+	if removed := c["removed"].([]any); len(removed) != 0 {
+		t.Fatalf("nothing is removed: %v", c)
+	}
+}

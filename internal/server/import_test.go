@@ -230,7 +230,7 @@ func TestManifestProblemsAreAllReported(t *testing.T) {
 
 	r := alice.upload("/api/courses", zipOf(t, map[string]string{"course.json": manifestJSON(m), "a.md": "a", "b.md": "b"}))
 
-	expectProblems(t, r, "title", "type", "completion", "chapters[0].lessons[1].id", "chapters[0].lessons[1].title", "chapters[1].id", "chapters[1].lessons")
+	expectProblems(t, r, "title", "type", "completion", "chapters[0].lessons[1].id", "chapters[0].lessons[1].title", "chapters[1].id")
 }
 
 func TestManifestThatIsNotJSONIsRejected(t *testing.T) {
@@ -275,22 +275,26 @@ func TestPathsMayNotEscapeThePackage(t *testing.T) {
 	expectProblems(t, alice.upload("/api/courses", zipOf(t, columnFiles(m))), "chapters[0].lessons[0].file")
 }
 
+// A lesson with any content must have the content its course type needs;
+// one with none at all is an upcoming lesson instead.
 func TestColumnLessonsNeedTextAndVideoLessonsNeedVideo(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
 	col := columnManifest()
-	delete(col["chapters"].([]any)[0].(map[string]any)["lessons"].([]any)[0].(map[string]any), "file")
+	opening := col["chapters"].([]any)[0].(map[string]any)["lessons"].([]any)[0].(map[string]any)
+	delete(opening, "file")
+	opening["video"] = map[string]any{"url": "https://x.test/a.mp4"}
 	vid := map[string]any{
 		"version": 1, "title": "视频课", "type": "video",
 		"chapters": []any{map[string]any{"id": "c1", "title": "一", "lessons": []any{
-			map[string]any{"id": "v1", "title": "无视频"},
+			map[string]any{"id": "v1", "title": "只有文字稿", "file": "v1.md"},
 			map[string]any{"id": "v2", "title": "两个来源", "video": map[string]any{"file": "a.mp4", "url": "https://x.test/a.mp4"}},
 			map[string]any{"id": "v3", "title": "坏链接", "video": map[string]any{"url": "javascript:alert(1)"}},
 		}}},
 	}
 
 	expectProblems(t, alice.upload("/api/courses", zipOf(t, columnFiles(col))), "chapters[0].lessons[0].file")
-	expectProblems(t, alice.upload("/api/courses", zipOf(t, map[string]string{"course.json": manifestJSON(vid), "a.mp4": "x"})),
+	expectProblems(t, alice.upload("/api/courses", zipOf(t, map[string]string{"course.json": manifestJSON(vid), "a.mp4": "x", "v1.md": "# v1"})),
 		"chapters[0].lessons[0].video", "chapters[0].lessons[1].video", "chapters[0].lessons[2].video.url")
 }
 
