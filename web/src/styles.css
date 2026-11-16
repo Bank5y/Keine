@@ -911,11 +911,24 @@ a.rn:hover .t { color: var(--brand); }
 /* ---------- update requests ---------- */
 .request-note { display: flex; justify-content: space-between; align-items: center; border-left: 3px solid var(--info); background: var(--info-soft); padding: 10px 12px; font-size: 13px; }
 .request-note b { color: var(--info); }
-.review-row .changes { display: inline-flex; gap: 8px; margin-left: 12px; font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--text-3); vertical-align: 1px; }
+.review-row .changes { display: inline-flex; flex-wrap: wrap; gap: 0 8px; white-space: nowrap; margin-left: 12px; font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--text-3); vertical-align: 1px; }
 .review-row .changes .add { color: var(--success); }
 .review-row .changes .del { color: var(--danger); }
 .review-row .stale { display: block; font-family: var(--sans); font-size: 12px; font-weight: 400; color: var(--warn); margin-top: 2px; }
 .review-row .name { white-space: normal; }
+@media (max-width: 760px) { .review-row { grid-template-columns: 1fr auto; } }
+.review-changes { grid-column: 1 / -1; margin: -4px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--border); list-style: none; font-size: 13px; color: var(--text-2); }
+.review-changes.rc-none { color: var(--text-3); font-size: 12px; }
+.review-changes ul { list-style: none; margin: 2px 0 6px; padding: 0 0 0 16px; }
+.review-changes .rc-head, .review-changes .rc-lesson { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 2px 0; }
+.review-changes .rc-head .rc-title { font-weight: 600; color: var(--text); }
+.review-changes .rc-title.gone { text-decoration: line-through; color: var(--text-3); }
+.review-changes .rc-was { font-size: 12px; color: var(--text-3); }
+.review-changes .chg { font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 2px; background: var(--surface-2); color: var(--text-2); }
+.review-changes .chg.added { background: var(--success-soft); color: var(--success); }
+.review-changes .chg.removed { background: var(--danger-soft); color: var(--danger); }
+.review-changes .chg.modified { background: var(--warn-soft); color: var(--warn); }
+.review-changes .chg.renamed, .review-changes .chg.moved { background: var(--info-soft); color: var(--info); }
 }
 
 

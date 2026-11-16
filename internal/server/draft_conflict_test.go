@@ -131,3 +131,32 @@ func TestOnlyTheConfirmedConflictsAreSkipped(t *testing.T) {
 	}
 	expectOutline(t, courseOutline(t, alice, id), before...)
 }
+
+func TestADraftCommittedAsAnUpdateRequestAlsoConfirmsItsConflicts(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "renameLesson", "lesson": "l00", "title": "前言"}))
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "renameLesson", "lesson": "l01", "title": "01｜输入"}))
+	admin.mustOK(addOp(admin, id, map[string]any{"type": "deleteLesson", "lesson": "l00"}))
+	admin.mustOK(commitDraft(admin, id))
+
+	r := alice.mustOK(commitDraft(alice, id)).json()
+
+	if r["outcome"] != "conflicts" || fmt.Sprint(conflicts(t, r)) != "[0:renameLesson:开篇词]" {
+		t.Fatalf("the request is not filed with unconfirmed conflicts: %v", r)
+	}
+	if n := len(myUpdateRequests(t, alice, id)); n != 0 {
+		t.Fatalf("no request was filed, got %d", n)
+	}
+
+	r = alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": []int{0}})).json()
+
+	if r["outcome"] != "requested" {
+		t.Fatalf("confirmed, the draft becomes an update request: %v", r)
+	}
+	if n := len(myUpdateRequests(t, alice, id)); n != 1 {
+		t.Fatalf("one request was filed, got %d", n)
+	}
+}

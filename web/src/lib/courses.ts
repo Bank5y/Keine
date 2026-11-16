@@ -57,9 +57,21 @@ export interface Review {
   course: CourseSummary;
   requester: { id: number; username: string };
   createdAt: string;
-  changes?: { added: string[]; removed: string[]; kept: number };
+  changes?: Changes;
   stale: boolean;
 }
+
+// What a course update changes (internal/course/changes.go). Counts are of
+// lessons with content; chapters lists every change, chapter by chapter in
+// the new order, then the removed chapters.
+export type ChangeKind = 'added' | 'removed' | 'modified' | 'renamed' | 'moved';
+export interface LessonChange { key: string; title: string; previousTitle?: string; fromChapter?: string; upcoming?: boolean; changes: ChangeKind[] }
+export interface ChapterChange { key: string; title: string; previousTitle?: string; changes: ChangeKind[]; lessons: LessonChange[] }
+export interface Changes {
+  added: number; removed: number; modified: number; renamed: number; moved: number; kept: number;
+  chapters: ChapterChange[];
+}
+export const CHANGE_LABEL: Record<ChangeKind, string> = { added: '新增', removed: '删除', modified: '修改', renamed: '改名', moved: '移动' };
 
 export const pad2 = (n: number) => String(n).padStart(2, '0');
 export const lessonURL = (courseId: number, lessonId: number) => `/courses/${courseId}/lessons/${lessonId}`;

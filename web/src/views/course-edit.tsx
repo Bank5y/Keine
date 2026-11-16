@@ -60,7 +60,7 @@ export function CourseEditView({ id }: { id: number }) {
       <PageHead
         kicker="编辑课程"
         title={c.title}
-        sub={<span className="draft-status" role="status">{changes ? <>编辑稿里有 <b>{changes}</b> 处修改, 提交后一次生效</> : '还没有修改。修改会先存进编辑稿, 换台设备也还在'}</span>}
+        sub={<span className="draft-status" role="status">{changes ? <>编辑稿里有 <b>{changes}</b> 处修改, {draft.mode === 'request' ? '提交后成为一份更新申请' : '提交后一次生效'}</> : '还没有修改。修改会先存进编辑稿, 换台设备也还在'}</span>}
         actions={<>
           <Button variant="ghost" disabled={!changes || busy} onClick={() => run(() => undoOp(id))}><Undo2 />撤销上一步</Button>
           <Button variant="ghost" disabled={!changes || busy} onClick={() => setDialog('discard')}>放弃编辑稿</Button>
@@ -69,8 +69,8 @@ export function CourseEditView({ id }: { id: number }) {
       />
       {draft.mode === 'request' ? (
         <div className="request-note edit-note" role="note">
-          <b>暂不支持提交为更新申请</b>
-          <span>这门课的修改需要管理员审核。编辑稿可以先保存, 提交功能稍后开放; 现在仍可在课程页「提交更新」上传课程包。</span>
+          <b>提交后成为更新申请</b>
+          <span>这门课的修改需要管理员审核, 通过后才生效。再次提交会替换你还在审核中的申请。</span>
         </div>
       ) : null}
       {conflicts.length ? (
@@ -187,14 +187,17 @@ export function CourseEditView({ id }: { id: number }) {
               toast.error('课程刚被更新, 有修改无法应用, 请确认');
               return;
             }
-            toast.success('课程已更新'); navigate(`/courses/${id}`);
+            toast.success(r.outcome === 'requested' ? '已提交更新申请, 等待管理员审核' : '课程已更新');
+            navigate(`/courses/${id}`);
           } catch (ex) { fail(ex); setDialog(''); }
         }}>
         {conflicts.length ? <>
           课程在你编辑期间被更新过, 下面 <b>{conflicts.length}</b> 处修改无法应用到最新版本, 提交时会跳过:
           <ConflictList conflicts={conflicts} />
-          其余 {changes - conflicts.length} 处修改会作为一次课程更新生效。
-        </> : <>{changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。</>}
+          其余 {changes - conflicts.length} 处修改{draft.mode === 'request' ? '会成为一份更新申请, 管理员批准后生效' : '会作为一次课程更新生效'}。
+        </> : draft.mode === 'request'
+          ? <>{changes} 处修改会成为一份更新申请, 管理员批准后生效; 你对这门课还在审核中的申请会被替换。</>
+          : <>{changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。</>}
       </Confirm>
       <Confirm open={dialog === 'package-ask'} title="用课程包替换整门课" confirm="继续上传" onClose={() => setDialog('')}
         onConfirm={() => setDialog('package')}>

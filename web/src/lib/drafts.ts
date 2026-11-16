@@ -34,7 +34,7 @@ export interface DraftCourse {
   chapters: DraftChapter[];
 }
 // mode: how committing takes effect — at once ("direct"), or as an update
-// request ("request", not supported yet).
+// request for an admin to review ("request").
 // conflicts: operations that no longer apply to the course's latest version
 // (someone else's update came first); the course is shown without them.
 export interface Draft { ops: unknown[]; mode: 'direct' | 'request'; course: DraftCourse; conflicts: Conflict[] }
@@ -47,7 +47,10 @@ export type RecordedOp = Op & { target?: string };
 export interface Conflict { index: number; op: RecordedOp; message: string }
 // Committing either updates the course, or — when some operations conflict
 // and were not confirmed to be skipped — changes nothing and lists them.
-export type CommitResult = { outcome: 'updated' } | { outcome: 'conflicts'; conflicts: Conflict[] };
+export type CommitResult =
+  | { outcome: 'updated' }
+  | { outcome: 'requested'; requestId: number }
+  | { outcome: 'conflicts'; conflicts: Conflict[] };
 
 const base = (id: number) => `/api/courses/${id}/draft`;
 export const getDraft = (id: number) => api<Draft>('GET', base(id));

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Empty, ErrorBox } from '@/components/common';
 import { RejectDialog } from '@/components/reject-dialog';
 import { api, ApiError } from '@/lib/api';
-import { TYPE_LABEL, type Review } from '@/lib/courses';
+import { CHANGE_LABEL, TYPE_LABEL, type ChangeKind, type Changes, type Review } from '@/lib/courses';
 import { Link } from '@/lib/router';
 
 const KIND_LABEL: Record<Review['kind'], string> = { publish: '公开申请', update: '更新申请' };
@@ -42,13 +42,7 @@ export function AdminReviews() {
             <span className="name">
               <span className="kind">{KIND_LABEL[r.kind]}</span>
               <Link href={`/courses/${r.course.id}`} className="hover:text-brand">{r.course.title}</Link>
-              {r.changes ? (
-                <span className="changes" title={[...r.changes.added.map((t) => '+ ' + t), ...r.changes.removed.map((t) => '- ' + t)].join('\n')}>
-                  <span className="add">+{r.changes.added.length}</span>
-                  <span className="del">-{r.changes.removed.length}</span>
-                  <span>保留 {r.changes.kept}</span>
-                </span>
-              ) : null}
+              {r.changes ? <ChangeCounts c={r.changes} /> : null}
               {r.stale ? <span className="stale">课程已更新, 请基于新内容重新审核</span> : null}
             </span>
             <span className="meta">{TYPE_LABEL[r.course.type]} · {r.course.lessonCount} 讲</span>
@@ -57,11 +51,60 @@ export function AdminReviews() {
               <Button size="sm" variant="default" onClick={() => decide(r, 'approve')}>批准</Button>
               <Button size="sm" onClick={() => setRejecting(r)}>驳回</Button>
             </span>
+            {r.changes ? <ChangeList c={r.changes} /> : null}
           </div>
         ))}
       </div>
       <RejectDialog open={!!rejecting} title={rejecting ? `驳回「${rejecting.course.title}」` : ''} onClose={() => setRejecting(null)}
         onReject={(reason) => decide(rejecting!, 'reject', reason)} />
     </>
+  );
+}
+
+function ChangeCounts({ c }: { c: Changes }) {
+  return (
+    <span className="changes">
+      <span className="add">+{c.added}</span>
+      <span className="del">-{c.removed}</span>
+      {c.modified ? <span>修改 {c.modified}</span> : null}
+      {c.renamed ? <span>改名 {c.renamed}</span> : null}
+      {c.moved ? <span>移动 {c.moved}</span> : null}
+      <span>保留 {c.kept}</span>
+    </span>
+  );
+}
+
+function Tags({ kinds }: { kinds: ChangeKind[] }) {
+  return <>{kinds.map((k) => <span key={k} className={'chg ' + k}>{CHANGE_LABEL[k]}</span>)}</>;
+}
+
+// ChangeList shows every change of an update request, chapter by chapter.
+function ChangeList({ c }: { c: Changes }) {
+  if (!c.chapters.length) return <div className="review-changes rc-none">章与讲没有变化, 只改了课程信息。</div>;
+  return (
+    <ul className="review-changes" aria-label="变化">
+      {c.chapters.map((ch) => (
+        <li key={ch.key} className="rc-chapter">
+          <div className="rc-head">
+            <span className="rc-title">{ch.title}</span>
+            <Tags kinds={ch.changes} />
+            {ch.previousTitle ? <span className="rc-was">原名「{ch.previousTitle}」</span> : null}
+          </div>
+          {ch.lessons.length ? (
+            <ul>
+              {ch.lessons.map((l) => (
+                <li key={l.key} className="rc-lesson">
+                  <span className={l.changes.includes('removed') ? 'rc-title gone' : 'rc-title'}>{l.title}</span>
+                  {l.upcoming ? <span className="rc-was">待更新</span> : null}
+                  <Tags kinds={l.changes} />
+                  {l.previousTitle ? <span className="rc-was">原名「{l.previousTitle}」</span> : null}
+                  {l.fromChapter ? <span className="rc-was">从「{l.fromChapter}」移来</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
