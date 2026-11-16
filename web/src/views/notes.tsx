@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NotebookPen, Pencil, Search, Trash2 } from 'lucide-react';
+import { Download, NotebookPen, Pencil, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { Facet } from '@/components/facet';
@@ -50,6 +50,7 @@ export function NotesView() {
   const total = book?.courses.reduce((n, c) => n + c.count, 0) ?? 0;
   const filtered = !!(style || color || noted || q);
   const nothingYet = book && !book.courses.length;
+  const picked = book?.courses.find((c) => c.id === course);
 
   const saved = (id: number, note: string | null) =>
     setBook((b) => b && { ...b, annotations: b.annotations.map((a) => (a.id === id ? { ...a, note } : a)) });
@@ -98,9 +99,16 @@ export function NotesView() {
             </div>
             <div className="result-bar">
               <span className="count"><b>{book.annotations.length}</b>条标注</span>
-              <span className="notes-sort" role="group" aria-label="排序">
-                <button type="button" className={cn('fi', sort === 'time' && 'active')} aria-pressed={sort === 'time'} onClick={() => setSort('time')}>按时间</button>
-                <button type="button" className={cn('fi', sort === 'text' && 'active')} aria-pressed={sort === 'text'} onClick={() => setSort('text')}>按原文顺序</button>
+              <span className="notes-tools">
+                <span className="notes-sort" role="group" aria-label="排序">
+                  <button type="button" className={cn('fi', sort === 'time' && 'active')} aria-pressed={sort === 'time'} onClick={() => setSort('time')}>按时间</button>
+                  <button type="button" className={cn('fi', sort === 'text' && 'active')} aria-pressed={sort === 'text'} onClick={() => setSort('text')}>按原文顺序</button>
+                </span>
+                {/* the whole course, whatever the filter: one .md file, lesson by lesson */}
+                {picked && picked.count ? (
+                  <a className="ann-btn notes-export" href={`/api/my/annotations/export?course=${picked.id}`} download
+                    title={`把《${picked.title}》的全部标注导出为 Markdown`}><Download aria-hidden="true" />导出 Markdown</a>
+                ) : null}
               </span>
             </div>
             {!book.annotations.length ? (

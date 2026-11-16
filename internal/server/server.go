@@ -105,6 +105,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/courses/{id}/subscribe", s.signedIn(s.courseAction(s.unsubscribe)))
 	s.mux.HandleFunc("GET /api/my/courses", s.signedIn(s.myCourses))
 	s.mux.HandleFunc("GET /api/my/annotations", s.signedIn(s.myAnnotations))
+	s.mux.HandleFunc("GET /api/my/annotations/export", s.signedIn(s.exportNotes))
 	s.mux.HandleFunc("GET /api/notifications", s.signedIn(s.listNotifications))
 	s.mux.HandleFunc("GET /api/notifications/unread-count", s.signedIn(s.unreadNotifications))
 	s.mux.HandleFunc("POST /api/notifications/read-all", s.signedIn(s.readAllNotifications))

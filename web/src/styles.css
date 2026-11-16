@@ -604,6 +604,8 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .swatch-fi { display: inline-flex; align-items: center; gap: 6px; }
 .swatch-fi .ann-swatch { width: 12px; height: 12px; margin: 0; }
 .notes-sort { display: inline-flex; gap: 18px; }
+.notes-tools { display: inline-flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.notes-export { text-decoration: none; }
 .note-list { list-style: none; margin: 0; padding: 0; border-top: 1.5px solid var(--text); }
 .nb-card { padding: 18px 0 14px; border-bottom: 1px solid var(--line); }
 .nb-meta { display: flex; align-items: baseline; gap: 12px; color: var(--text-3); font-size: 12px; }

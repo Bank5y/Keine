@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"mime"
 	"net/http"
 	"strconv"
 
@@ -147,4 +148,19 @@ func (s *Server) myAnnotations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, nb)
+}
+
+func (s *Server) exportNotes(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.URL.Query().Get("course"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "bad_request", "请选择要导出的课程")
+		return
+	}
+	ex, err := s.courses.ExportNotes(r.Context(), currentUser(r), id)
+	if !writeAnnotationError(w, r, err) {
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": ex.Title + ".md"}))
+	_, _ = w.Write([]byte(ex.Markdown))
 }
