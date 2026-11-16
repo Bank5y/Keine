@@ -166,7 +166,8 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 			return err
 		}
 		if r.kind == reviewPublish {
-			if err := publish(ctx, tx, r.courseID); err != nil {
+			drop.courseID = r.courseID
+			if drop.dir, err = publish(ctx, tx, r.courseID); err != nil {
 				return err
 			}
 			return notifyCourse(ctx, tx, r.requesterID, notify.PublishApproved, r.courseID, "")
@@ -193,7 +194,7 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 		return err
 	})
 	if err == nil && drop.courseID != 0 {
-		s.dropFiles(ctx, drop.courseID, drop.dir)
+		s.dropUnused(ctx, drop.courseID, drop.dir)
 	}
 	return err
 }
@@ -237,7 +238,8 @@ func (s *Service) Publish(ctx context.Context, admin auth.User, id int64) error 
 	if sm.Visibility != Private {
 		return ErrInvalidState
 	}
-	return s.tx(ctx, func(tx pgx.Tx) error {
+	var frozen string
+	err = s.tx(ctx, func(tx pgx.Tx) error {
 		var requester int64
 		err := tx.QueryRow(ctx, `
 			UPDATE review_requests SET state = 'approved', decided_at = now(), decided_by = $2
@@ -245,7 +247,7 @@ func (s *Service) Publish(ctx context.Context, admin auth.User, id int64) error 
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if err := publish(ctx, tx, id); err != nil {
+		if frozen, err = publish(ctx, tx, id); err != nil {
 			return err
 		}
 		if requester == 0 {
@@ -253,11 +255,17 @@ func (s *Service) Publish(ctx context.Context, admin auth.User, id int64) error 
 		}
 		return notifyCourse(ctx, tx, requester, notify.PublishApproved, id, "")
 	})
+	if err == nil {
+		s.dropUnused(ctx, id, frozen)
+	}
+	return err
 }
 
 // Unpublish takes a course out of the library; it becomes the uploader's
-// private course again. Pending update requests are turned down, since the
-// course is no longer anyone's but the uploader's to change.
+// private course again. Its files and structure are frozen for subscribers,
+// who keep the lessons they finished as retained lessons. Pending update
+// requests are turned down, since the course is no longer anyone's but the
+// uploader's to change.
 func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) error {
 	sm, err := s.load(ctx, admin, id, "")
 	if err != nil {
@@ -269,6 +277,9 @@ func (s *Service) Unpublish(ctx context.Context, admin auth.User, id int64) erro
 	var dirs []string
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "UPDATE courses SET visibility = 'private', publish_state = 'unpublished', updated_at = now() WHERE id = $1", id); err != nil {
+			return err
+		}
+		if _, err := freeze(ctx, tx, id, RetentionUnpublished); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `
@@ -339,9 +350,14 @@ func notifyCourse(ctx context.Context, tx pgx.Tx, userID int64, kind notify.Kind
 	return notify.Send(ctx, tx, userID, kind, p)
 }
 
-func publish(ctx context.Context, tx pgx.Tx, courseID int64) error {
-	_, err := tx.Exec(ctx, "UPDATE courses SET visibility = 'public', publish_state = 'unpublished', updated_at = now() WHERE id = $1", courseID)
-	return err
+// publish puts a course into the library and ends its freeze, if any:
+// subscribers read it as it is again. It returns the folder the freeze held
+// ("" if none), for dropUnused once the transaction commits.
+func publish(ctx context.Context, tx pgx.Tx, courseID int64) (string, error) {
+	if _, err := tx.Exec(ctx, "UPDATE courses SET visibility = 'public', publish_state = 'unpublished', updated_at = now() WHERE id = $1", courseID); err != nil {
+		return "", err
+	}
+	return thaw(ctx, tx, courseID)
 }
 
 func setPublishState(ctx context.Context, tx pgx.Tx, courseID int64, state string) error {

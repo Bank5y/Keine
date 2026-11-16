@@ -50,7 +50,7 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
 		return err
 	}
-	s.dropFiles(ctx, sm.ID, sm.FilesDir)
+	s.dropUnused(ctx, sm.ID, sm.FilesDir) // a freeze may still hold it
 	return nil
 }
 

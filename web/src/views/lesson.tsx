@@ -25,9 +25,9 @@ import { useCourse } from '@/views/course';
 const opensWithTitle = (md: string) => /^\s*#\s/.test(md);
 const withoutTitle = (md: string) => md.replace(/^\s*#\s[^\n]*\n?/, '');
 
-// neighbours finds the lessons before and after one, across chapters.
+// neighbours finds the readable lessons before and after one, across chapters.
 function neighbours(c: CourseDetail | null, lessonId: number) {
-  const flat: LessonItem[] = c ? c.chapters.flatMap((ch) => ch.lessons) : [];
+  const flat: LessonItem[] = c ? c.chapters.flatMap((ch) => ch.lessons).filter((l) => !l.unavailable) : [];
   const i = flat.findIndex((l) => l.id === lessonId);
   return { prev: i > 0 ? flat[i - 1] : null, next: i >= 0 && i < flat.length - 1 ? flat[i + 1] : null };
 }
@@ -234,6 +234,15 @@ function CourseToc({ c, current, docked }: { c: CourseDetail; current: number; d
             <Fold open={open}>
               {ch.lessons.map((l) => {
                 n++;
+                if (l.unavailable) {
+                  return (
+                    <span key={l.id} className="side-l unavailable" aria-disabled="true">
+                      <span className="no">{pad2(n)}</span>
+                      <span className="t">{l.title}</span>
+                      <span className="gone-mark">已下架</span>
+                    </span>
+                  );
+                }
                 return (
                   <Link key={l.id} href={lessonURL(c.id, l.id)} className={cn('side-l', l.id === current && 'current')} aria-current={l.id === current ? 'page' : undefined}>
                     <span className="no">{pad2(n)}</span>

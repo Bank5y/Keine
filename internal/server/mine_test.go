@@ -101,13 +101,15 @@ func TestMyCoursesFilterByStudyStateTypeAndCompletion(t *testing.T) {
 	}
 }
 
-func TestAnUnpublishedCourseLeavesOtherLearnersCourses(t *testing.T) {
+// A subscriber who finished nothing retains nothing (see retained_test.go for
+// those who did).
+func TestAnUnpublishedCourseLeavesSubscribersWhoRetainNothing(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
 	admin := a.admin()
 	id := publishedCourse(t, a, alice)
-	bob.mustOK(setProgress(bob, id, lessonIDs(t, bob, id)["l01"], map[string]any{"done": true}))
+	bob.mustOK(setProgress(bob, id, lessonIDs(t, bob, id)["l01"], map[string]any{"position": 30}))
 	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
 
 	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/unpublish", id), nil))
@@ -122,7 +124,7 @@ func TestAnUnpublishedCourseLeavesOtherLearnersCourses(t *testing.T) {
 	alice.mustOK(requestPublish(alice, id))
 	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/reviews/%d/approve", reviewID(t, admin, id)), nil))
 
-	if !contains(myCourseIDs(t, bob), id) || lessonStates(t, bob, id)["l01"] != "done" {
+	if !contains(myCourseIDs(t, bob), id) || courseProgress(t, bob, id)["lastLessonId"] == nil {
 		t.Fatal("published again, the course returns with bob's records")
 	}
 }

@@ -17,9 +17,16 @@ export interface CourseSummary {
   doneCount: number;
   // subscribed: the library course is in the viewer's my courses
   subscribed: boolean;
+  // retention: the course left the library; the viewer, a subscriber, reads
+  // only their retained lessons (retainedCount of them)
+  retention?: Retention;
+  retainedCount?: number;
   createdAt: string;
   updatedAt: string;
 }
+
+export type Retention = 'unpublished';
+export const RETENTION_LABEL: Record<Retention, string> = { unpublished: '已下架' };
 
 export const TYPE_LABEL: Record<CourseType, string> = { column: '专栏', video: '视频课', paper: '论文' };
 export const COMPLETION_LABEL: Record<Completion, string> = { finished: '已完结', ongoing: '连载中', incomplete: '缺失' };
@@ -28,7 +35,7 @@ export const PUBLISH_LABEL: Record<PublishState, string> = { unpublished: '未�
 export const coverURL = (id: number) => `/api/courses/${id}/cover`;
 
 export type LessonState = 'unstarted' | 'done';
-export interface LessonItem { id: number; key: string; title: string; video: '' | 'file' | 'url'; duration: string; hasText: boolean; state: LessonState }
+export interface LessonItem { id: number; key: string; title: string; video: '' | 'file' | 'url'; duration: string; hasText: boolean; state: LessonState; unavailable?: boolean }
 export interface ChapterItem { id: number; key: string; title: string; done: number; lessons: LessonItem[] }
 export interface CourseDetail extends CourseSummary {
   intro: string;

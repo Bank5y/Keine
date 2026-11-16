@@ -23,11 +23,19 @@ var ErrBadProgress = errors.New("invalid progress")
 
 // lessonKey returns the stable key of a lesson of a course the viewer may see.
 func (s *Service) lessonKey(ctx context.Context, viewer auth.User, courseID, lessonID int64) (string, error) {
-	if _, err := s.loadVisible(ctx, viewer, courseID, ""); err != nil {
+	_, ret, err := s.open(ctx, viewer, courseID, "")
+	if err != nil {
 		return "", err
 	}
+	if ret != nil {
+		l, _, ok := ret.retainedLesson(lessonID)
+		if !ok {
+			return "", ErrLessonNotFound
+		}
+		return l.Key, nil
+	}
 	var key string
-	err := s.db.QueryRow(ctx, "SELECT key FROM lessons WHERE id = $1 AND course_id = $2", lessonID, courseID).Scan(&key)
+	err = s.db.QueryRow(ctx, "SELECT key FROM lessons WHERE id = $1 AND course_id = $2", lessonID, courseID).Scan(&key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrLessonNotFound
 	}

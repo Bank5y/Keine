@@ -78,11 +78,12 @@ func (a AnnotationStyle) color() (*string, error) {
 
 // annotatable loads the text of a lesson the viewer may annotate.
 func (s *Service) annotatable(ctx context.Context, viewer auth.User, courseID, lessonID int64) (LessonText, anchor.Text, error) {
-	sm, err := s.loadVisible(ctx, viewer, courseID, "")
+	// a subscriber keeps annotating the lessons he retains of a frozen course
+	sm, ret, err := s.open(ctx, viewer, courseID, "")
 	if err != nil {
 		return LessonText{}, anchor.Text{}, err
 	}
-	l, err := s.lesson(ctx, viewer, sm, lessonID)
+	l, err := s.lesson(ctx, viewer, sm, ret, lessonID)
 	if err != nil {
 		return LessonText{}, anchor.Text{}, err
 	}
