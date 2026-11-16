@@ -1009,6 +1009,16 @@ a.rn:hover .t { color: var(--brand); }
 .ed-add svg { width: 14px; height: 14px; }
 .ed-hint { color: var(--text-3); font-size: 12px; margin: 0; }
 .tag.new { background: var(--success-soft); color: var(--success); padding: 0 6px; font-size: 11px; flex-shrink: 0; }
+/* dragging (desktop): a grip on each row, a brand line where the drop lands */
+.ed-grip { width: 14px; height: 14px; color: var(--text-3); flex-shrink: 0; margin-left: -20px; cursor: grab; opacity: 0; transition: opacity .15s; }
+.ed-row[draggable=true] { cursor: grab; }
+.ed-row[draggable=true]:hover .ed-grip { opacity: 1; }
+.ed-chapter, .ed-l, .ed-empty { position: relative; }
+.ed-chapter.dragging, .ed-l.dragging { opacity: .4; }
+.drop-before::before, .drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: var(--brand); border-radius: 1px; pointer-events: none; }
+.ed-l.drop-before::before { top: -1px; } .ed-l.drop-after::after { bottom: -1px; }
+.ed-chapter.drop-before::before { top: -10px; } .ed-chapter.drop-after::after { bottom: -10px; }
+.ed-empty.drop-into { color: var(--brand); box-shadow: inset 0 0 0 1.5px var(--brand); border-radius: 4px; padding-left: 10px; }
 @media (max-width: 560px) {
   .ed-lessons { padding-left: 12px; margin-left: 0; }
   .ed-tools { width: 100%; justify-content: flex-end; }
