@@ -4,7 +4,10 @@ package server
 import (
 	"context"
 	"io/fs"
+	"log/slog"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -26,6 +29,10 @@ type Options struct {
 	Web fs.FS
 	// MaxUploadBytes caps the size of a course package (default 4 GiB).
 	MaxUploadBytes int64
+	// Now tells the time drafts expire by (default: the system clock).
+	Now func() time.Time
+	// SweepInterval is how often expiring drafts are swept (default 1 hour).
+	SweepInterval time.Duration
 }
 
 type Server struct {
@@ -38,6 +45,9 @@ type Server struct {
 	generator course.Generator
 	files     storage.Store
 	mux       *http.ServeMux
+	// stopSweeping ends the periodic draft sweep
+	stopSweeping context.CancelFunc
+	sweeping     sync.WaitGroup
 }
 
 // New connects to the database, migrates it and makes sure the deployment's
@@ -47,7 +57,10 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage), notifications: notify.NewService(pool), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage).WithClock(opts.Now), notifications: notify.NewService(pool), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -55,10 +68,48 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		}
 	}
 	s.routes()
+	s.sweepPeriodically()
 	return s, nil
 }
 
-func (s *Server) Close() { s.db.Close() }
+func (s *Server) Close() {
+	s.stopSweeping()
+	s.sweeping.Wait()
+	s.db.Close()
+}
+
+// sweepPeriodically runs SweepDrafts every SweepInterval until Close.
+func (s *Server) sweepPeriodically() {
+	every := s.opts.SweepInterval
+	if every <= 0 {
+		every = time.Hour
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.stopSweeping = cancel
+	s.sweeping.Add(1)
+	go func() {
+		defer s.sweeping.Done()
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := s.SweepDrafts(ctx); err != nil && ctx.Err() == nil {
+					slog.Warn("draft sweep failed", "err", err)
+				}
+			}
+		}
+	}()
+}
+
+// SweepDrafts reminds the owners of drafts about to expire and deletes
+// expired drafts with their files, as of Options.Now. It runs periodically
+// on its own; tests call it to sweep at a time of their choosing.
+func (s *Server) SweepDrafts(ctx context.Context) error {
+	return s.courses.SweepDrafts(ctx)
+}
 
 func (s *Server) Handler() http.Handler { return s.mux }
 

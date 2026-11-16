@@ -34,10 +34,18 @@ const (
 type Service struct {
 	db    *pgxpool.Pool
 	files storage.Store
+	// now is the service's time; drafts expire by it.
+	now func() time.Time
 }
 
 func NewService(db *pgxpool.Pool, files storage.Store) *Service {
-	return &Service{db: db, files: files}
+	return &Service{db: db, files: files, now: time.Now}
+}
+
+// WithClock makes the service tell time by now instead of the system clock.
+func (s *Service) WithClock(now func() time.Time) *Service {
+	s.now = now
+	return s
 }
 
 // coursePrefix holds every file of a course, across versions.

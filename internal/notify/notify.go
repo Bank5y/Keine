@@ -52,6 +52,9 @@ const (
 	// UpdateRequested tells every admin someone submitted an update request;
 	// it is marked read once the request is decided or withdrawn.
 	UpdateRequested Kind = "update_requested"
+	// DraftExpiring tells a user their course draft has gone untouched so
+	// long that it is deleted in a few days unless they work on it.
+	DraftExpiring Kind = "draft_expiring"
 )
 
 // sticky kinds stay in the inbox after they are read, until dismissed.
@@ -90,6 +93,12 @@ type UpdatedPayload struct {
 type DeletedPayload struct {
 	CoursePayload
 	RetainedCount int `json:"retainedCount"`
+}
+
+// ExpiringPayload is a course draft and when it will be deleted.
+type ExpiringPayload struct {
+	CoursePayload
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // CoursePayload names the course a notification is about, as it was then.

@@ -258,9 +258,9 @@ func (s *Service) AddDraftOp(ctx context.Context, viewer auth.User, id int64, op
 			return err
 		}
 		_, err = tx.Exec(ctx, `
-			INSERT INTO course_drafts (course_id, user_id, base_dir, ops) VALUES ($1, $2, $3, $4)
-			ON CONFLICT (course_id, user_id) DO UPDATE SET ops = course_drafts.ops || EXCLUDED.ops, updated_at = now()`,
-			id, viewer.ID, sm.FilesDir, raw)
+			INSERT INTO course_drafts (course_id, user_id, base_dir, ops, updated_at) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (course_id, user_id) DO UPDATE SET ops = course_drafts.ops || EXCLUDED.ops, updated_at = EXCLUDED.updated_at`,
+			id, viewer.ID, sm.FilesDir, raw, s.now())
 		return err
 	})
 	return d, err
@@ -289,7 +289,7 @@ func (s *Service) UndoDraftOp(ctx context.Context, viewer auth.User, id int64) (
 		if len(ops) == 0 {
 			_, err = tx.Exec(ctx, "DELETE FROM course_drafts WHERE course_id = $1 AND user_id = $2", id, viewer.ID)
 		} else {
-			_, err = tx.Exec(ctx, "UPDATE course_drafts SET ops = ops - -1, updated_at = now() WHERE course_id = $1 AND user_id = $2", id, viewer.ID)
+			_, err = tx.Exec(ctx, "UPDATE course_drafts SET ops = ops - -1, updated_at = $3 WHERE course_id = $1 AND user_id = $2", id, viewer.ID, s.now())
 		}
 		if err != nil {
 			return err
