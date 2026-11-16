@@ -62,7 +62,14 @@ func (s *Server) commitDraft(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	res, err := s.courses.CommitDraft(r.Context(), currentUser(r), id)
+	// skip: the indexes of the conflicts the user confirmed to skip
+	var body struct {
+		Skip []int `json:"skip"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	res, err := s.courses.CommitDraft(r.Context(), currentUser(r), id, body.Skip)
 	if writeDraftError(w, r, err) {
 		writeJSON(w, http.StatusOK, res)
 	}

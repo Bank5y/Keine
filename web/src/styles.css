@@ -978,6 +978,13 @@ a.rn:hover .t { color: var(--brand); }
 /* ---------- course editor ---------- */
 .course-edit .draft-status b { font-family: var(--mono); color: var(--brand); }
 .course-edit .edit-note { flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 24px; }
+.course-edit .conflict-note { border-left-color: var(--warn); background: var(--warn-soft); }
+.course-edit .conflict-note b { color: var(--warn); }
+.conflict-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; width: 100%; }
+.conflict { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13px; min-width: 0; }
+.conflict .c-step { font-family: var(--mono); font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+.conflict .c-what { color: var(--text); overflow-wrap: anywhere; }
+.conflict .c-why { color: var(--warn); overflow-wrap: anywhere; }
 .ed { min-width: 0; }
 .ed-chapter { margin-bottom: 18px; }
 .ed-row { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }

@@ -38,6 +38,9 @@ type Draft struct {
 	Ops    []Op        `json:"ops"`
 	Mode   string      `json:"mode"`
 	Course DraftCourse `json:"course"`
+	// Conflicts are the operations that no longer apply to the course's
+	// latest version; Course is made without them.
+	Conflicts []Conflict `json:"conflicts"`
 }
 
 type DraftCourse struct {
@@ -69,9 +72,12 @@ type DraftLesson struct {
 }
 
 // CommitResult is what committing a draft did. Outcome is "updated": the
-// course now follows the draft.
+// course now follows the draft; or "conflicts": some operations no longer
+// apply to the course's latest version and were not confirmed to be
+// skipped, so nothing changed and Conflicts lists them all.
 type CommitResult struct {
-	Outcome string `json:"outcome"`
+	Outcome   string     `json:"outcome"`
+	Conflicts []Conflict `json:"conflicts,omitempty"`
 }
 
 // loadToEdit loads a course the viewer may change through the editor and
@@ -163,11 +169,15 @@ func (s *Service) draftView(ctx context.Context, q querier, id int64, mode strin
 	if err != nil {
 		return Draft{}, err
 	}
-	m, err := applyOps(base, ops)
-	if err != nil {
-		return Draft{}, err
+	m, conflicts := replayOps(base, ops)
+	return newDraft(base, m, ops, mode, conflicts), nil
+}
+
+func newDraft(base, m Manifest, ops []Op, mode string, conflicts []Conflict) Draft {
+	if conflicts == nil {
+		conflicts = []Conflict{}
 	}
-	return Draft{Ops: ops, Mode: mode, Course: viewDraftCourse(base, m, ops)}, nil
+	return Draft{Ops: ops, Mode: mode, Course: viewDraftCourse(base, m, ops), Conflicts: conflicts}
 }
 
 func viewDraftCourse(base, m Manifest, ops []Op) DraftCourse {
@@ -231,10 +241,19 @@ func (s *Service) AddDraftOp(ctx context.Context, viewer auth.User, id int64, op
 		if err != nil {
 			return err
 		}
-		ops = append(ops, op)
-		if d, err = s.draftView(ctx, tx, id, mode, ops); err != nil {
+		base, _, err := currentManifest(ctx, tx, id)
+		if err != nil {
 			return err
 		}
+		// The new operation must apply to the course as the draft has it;
+		// earlier ones that no longer do stay listed as conflicts.
+		m, conflicts := replayOps(base, ops)
+		op.Target = m.target(op)
+		if err := m.apply(op); err != nil {
+			return err
+		}
+		ops = append(ops, op)
+		d = newDraft(base, m, ops, mode, conflicts)
 		raw, err := json.Marshal([]Op{op})
 		if err != nil {
 			return err
@@ -312,7 +331,12 @@ func (s *Service) DiscardDraft(ctx context.Context, viewer auth.User, id int64) 
 // keys, annotations are carried over and subscribers are told. The new
 // version's files are copied from the current one (ADR-0005); nothing is
 // written anew. The draft is gone afterwards.
-func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (CommitResult, error) {
+//
+// Operations that no longer apply to the latest version are conflicts
+// (ADR-0006): unless skip names every one of them by index, which is the
+// user confirming they be skipped, nothing changes and the result lists
+// them.
+func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64, skip []int) (CommitResult, error) {
 	sm, mode, err := s.loadToEdit(ctx, viewer, id)
 	if err != nil {
 		return CommitResult{}, err
@@ -323,6 +347,7 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 	next := newFilesDir()
 	var prevDir string
 	var row draftRow
+	var conflicts []Conflict
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		// Lock the course first, so nothing else switches its content while
 		// the draft is applied to it.
@@ -340,9 +365,10 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 		if err != nil {
 			return err
 		}
-		m, err := applyOps(cur, row.Ops)
-		if err != nil {
-			return err
+		m, all := replayOps(cur, row.Ops)
+		if len(unconfirmed(all, skip)) > 0 {
+			conflicts = all
+			return nil // the course and the draft stay as they are
 		}
 		from := draftFiles{courseID: id, dir: prevDir, draftID: row.ID, uploads: row.uploads()}
 		if err := s.copyFiles(ctx, from, next, m); err != nil {
@@ -357,6 +383,9 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 	if err != nil {
 		s.dropFiles(ctx, id, next)
 		return CommitResult{}, err
+	}
+	if conflicts != nil {
+		return CommitResult{Outcome: "conflicts", Conflicts: conflicts}, nil
 	}
 	s.dropUnused(ctx, id, prevDir) // a freeze may still hold it
 	s.dropDraftFiles(ctx, id, row.ID, "")

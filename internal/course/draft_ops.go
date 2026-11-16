@@ -3,6 +3,7 @@ package course
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -54,6 +55,21 @@ type Op struct {
 	// Content is the lesson content of addLesson, replaceLesson and
 	// uploadLessonContent, from an upload of the draft.
 	Content *LessonContent `json:"content,omitempty"`
+	// Target is the title, when the operation was recorded, of the chapter
+	// or lesson it names (the chapter for addLesson/addUpcomingLesson), so
+	// a conflict can say what it was about once that is gone. Set by the
+	// system.
+	Target string `json:"target,omitempty"`
+}
+
+// Conflict is an operation of a draft that no longer applies to the
+// course's latest version, for example because someone else's update
+// deleted the lesson it renames (ADR-0006). Index is its place among the
+// draft's operations; Message tells the user why.
+type Conflict struct {
+	Index   int    `json:"index"`
+	Op      Op     `json:"op"`
+	Message string `json:"message"`
 }
 
 // InfoChange changes a course's information; nil fields stay as they are.
@@ -85,6 +101,7 @@ func reject(format string, args ...any) error {
 // their own, which users never see or choose.
 func prepareOp(op Op) (Op, error) {
 	op.Title = strings.TrimSpace(op.Title)
+	op.Target = ""
 	switch op.Type {
 	case OpAddChapter:
 		op.Chapter = newKey("c")
@@ -109,17 +126,53 @@ func newKey(prefix string) string {
 	return prefix + "-" + hex.EncodeToString(b)
 }
 
-// applyOps applies a draft's operations in order to a course's manifest and
-// returns the course the draft makes of it; m is left as it was. The first
-// operation that cannot apply stops it, as an *OpRejected.
-func applyOps(m Manifest, ops []Op) (Manifest, error) {
+// replayOps applies a draft's operations in order to a course's manifest
+// and returns the course the draft makes of it; m is left as it was. An
+// operation that cannot apply is skipped and listed as a conflict, so a
+// draft stays usable after the course has changed under it (ADR-0006).
+func replayOps(m Manifest, ops []Op) (Manifest, []Conflict) {
 	m = m.clone()
-	for _, op := range ops {
+	var conflicts []Conflict
+	for i, op := range ops {
 		if err := m.apply(op); err != nil {
-			return m, err
+			conflicts = append(conflicts, Conflict{Index: i, Op: op, Message: rejectMessage(err)})
 		}
 	}
-	return m, nil
+	return m, conflicts
+}
+
+func rejectMessage(err error) string {
+	var r *OpRejected
+	if errors.As(err, &r) {
+		return r.Message
+	}
+	return "这一步无法应用到课程的最新版本"
+}
+
+// unconfirmed lists the conflicts whose index is not in skip.
+func unconfirmed(conflicts []Conflict, skip []int) []Conflict {
+	var out []Conflict
+	for _, c := range conflicts {
+		if !slices.Contains(skip, c.Index) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// target is the title of the chapter or lesson op names in m, if any.
+func (m *Manifest) target(op Op) string {
+	switch op.Type {
+	case OpRenameChapter, OpDeleteChapter, OpMoveChapter, OpAddUpcomingLesson, OpAddLesson:
+		if i := m.chapter(op.Chapter); i >= 0 {
+			return m.Chapters[i].Title
+		}
+	case OpRenameLesson, OpDeleteLesson, OpMoveLesson, OpReplaceLesson, OpUploadLessonContent:
+		if ci, li, ok := m.lesson(op.Lesson); ok {
+			return m.Chapters[ci].Lessons[li].Title
+		}
+	}
+	return ""
 }
 
 func (m Manifest) clone() Manifest {

@@ -342,8 +342,8 @@ func (s *Service) draftCourse(ctx context.Context, viewer auth.User, id int64) (
 	if err != nil {
 		return Manifest{}, draftFiles{}, err
 	}
-	m, err := applyOps(cur, d.Ops)
-	return m, draftFiles{courseID: id, dir: dir, draftID: d.ID, uploads: d.uploads()}, err
+	m, _ := replayOps(cur, d.Ops)
+	return m, draftFiles{courseID: id, dir: dir, draftID: d.ID, uploads: d.uploads()}, nil
 }
 
 // DraftLesson previews a lesson of the viewer's draft, named by key.

@@ -35,14 +35,48 @@ export interface DraftCourse {
 }
 // mode: how committing takes effect — at once ("direct"), or as an update
 // request ("request", not supported yet).
-export interface Draft { ops: unknown[]; mode: 'direct' | 'request'; course: DraftCourse }
+// conflicts: operations that no longer apply to the course's latest version
+// (someone else's update came first); the course is shown without them.
+export interface Draft { ops: unknown[]; mode: 'direct' | 'request'; course: DraftCourse; conflicts: Conflict[] }
+
+// A recorded operation also carries `target`: the title, when it was
+// recorded, of the chapter or lesson it names.
+export type RecordedOp = Op & { target?: string };
+// Conflict is an operation of the draft that cannot apply any more; index is
+// its place among the draft's operations, message says why.
+export interface Conflict { index: number; op: RecordedOp; message: string }
+// Committing either updates the course, or — when some operations conflict
+// and were not confirmed to be skipped — changes nothing and lists them.
+export type CommitResult = { outcome: 'updated' } | { outcome: 'conflicts'; conflicts: Conflict[] };
 
 const base = (id: number) => `/api/courses/${id}/draft`;
 export const getDraft = (id: number) => api<Draft>('GET', base(id));
 export const addOp = (id: number, op: Op) => api<Draft>('POST', `${base(id)}/ops`, op);
 export const undoOp = (id: number) => api<Draft>('POST', `${base(id)}/undo`);
 export const discardDraft = (id: number) => api('DELETE', base(id));
-export const commitDraft = (id: number) => api<{ outcome: 'updated' }>('POST', `${base(id)}/commit`);
+// skip: the indexes of the conflicts the user confirmed to skip.
+export const commitDraft = (id: number, skip: number[] = []) => api<CommitResult>('POST', `${base(id)}/commit`, { skip });
+
+// describeOp says what a recorded operation did, for the conflict list.
+export function describeOp(op: RecordedOp): string {
+  const t = op.target;
+  const ch = t ? `章「${t}」` : '一章';
+  const l = t ? `「${t}」` : '一讲';
+  switch (op.type) {
+    case 'addChapter': return `添加章「${op.title}」`;
+    case 'renameChapter': return `把${ch}改名为「${op.title}」`;
+    case 'deleteChapter': return `删除${ch}`;
+    case 'moveChapter': return `移动${ch}`;
+    case 'addUpcomingLesson': return `在${ch}添加待更新的讲「${op.title}」`;
+    case 'addLesson': return `在${ch}添加讲「${op.title}」`;
+    case 'renameLesson': return `把讲${l}改名为「${op.title}」`;
+    case 'deleteLesson': return `删除讲${l}`;
+    case 'moveLesson': return `移动讲${l}`;
+    case 'setInfo': return '修改课程信息';
+    case 'replaceLesson': return `替换讲${l}`;
+    case 'uploadLessonContent': return `为讲${l}上传内容`;
+  }
+}
 
 // Lesson files go to an upload of the draft one request per file, so a
 // failed or cancelled file is sent again on its own. A .zip is a single

@@ -13,8 +13,8 @@ import { useReorderDrag } from '@/components/reorder-drag';
 import { ApiError } from '@/lib/api';
 import { COMPLETION_LABEL, pad2, type Completion } from '@/lib/courses';
 import {
-  addOp, chapterDown, chapterUp, commitDraft, discardDraft, getDraft, hasUpcoming, lessonDown, lessonTo, lessonUp, undoOp,
-  type Draft, type DraftChapter, type InfoChange, type Op,
+  addOp, chapterDown, chapterUp, commitDraft, describeOp, discardDraft, getDraft, hasUpcoming, lessonDown, lessonTo, lessonUp, undoOp,
+  type Conflict, type Draft, type DraftChapter, type InfoChange, type Op,
 } from '@/lib/drafts';
 import { Link, navigate } from '@/lib/router';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,7 @@ export function CourseEditView({ id }: { id: number }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [ask, setAsk] = useState<Ask | null>(null);
-  const [dialog, setDialog] = useState<'' | 'commit' | 'discard' | 'package'>('');
+  const [dialog, setDialog] = useState<'' | 'commit' | 'discard' | 'package-ask' | 'package'>('');
   const [dropChapter, setDropChapter] = useState<DraftChapter | null>(null);
   const [lessonUpload, setLessonUpload] = useState<LessonTarget | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
@@ -52,6 +52,7 @@ export function CourseEditView({ id }: { id: number }) {
 
   const c = draft.course;
   const changes = draft.ops.length;
+  const conflicts = draft.conflicts ?? [];
   let n = 0;
   return (
     <div className="page enter course-edit">
@@ -70,6 +71,13 @@ export function CourseEditView({ id }: { id: number }) {
         <div className="request-note edit-note" role="note">
           <b>暂不支持提交为更新申请</b>
           <span>这门课的修改需要管理员审核。编辑稿可以先保存, 提交功能稍后开放; 现在仍可在课程页「提交更新」上传课程包。</span>
+        </div>
+      ) : null}
+      {conflicts.length ? (
+        <div className="request-note edit-note conflict-note" role="alert">
+          <b>有 {conflicts.length} 处修改无法应用到课程的最新版本</b>
+          <span>课程在你编辑期间被更新过。下面的修改已不能应用, 页面显示的是不含它们的结果; 提交时确认后会跳过它们。也可以撤销或放弃编辑稿。</span>
+          <ConflictList conflicts={conflicts} />
         </div>
       ) : null}
 
@@ -154,7 +162,7 @@ export function CourseEditView({ id }: { id: number }) {
             <div className="section-head"><div className="no">03</div><h2>用课程包替换整门课</h2><p>改动很多时, 上传完整的新课程包。</p></div>
             <div className="form-rows">
               <p className="ed-hint">新课程包会立刻替换整门课 (整包更新)。章和讲按 <code>course.json</code> 里的 id 对应, id 不变的讲保留学习记录。{changes ? ' 你的编辑稿会保留, 提交时应用到新版本上。' : ''}</p>
-              <div><Button variant="ghost" onClick={() => setDialog('package')}>上传课程包</Button></div>
+              <div><Button variant="ghost" onClick={() => setDialog(changes ? 'package-ask' : 'package')}>上传课程包</Button></div>
             </div>
           </section>
         ) : null}
@@ -169,11 +177,28 @@ export function CourseEditView({ id }: { id: number }) {
         onConfirm={async () => { try { await discardDraft(id); toast.success('已放弃编辑稿'); setDialog(''); await load(); } catch (ex) { fail(ex); } }}>
         编辑稿里的 {changes} 处修改都会丢弃, 无法恢复。
       </Confirm>
-      <Confirm open={dialog === 'commit'} title="提交编辑稿" confirm="提交" onClose={() => setDialog('')}
+      <Confirm open={dialog === 'commit'} title="提交编辑稿" confirm={conflicts.length ? '跳过这些修改并提交' : '提交'} onClose={() => setDialog('')}
         onConfirm={async () => {
-          try { await commitDraft(id); toast.success('课程已更新'); navigate(`/courses/${id}`); } catch (ex) { fail(ex); setDialog(''); }
+          try {
+            const r = await commitDraft(id, conflicts.map((x) => x.index));
+            if (r.outcome === 'conflicts') {
+              // the course changed again since the editor last looked
+              setDraft({ ...draft, conflicts: r.conflicts });
+              toast.error('课程刚被更新, 有修改无法应用, 请确认');
+              return;
+            }
+            toast.success('课程已更新'); navigate(`/courses/${id}`);
+          } catch (ex) { fail(ex); setDialog(''); }
         }}>
-        {changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。
+        {conflicts.length ? <>
+          课程在你编辑期间被更新过, 下面 <b>{conflicts.length}</b> 处修改无法应用到最新版本, 提交时会跳过:
+          <ConflictList conflicts={conflicts} />
+          其余 {changes - conflicts.length} 处修改会作为一次课程更新生效。
+        </> : <>{changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。</>}
+      </Confirm>
+      <Confirm open={dialog === 'package-ask'} title="用课程包替换整门课" confirm="继续上传" onClose={() => setDialog('')}
+        onConfirm={() => setDialog('package')}>
+        你的编辑稿里有 {changes} 处修改。新课程包生效后, 编辑稿会保留, 并在新版本上重新应用; 无法应用的修改 (例如针对的讲已不在新课程包里) 会列出来, 提交前由你确认跳过。
       </Confirm>
       <LessonUploadDialog courseId={id} courseType={c.type} target={lessonUpload} onClose={() => setLessonUpload(null)}
         onDone={(d) => { setDraft(d); setLessonUpload(null); toast.success('已保存到编辑稿'); }} />
@@ -185,6 +210,22 @@ export function CourseEditView({ id }: { id: number }) {
 
 function BackLink({ id }: { id: number }) {
   return <Link className="back" href={`/courses/${id}`}><ArrowLeft />返回课程</Link>;
+}
+
+// ConflictList lists the draft's operations that no longer apply, each with
+// its step number and the reason. Spans, so it may sit inside a <p>.
+function ConflictList({ conflicts }: { conflicts: Conflict[] }) {
+  return (
+    <span className="conflict-list">
+      {conflicts.map((x) => (
+        <span className="conflict" key={x.index}>
+          <span className="c-step">第 {x.index + 1} 步</span>
+          <span className="c-what">{describeOp(x.op)}</span>
+          <span className="c-why">{x.message}</span>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function Tool({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
