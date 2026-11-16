@@ -23,11 +23,29 @@ export interface NotificationPage {
 
 export interface Rendered { title: string; detail?: string; href: string }
 
+// A request turned down because its course was deleted has no course page to go to.
+const DELETED_REASON = '课程已删除';
+const requestHref = (p: any) => (p.reason === DELETED_REASON ? '/mine' : `/courses/${p.courseId}`);
+
+function changes(p: any) {
+  const parts = [['新增', p.added], ['删除', p.removed], ['修改', p.modified]]
+    .filter(([, n]) => n > 0)
+    .map(([verb, n]) => `${verb} ${n} 讲`);
+  return parts.length ? `${parts.join('，')}。` : '课程内容有调整。';
+}
+
 const kinds: Record<string, (p: any) => Rendered> = {
   publish_approved: (p) => ({ title: `「${p.courseTitle}」已公开到课程库`, detail: '你的公开申请已通过。', href: `/courses/${p.courseId}` }),
-  publish_rejected: (p) => ({ title: `「${p.courseTitle}」的公开申请被驳回`, detail: `理由: ${p.reason}`, href: `/courses/${p.courseId}` }),
+  publish_rejected: (p) => ({ title: `「${p.courseTitle}」的公开申请被驳回`, detail: `理由: ${p.reason}`, href: requestHref(p) }),
   update_approved: (p) => ({ title: `「${p.courseTitle}」的更新申请已通过`, detail: '课程已换成你提交的新版本。', href: `/courses/${p.courseId}` }),
-  update_rejected: (p) => ({ title: `「${p.courseTitle}」的更新申请被驳回`, detail: `理由: ${p.reason}`, href: `/courses/${p.courseId}` }),
+  update_rejected: (p) => ({ title: `「${p.courseTitle}」的更新申请被驳回`, detail: `理由: ${p.reason}`, href: requestHref(p) }),
+  course_updated: (p) => ({ title: `「${p.courseTitle}」有更新`, detail: changes(p), href: `/courses/${p.courseId}` }),
+  course_unpublished: (p) => ({ title: `「${p.courseTitle}」已从课程库下架`, detail: '学完或做过标注的讲会为订阅者保留。', href: `/courses/${p.courseId}` }),
+  course_deleted: (p) => ({
+    title: `「${p.courseTitle}」已被删除`,
+    detail: p.retainedCount > 0 ? `你保留了其中 ${p.retainedCount} 讲，仍可阅读。` : '你没有保留这门课的任何一讲。',
+    href: p.retainedCount > 0 ? `/courses/${p.courseId}` : '/library',
+  }),
 };
 
 export function render(n: Notification): Rendered {
