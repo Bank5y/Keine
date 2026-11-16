@@ -13,6 +13,7 @@ import (
 // Why a subscriber reads a course from its freeze (ADR-0004).
 const (
 	RetentionUnpublished = "unpublished"
+	RetentionDeleted     = "deleted"
 )
 
 // snapshot is a course's information and structure at the moment it was
@@ -138,7 +139,7 @@ func (r *retention) structure() []ChapterDetail {
 // or as frozen, for a subscriber who retains lessons of it. Anyone else
 // gets ErrNotFound. The retention is nil when the course is read as it is.
 func (s *Service) open(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, *retention, error) {
-	sm, err := s.load(ctx, viewer, id, extraColumns, extra...)
+	sm, err := s.loadAny(ctx, viewer, id, extraColumns, extra...)
 	if err != nil {
 		return Summary{}, nil, err
 	}

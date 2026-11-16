@@ -25,8 +25,8 @@ export interface CourseSummary {
   updatedAt: string;
 }
 
-export type Retention = 'unpublished';
-export const RETENTION_LABEL: Record<Retention, string> = { unpublished: '已下架' };
+export type Retention = 'unpublished' | 'deleted';
+export const RETENTION_LABEL: Record<Retention, string> = { unpublished: '已下架', deleted: '已删除' };
 
 export const TYPE_LABEL: Record<CourseType, string> = { column: '专栏', video: '视频课', paper: '论文' };
 export const COMPLETION_LABEL: Record<Completion, string> = { finished: '已完结', ongoing: '连载中', incomplete: '缺失' };
