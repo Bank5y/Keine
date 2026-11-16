@@ -624,6 +624,7 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 
 /* ---------- annotation migration: previous text | new text, like a split diff ---------- */
 ::highlight(mig-del) { background-color: color-mix(in srgb, var(--danger) 20%, transparent); text-decoration-line: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 70%, transparent); }
+::highlight(mig-drop) { background-color: var(--mark-active); text-decoration-line: underline; text-decoration-style: dashed; text-decoration-color: var(--brand); }
 ::highlight(mig-add) { background-color: color-mix(in srgb, var(--success) 24%, transparent); }
 .mig-head { margin-bottom: 24px; }
 .mig-head h1 { margin: 10px 0 0; font-family: var(--serif); font-weight: 700; font-size: 32px; line-height: 1.25; }
@@ -632,6 +633,7 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .mig-list { list-style: none; margin: 0 0 28px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
 .mig-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-left: 3px solid var(--rule); border-radius: 6px; background: var(--surface); transition: border-color .12s, box-shadow .12s; }
 .mig-card:hover { border-color: var(--rule); }
+.mig-card[draggable="true"] .mig-pick { cursor: grab; }
 .mig-card.active { border-color: var(--brand); border-left-color: var(--brand); box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--text) 40%, transparent); }
 .mig-pick { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 4px; text-align: left; font-family: var(--serif); font-size: 15px; line-height: 1.7; color: var(--text); overflow-wrap: anywhere; }
 .mig-pick .nq-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

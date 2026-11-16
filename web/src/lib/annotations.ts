@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { dropSpan, wordStart } from '@/lib/drop';
 
 // Annotations remember their place by the quoted text and a little text
 // around it (ADR-0003). The server finds them in the lesson text and answers
@@ -174,12 +175,29 @@ export class TextMap {
   // dropped place, say).
   quoteOf(start: number, end: number): Quote | null {
     if (start < 0 || end > this.chars.length || start >= end) return null;
-    const rawAt = (c: Char) => this.nodes.find((n) => n.node === c.node)!.start + c.offset;
-    const a = rawAt(this.chars[start]);
+    const a = this.rawOf(this.chars[start]);
     const last = this.chars[end - 1];
-    const b = rawAt(last) + last.len;
+    const b = this.rawOf(last) + last.len;
     return { quote: this.raw.slice(a, b).trim(), prefix: tail(this.raw.slice(0, a)), suffix: head(this.raw.slice(b)) };
   }
+
+  // dropAt is where an annotation of len visible characters lands when
+  // dropped at a DOM boundary point: from the word there, as long as it was.
+  dropAt(container: Node, offset: number, len: number): { start: number; end: number } | null {
+    if (container.nodeType === Node.TEXT_NODE && this.nodes.some((n) => n.node === container)) {
+      offset = wordStart((container as Text).data, offset);
+    }
+    const at = this.indexOf(container, offset);
+    // the first visible character at or after the point
+    let lo = 0, hi = this.chars.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.rawOf(this.chars[mid]) < at) lo = mid + 1; else hi = mid;
+    }
+    return dropSpan(lo, len, this.chars.length);
+  }
+
+  private rawOf(c: Char) { return this.nodes.find((n) => n.node === c.node)!.start + c.offset; }
 
   // quote reads a selection inside the root as an annotation would keep it;
   // null when it holds no text (an image alone, say).
@@ -204,6 +222,8 @@ export class TextMap {
 }
 
 const strip = (s: string) => s.replace(new RegExp(SPACE.source, 'gu'), '');
+// how many visible characters a quote holds, as TextMap counts them
+export const visibleLength = (s: string) => Array.from(strip(s)).length;
 
 // head and tail keep CONTEXT visible characters of text, plus the spaces
 // between them
