@@ -156,3 +156,17 @@ func mapS3Error(err error) error {
 	}
 	return err
 }
+
+// Copy uses a server-side copy, so no data passes through the application.
+func (s *S3) Copy(ctx context.Context, src, dst string) error {
+	if err := CheckKey(src); err != nil {
+		return err
+	}
+	if err := CheckKey(dst); err != nil {
+		return err
+	}
+	_, err := s.client.CopyObject(ctx,
+		minio.CopyDestOptions{Bucket: s.bucket, Object: s.prefix + dst},
+		minio.CopySrcOptions{Bucket: s.bucket, Object: s.prefix + src})
+	return mapS3Error(err)
+}

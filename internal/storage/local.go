@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"io"
 	"io/fs"
@@ -30,6 +31,10 @@ func (l *Local) Put(_ context.Context, key string, r io.Reader, _ int64) error {
 	if err != nil {
 		return err
 	}
+	return writeFile(p, r)
+}
+
+func writeFile(p string, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
@@ -110,4 +115,47 @@ func (l *Local) List(_ context.Context, prefix string) ([]string, error) {
 	})
 	sort.Strings(keys)
 	return keys, err
+}
+
+// Copy hard-links dst to src's file, so no data moves (ADR-0005). Put always
+// replaces a file by renaming a new one over it, so the two keys never share
+// later writes. Where a hard link is impossible, such as across filesystems,
+// it copies the data instead.
+func (l *Local) Copy(_ context.Context, src, dst string) error {
+	sp, err := l.path(src)
+	if err != nil {
+		return err
+	}
+	dp, err := l.path(dst)
+	if err != nil {
+		return err
+	}
+	if st, err := os.Stat(sp); errors.Is(err, fs.ErrNotExist) || err == nil && st.IsDir() {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dp), 0o755); err != nil {
+		return err
+	}
+	// link under a temporary name, then rename over dst, so an existing dst
+	// is replaced atomically
+	tmp := filepath.Join(filepath.Dir(dp), ".put-"+rand.Text())
+	if err := os.Link(sp, tmp); err != nil {
+		return copyFile(sp, dp)
+	}
+	defer os.Remove(tmp)
+	return os.Rename(tmp, dp)
+}
+
+func copyFile(src, dst string) error {
+	f, err := os.Open(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return writeFile(dst, f)
 }

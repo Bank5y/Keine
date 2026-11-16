@@ -128,6 +128,77 @@ func Run(t *testing.T, newStore func(t *testing.T) storage.Store) {
 		}
 	})
 
+	t.Run("copy makes the target read back like the source", func(t *testing.T) {
+		s := newStore(t)
+		body := strings.Repeat("视频片段 0123456789\n", 1000)
+		put(t, s, "courses/1/v1/a.md", body)
+		if err := s.Copy(ctx, "courses/1/v1/a.md", "courses/1/v2/a.md"); err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range []string{"courses/1/v1/a.md", "courses/1/v2/a.md"} {
+			if got, err := read(t, s, k); err != nil || got != body {
+				t.Fatalf("%s mismatch after copy: err=%v len=%d want %d", k, err, len(got), len(body))
+			}
+		}
+	})
+
+	t.Run("copying a missing object is not found", func(t *testing.T) {
+		s := newStore(t)
+		if err := s.Copy(ctx, "courses/1/v1/nope.md", "courses/1/v2/nope.md"); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected ErrNotFound, got %v", err)
+		}
+		expectMissing(t, s, "courses/1/v2/nope.md")
+	})
+
+	t.Run("copy replaces an existing target", func(t *testing.T) {
+		s := newStore(t)
+		put(t, s, "courses/1/v1/a.md", "new")
+		put(t, s, "courses/1/v2/a.md", "old")
+		if err := s.Copy(ctx, "courses/1/v1/a.md", "courses/1/v2/a.md"); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := read(t, s, "courses/1/v2/a.md"); err != nil || got != "new" {
+			t.Fatalf("expected the target replaced, got %q %v", got, err)
+		}
+	})
+
+	t.Run("the copy outlives changes to the source", func(t *testing.T) {
+		s := newStore(t)
+		put(t, s, "courses/1/v1/a.md", "kept")
+		put(t, s, "courses/1/v1/b.md", "kept")
+		for _, k := range []string{"a.md", "b.md"} {
+			if err := s.Copy(ctx, "courses/1/v1/"+k, "courses/1/v2/"+k); err != nil {
+				t.Fatal(err)
+			}
+		}
+		put(t, s, "courses/1/v1/a.md", "changed")
+		if err := s.DeletePrefix(ctx, "courses/1/v1/"); err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range []string{"courses/1/v2/a.md", "courses/1/v2/b.md"} {
+			if got, err := read(t, s, k); err != nil || got != "kept" {
+				t.Fatalf("%s should be unaffected, got %q %v", k, got, err)
+			}
+		}
+		got, err := s.List(ctx, "courses/1/")
+		if err != nil || strings.Join(got, ",") != "courses/1/v2/a.md,courses/1/v2/b.md" {
+			t.Fatalf("expected only the copies left, got %v %v", got, err)
+		}
+	})
+
+	t.Run("copy rejects unsafe keys", func(t *testing.T) {
+		s := newStore(t)
+		put(t, s, "k/v", "x")
+		for _, k := range []string{"", "/abs", "a/../b", `a\b`, "a/"} {
+			if err := s.Copy(ctx, k, "k/w"); !errors.Is(err, storage.ErrInvalidKey) {
+				t.Errorf("copy from %q: expected ErrInvalidKey, got %v", k, err)
+			}
+			if err := s.Copy(ctx, "k/v", k); !errors.Is(err, storage.ErrInvalidKey) {
+				t.Errorf("copy to %q: expected ErrInvalidKey, got %v", k, err)
+			}
+		}
+	})
+
 	t.Run("unsafe keys are rejected", func(t *testing.T) {
 		s := newStore(t)
 		for _, k := range []string{"", "/abs", "a/../b", "../x", "a//b", "a/./b", `a\b`, "a/"} {
