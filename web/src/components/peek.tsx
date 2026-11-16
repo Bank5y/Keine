@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/skeleton';
 import { api, ApiError } from '@/lib/api';
 import { COMPLETION_LABEL, TYPE_LABEL, lessonURL, pad2, type CourseDetail, type CourseSummary } from '@/lib/courses';
 import { navigate } from '@/lib/router';
-import { cn } from '@/lib/utils';
+import { TabPane, Tabs, useTabFade } from '@/components/tabs';
 
 // detail is shared by every peek of a course while the page lives
 const cache = new Map<number, Promise<CourseDetail>>();
@@ -34,6 +34,7 @@ export async function startLearning(c: Pick<CourseSummary, 'id' | 'enrolled'>) {
 // contents, with a way to start (or continue) learning it.
 export function Peek({ course }: { course: CourseSummary }) {
   const [tab, setTab] = useState<'intro' | 'toc'>('intro');
+  const [shown, fading] = useTabFade(tab);
   const [d, setD] = useState<CourseDetail | null>(null);
   const [err, setErr] = useState('');
   useEffect(() => { loadDetail(course.id).then(setD).catch((e) => setErr(e.message)); }, [course.id]);
@@ -41,7 +42,7 @@ export function Peek({ course }: { course: CourseSummary }) {
   let body: ReactNode;
   if (err) body = <div className="peek-note err">{err}</div>;
   else if (!d) body = <div className="space-y-3 px-[18px] py-4">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-3" />)}</div>;
-  else if (tab === 'intro') {
+  else if (shown === 'intro') {
     body = (
       <div className="peek-body">
         {d.intro ? <LazyMarkdown text={d.intro} className="peek-prose" /> : <p className="text-ink-3">暂无课程介绍</p>}
@@ -69,11 +70,8 @@ export function Peek({ course }: { course: CourseSummary }) {
     <div className="peek">
       <div className="peek-kicker">{TYPE_LABEL[course.type]} · {COMPLETION_LABEL[course.completion]} · {course.lessonCount} 讲</div>
       <div className="peek-title">{course.title}</div>
-      <div className="peek-tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'intro'} className={cn(tab === 'intro' && 'active')} onClick={() => setTab('intro')}>课程介绍</button>
-        <button role="tab" aria-selected={tab === 'toc'} className={cn(tab === 'toc' && 'active')} onClick={() => setTab('toc')}>课程目录</button>
-      </div>
-      {body}
+      <Tabs className="peek-tabs" value={tab} onChange={setTab} items={[['intro', '课程介绍'], ['toc', '课程目录']]} />
+      <TabPane fading={fading} className="peek-pane">{body}</TabPane>
       <div className="peek-foot">
         <Button variant="default" size="sm" className="w-full" onClick={() => {
           if (course.enrolled && d?.progress.lastLessonId) navigate(lessonURL(course.id, d.progress.lastLessonId));

@@ -6,6 +6,7 @@ import { CourseActions } from '@/components/course-actions';
 import { Fold, useChapterFolds } from '@/components/fold';
 import { startLearning } from '@/components/peek';
 import { Highlight } from '@/components/highlight';
+import { TabPane, Tabs, useTabFade } from '@/components/tabs';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
@@ -32,18 +33,16 @@ const readTab = (): Tab | null => {
   return t === 'intro' || t === 'toc' ? t : null;
 };
 
-const hasIntro = (c: CourseDetail) => !!(c.intro || c.authorName);
-
 export function CourseView({ id }: { id: number }) {
   const { course, err, reload } = useCourse(id);
-  // the introduction comes first unless there is none; the chosen tab is kept
-  // in the address so coming back from a lesson returns to it
-  const [picked, setPicked] = useState<Tab | null>(readTab);
-  const tab: Tab = picked ?? (!course || hasIntro(course) ? 'intro' : 'toc');
+  // the table of contents comes first; the chosen tab is kept in the
+  // address so coming back from a lesson returns to it
+  const [tab, setTabState] = useState<Tab>(() => readTab() ?? 'toc');
   const setTab = (t: Tab) => {
-    setPicked(t);
+    setTabState(t);
     history.replaceState(history.state, '', `${location.pathname}?tab=${t}${location.hash}`);
   };
+  const [shown, fading] = useTabFade(tab);
   const [q, setQ] = useState('');
   const colophonBody = useRef<HTMLDivElement>(null);
   useScrollFade(colophonBody);
@@ -58,12 +57,10 @@ export function CourseView({ id }: { id: number }) {
         </aside>
         <section>
           <div className="toc-head">
-            <div className="toc-tabs" role="tablist">
-              <button role="tab" aria-selected={tab === 'intro'} className={cn('toc-tab', tab === 'intro' && 'active')} onClick={() => setTab('intro')}>课程介绍</button>
-              <button role="tab" aria-selected={tab === 'toc'} className={cn('toc-tab', tab === 'toc' && 'active')} onClick={() => setTab('toc')}>
-                目录{course ? <sup>{course.lessonCount}</sup> : null}
-              </button>
-            </div>
+            <Tabs className="toc-tabs" tabClassName="toc-tab" value={tab} onChange={setTab} items={[
+              ['intro', '课程介绍'],
+              ['toc', <>目录{course ? <sup>{course.lessonCount}</sup> : null}</>],
+            ]} />
             {tab === 'toc' ? (
               <label className="search-sm">
                 <Search />
@@ -71,7 +68,7 @@ export function CourseView({ id }: { id: number }) {
               </label>
             ) : null}
           </div>
-          {!course ? <Lines /> : (tab === 'toc' ? <Toc c={course} q={q.trim()} /> : <Intro c={course} />)}
+          {!course ? <Lines /> : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} q={q.trim()} /> : <Intro c={course} />}</TabPane>}
         </section>
       </div>
     </div>
