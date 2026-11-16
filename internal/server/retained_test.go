@@ -195,3 +195,31 @@ func TestRetainedLessonsKeepTheirContentWhenTheUploaderUpdates(t *testing.T) {
 		t.Fatalf("alice sees her updated course: %v", mine)
 	}
 }
+
+func TestSubscriberKeepsAnnotatedLessonsOfAnUnpublishedCourse(t *testing.T) {
+	a := newApp(t)
+	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
+	ann := annotate(t, bob, id, lessons["l02"], map[string]any{"style": "underline", "quote": "02"}) // annotated, not done
+
+	unpublish(t, a, id)
+
+	d := courseJSON(t, bob, id)
+	if d["retainedCount"] != float64(2) {
+		t.Fatalf("bob retains the done and the annotated lesson: %v", d)
+	}
+	byKey := lessonsByKey(d)
+	if byKey["l02"]["unavailable"] == true || byKey["l02"]["state"] != "unstarted" || byKey["l00"]["unavailable"] != true {
+		t.Fatalf("the annotated lesson stays readable and unfinished: %v", byKey)
+	}
+	l := bob.mustOK(lessonText(bob, id, lessons["l02"])).json()
+	if !strings.Contains(l["markdown"].(string), "# 02") {
+		t.Fatalf("the annotated lesson is readable: %v", l)
+	}
+	got := listAnnotations(t, bob, id, lessons["l02"])
+	if len(got) != 1 || got[0]["id"] != ann["id"] {
+		t.Fatalf("bob's annotation is still there: %v", got)
+	}
+	if rg := textRange(got[0]); rg == nil || rg[0] != 0 || rg[1] != 2 {
+		t.Fatalf("the annotation sits where it was: %v", got[0]["range"])
+	}
+}
