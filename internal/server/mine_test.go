@@ -73,7 +73,7 @@ func TestMyCoursesFilterByStudyStateTypeAndCompletion(t *testing.T) {
 	alice := a.user("alice")
 	m := columnManifest()
 	m["completion"] = "ongoing"
-	studying := uploadCourse(t, alice, columnFiles(m))
+	unfinished := uploadCourse(t, alice, columnFiles(m))
 	done := uploadCourse(t, alice, columnFiles(columnManifest()))
 	for _, lid := range lessonIDs(t, alice, done) {
 		alice.mustOK(setProgress(alice, done, lid, map[string]any{"done": true}))
@@ -87,13 +87,13 @@ func TestMyCoursesFilterByStudyStateTypeAndCompletion(t *testing.T) {
 	if ids := myCourseIDsWhere(t, alice, url.Values{"state": {"done"}}); len(ids) != 1 || ids[0] != done {
 		t.Fatalf("done filter: %v", ids)
 	}
-	if ids := myCourseIDsWhere(t, alice, url.Values{"state": {"studying"}}); len(ids) != 2 || contains(ids, done) {
-		t.Fatalf("studying filter: %v", ids)
+	if ids := myCourseIDsWhere(t, alice, url.Values{"state": {"unfinished"}}); len(ids) != 2 || contains(ids, done) {
+		t.Fatalf("unfinished filter: %v", ids)
 	}
 	if ids := myCourseIDsWhere(t, alice, url.Values{"type": {"video"}}); len(ids) != 1 || ids[0] != video {
 		t.Fatalf("type filter: %v", ids)
 	}
-	if ids := myCourseIDsWhere(t, alice, url.Values{"completion": {"ongoing"}}); len(ids) != 1 || ids[0] != studying {
+	if ids := myCourseIDsWhere(t, alice, url.Values{"completion": {"ongoing"}}); len(ids) != 1 || ids[0] != unfinished {
 		t.Fatalf("completion filter: %v", ids)
 	}
 }
