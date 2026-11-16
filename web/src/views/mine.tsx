@@ -8,7 +8,7 @@ import { Facet } from '@/components/facet';
 import { Shelf } from '@/components/shelf';
 import { UploadDialog } from '@/components/upload-dialog';
 import { api, ApiError } from '@/lib/api';
-import { COMPLETION_LABEL, TYPE_LABEL, type CourseSummary } from '@/lib/courses';
+import { COMPLETION_LABEL, RETENTION_LABEL, TYPE_LABEL, type CourseSummary } from '@/lib/courses';
 
 export function MineView() {
   const [courses, setCourses] = useState<CourseSummary[] | null>(null);
@@ -63,7 +63,7 @@ export function MineView() {
       <Confirm open={!!removing} title="取消订阅" confirm="取消订阅" onClose={() => setRemoving(null)}
         onConfirm={() => act('DELETE', `/api/courses/${removing!.id}/subscribe`, `已取消订阅「${removing!.title}」`)}>
         {removing?.retention
-          ? <>「{removing.title}」已下架。取消订阅后, 你保留的 {removing.retainedCount ?? 0} 讲会随之失去, 也无法再订阅这门课。</>
+          ? <>「{removing.title}」{RETENTION_LABEL[removing.retention]}。取消订阅后, 你保留的 {removing.retainedCount ?? 0} 讲会随之失去, 也无法再订阅这门课。</>
           : <>「{removing?.title}」会离开我的课程, 你的学习进度会保留。以后再次订阅, 进度会恢复。</>}
       </Confirm>
     </div>

@@ -67,12 +67,19 @@ func (s *Service) Unsubscribe(ctx context.Context, viewer auth.User, id int64) e
 		if _, err := tx.Exec(ctx, "UPDATE course_readers SET subscribed_at = NULL WHERE user_id = $1 AND course_id = $2", viewer.ID, id); err != nil {
 			return err
 		}
-		if ret != nil {
-			frozen, err = releaseRetainer(ctx, tx, id, viewer.ID)
+		if ret == nil {
+			return nil
 		}
-		return err
+		if frozen, err = releaseRetainer(ctx, tx, id, viewer.ID); err != nil || frozen == "" || !sm.Deleted {
+			return err
+		}
+		return purge(ctx, tx, id) // the last retainer of a deleted course left
 	})
-	if err == nil {
+	switch {
+	case err != nil:
+	case sm.Deleted && frozen != "":
+		s.dropCourseFiles(ctx, id)
+	default:
 		s.dropUnused(ctx, id, frozen)
 	}
 	return err

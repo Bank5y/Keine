@@ -13,6 +13,7 @@ import (
 // Why a subscriber reads a course from its freeze (ADR-0004).
 const (
 	RetentionUnpublished = "unpublished"
+	RetentionDeleted     = "deleted"
 )
 
 // snapshot is a course's information and structure at the moment it was
@@ -138,7 +139,7 @@ func (r *retention) structure() []ChapterDetail {
 // or as frozen, for a subscriber who retains lessons of it. Anyone else
 // gets ErrNotFound. The retention is nil when the course is read as it is.
 func (s *Service) open(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, *retention, error) {
-	sm, err := s.load(ctx, viewer, id, extraColumns, extra...)
+	sm, err := s.loadAny(ctx, viewer, id, extraColumns, extra...)
 	if err != nil {
 		return Summary{}, nil, err
 	}
@@ -197,7 +198,7 @@ func (s *Service) retentionOf(ctx context.Context, viewer auth.User, courseID in
 
 // freeze keeps a course's current files and structure for its subscribers
 // as it leaves the library: each subscriber other than the uploader retains
-// the lessons they finished. A course already frozen keeps its first freeze
+// the lessons they finished or annotated. A course already frozen keeps its first freeze
 // (and its retained lessons) and only takes the new reason. It reports
 // whether anyone retains lessons; with nobody, no freeze is kept.
 func freeze(ctx context.Context, tx pgx.Tx, courseID int64, reason string) (bool, error) {
@@ -223,12 +224,16 @@ func freeze(ctx context.Context, tx pgx.Tx, courseID int64, reason string) (bool
 	}
 	tag, err := tx.Exec(ctx, `
 		INSERT INTO retained_lessons (course_id, user_id, lesson_key)
-		SELECT p.course_id, p.user_id, p.lesson_key
-		FROM lesson_progress p
-		JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
-		JOIN course_readers cr ON cr.course_id = p.course_id AND cr.user_id = p.user_id AND cr.subscribed_at IS NOT NULL
-		JOIN courses c ON c.id = p.course_id
-		WHERE p.course_id = $1 AND p.done AND p.user_id <> c.uploader_id`, courseID)
+		SELECT k.course_id, k.user_id, k.lesson_key
+		FROM (
+			SELECT course_id, user_id, lesson_key FROM lesson_progress WHERE course_id = $1 AND done
+			UNION
+			SELECT course_id, user_id, lesson_key FROM annotations WHERE course_id = $1
+		) k
+		JOIN lessons l ON l.course_id = k.course_id AND l.key = k.lesson_key
+		JOIN course_readers cr ON cr.course_id = k.course_id AND cr.user_id = k.user_id AND cr.subscribed_at IS NOT NULL
+		JOIN courses c ON c.id = k.course_id
+		WHERE k.user_id <> c.uploader_id`, courseID)
 	if err != nil {
 		return false, err
 	}

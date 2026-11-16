@@ -189,12 +189,16 @@ type Summary struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	// Retention is set when the course left the library and the viewer, a
-	// subscriber, reads only their retained lessons of it: "unpublished".
+	// subscriber, reads only their retained lessons of it: "unpublished" or
+	// "deleted".
 	Retention string `json:"retention,omitempty"`
 	// RetainedCount is how many lessons the viewer retains, with Retention.
 	RetainedCount int `json:"retainedCount,omitempty"`
 	// FilesDir is the folder of the course's files the viewer reads.
 	FilesDir string `json:"-"`
+	// Deleted marks a course deleted while subscribers retain lessons of it:
+	// only they reach it, through its freeze.
+	Deleted bool `json:"-"`
 }
 
 // Detail is a course with its chapters and lessons.
@@ -250,13 +254,14 @@ func summaryColumns(viewerParam string) string {
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
 	c.created_at, c.updated_at, c.files_dir,
-	EXISTS (SELECT 1 FROM course_readers r WHERE r.course_id = c.id AND r.user_id = ` + viewerParam + ` AND r.subscribed_at IS NOT NULL)`
+	EXISTS (SELECT 1 FROM course_readers r WHERE r.course_id = c.id AND r.user_id = ` + viewerParam + ` AND r.subscribed_at IS NOT NULL),
+	c.deleted_at IS NOT NULL`
 }
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
 	return []any{&s.ID, &s.Title, &s.Type, &s.Completion, &s.AuthorName, &s.HasCover, &s.Visibility, &s.PublishState,
-		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesDir, &s.Subscribed}
+		&s.UploaderID, &s.LessonCount, &s.DoneCount, &s.CreatedAt, &s.UpdatedAt, &s.FilesDir, &s.Subscribed, &s.Deleted}
 }
 
 func scanSummary(row pgx.Row, viewer auth.User) (Summary, error) {
@@ -286,8 +291,18 @@ func (s *Service) loadToChange(ctx context.Context, viewer auth.User, id int64) 
 	return s.loadVisible(ctx, viewer, id, "")
 }
 
-// load loads one course whoever may see it; admins moderate through it.
+// load loads one course whoever may see it; admins moderate through it. A
+// deleted course is ErrNotFound.
 func (s *Service) load(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
+	sm, err := s.loadAny(ctx, viewer, id, extraColumns, extra...)
+	if err == nil && sm.Deleted {
+		return Summary{}, ErrNotFound
+	}
+	return sm, err
+}
+
+// loadAny loads one course, deleted or not.
+func (s *Service) loadAny(ctx context.Context, viewer auth.User, id int64, extraColumns string, extra ...any) (Summary, error) {
 	var sm Summary
 	row := s.db.QueryRow(ctx, "SELECT "+summaryColumns("$2")+extraColumns+" FROM courses c WHERE c.id = $1", id, viewer.ID)
 	err := row.Scan(append(summaryFields(&sm), extra...)...)
@@ -303,9 +318,9 @@ func (s *Service) load(ctx context.Context, viewer auth.User, id int64, extraCol
 
 // canView is the single rule for who may see a course: anyone signed in sees
 // public courses; a private course is seen by its uploader, and by admins
-// while it is under review.
+// while it is under review. Nobody sees a deleted course as it is.
 func canView(viewer auth.User, s Summary) bool {
-	return s.Visibility == Public || s.UploaderID == viewer.ID || (viewer.IsAdmin() && s.PublishState == Pending)
+	return !s.Deleted && (s.Visibility == Public || s.UploaderID == viewer.ID || (viewer.IsAdmin() && s.PublishState == Pending))
 }
 
 // Get returns a course with its chapters and lessons.
@@ -412,7 +427,7 @@ func (s *Service) Mine(ctx context.Context, viewer auth.User, f MineFilter) ([]S
 	rows, err := s.db.Query(ctx, "SELECT "+summaryColumns("$1")+` FROM courses c
 		LEFT JOIN course_readers r ON r.course_id = c.id AND r.user_id = $1
 		WHERE (c.visibility = 'public' AND r.subscribed_at IS NOT NULL)
-		   OR (c.visibility <> 'public' AND c.uploader_id = $1)
+		   OR (c.visibility <> 'public' AND c.uploader_id = $1 AND c.deleted_at IS NULL)
 		   OR (c.visibility <> 'public' AND r.subscribed_at IS NOT NULL
 		       AND EXISTS (SELECT 1 FROM retained_lessons rl WHERE rl.course_id = c.id AND rl.user_id = $1))
 		ORDER BY coalesce(r.last_studied_at, c.created_at) DESC, c.id DESC`, viewer.ID)
@@ -425,7 +440,7 @@ func (s *Service) Mine(ctx context.Context, viewer auth.User, f MineFilter) ([]S
 	}
 	out := []Summary{}
 	for _, c := range all {
-		if c.Visibility != Public && !c.IsUploader {
+		if c.Visibility != Public && (!c.IsUploader || c.Deleted) {
 			ret, err := s.retentionOf(ctx, viewer, c.ID)
 			if err != nil {
 				return nil, err
@@ -479,8 +494,11 @@ func (s *Service) Cover(ctx context.Context, viewer auth.User, id int64) (rc io.
 	return rc, cover, err
 }
 
-// Delete removes a course and its files. The uploader may delete a private
-// course; admins may delete any course.
+// Delete removes a course. The uploader may delete a private course; admins
+// may delete any course. While subscribers retain lessons of it (ADR-0004)
+// the course is only marked deleted: its files and structure are frozen for
+// them, and it is removed once the last of them lets go. Otherwise it goes
+// at once, with its files.
 func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error {
 	sm, err := s.loadToChange(ctx, viewer, id)
 	if err != nil {
@@ -489,13 +507,59 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 	if !viewer.IsAdmin() && !(sm.IsUploader && sm.Visibility == Private) {
 		return ErrForbidden
 	}
-	if _, err := s.db.Exec(ctx, "DELETE FROM courses WHERE id = $1", id); err != nil {
+	var kept bool
+	var dirs []string
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		if kept, err = freeze(ctx, tx, id, RetentionDeleted); err != nil {
+			return err
+		}
+		if !kept {
+			return purge(ctx, tx, id)
+		}
+		// Only the freeze is read from now on, so the course keeps just its files.
+		if _, err := tx.Exec(ctx, `
+			UPDATE courses SET visibility = 'private', publish_state = 'unpublished', deleted_at = now(), updated_at = now(),
+				files_dir = (SELECT files_dir FROM course_freezes WHERE course_id = $1)
+			WHERE id = $1`, id); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `
+			UPDATE review_requests SET state = 'rejected', reason = '课程已删除', decided_at = now(), decided_by = $2
+			WHERE course_id = $1 AND state = 'pending'
+			RETURNING coalesce(files_dir, '')`, id, viewer.ID)
+		if err != nil {
+			return err
+		}
+		dirs, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		return err
+	})
+	if err != nil {
 		return err
 	}
-	// The course is gone either way; files left behind by a failure here are
-	// unreachable and only cost space.
-	if err := s.files.DeletePrefix(ctx, coursePrefix(id)); err != nil {
-		slog.Warn("course files not removed", "course", id, "err", err)
+	if !kept {
+		s.dropCourseFiles(ctx, id)
+		return nil
+	}
+	s.dropUnused(ctx, id, sm.FilesDir) // newer than the freeze, if updated since unpublishing
+	for _, d := range dirs {
+		if d != "" {
+			s.dropFiles(ctx, id, d)
+		}
 	}
 	return nil
+}
+
+// purge removes a course for good; its files go with dropCourseFiles once
+// the transaction commits.
+func purge(ctx context.Context, tx pgx.Tx, id int64) error {
+	_, err := tx.Exec(ctx, "DELETE FROM courses WHERE id = $1", id)
+	return err
+}
+
+// dropCourseFiles removes every file of a course that is gone. Files left
+// behind by a failure here are unreachable and only cost space.
+func (s *Service) dropCourseFiles(ctx context.Context, id int64) {
+	if err := s.files.DeletePrefix(context.WithoutCancel(ctx), coursePrefix(id)); err != nil {
+		slog.Warn("course files not removed", "course", id, "err", err)
+	}
 }
