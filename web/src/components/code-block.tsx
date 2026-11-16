@@ -34,7 +34,8 @@ export function CodeBlock({ node, children, ...rest }: ComponentProps<'pre'> & E
 
   return (
     <div className="code-block">
-      <div className="code-bar">
+      {/* data-chrome: not lesson text, so annotations skip it */}
+      <div className="code-bar" data-chrome>
         {lang && <span className="code-lang">{lang}</span>}
         <button type="button" className="code-copy" onClick={copy} aria-label={copied ? '已复制' : '复制代码'}>
           {copied ? <Check size={13} /> : <Copy size={13} />}

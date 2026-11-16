@@ -42,12 +42,18 @@ func (s *Service) Lesson(ctx context.Context, viewer auth.User, courseID, lesson
 	if err != nil {
 		return LessonText{}, err
 	}
+	return s.lesson(ctx, viewer, sm, ret, lessonID)
+}
+
+// lesson reads a lesson of a course already opened for the viewer.
+func (s *Service) lesson(ctx context.Context, viewer auth.User, sm Summary, ret *retention, lessonID int64) (LessonText, error) {
+	courseID := sm.ID
 	if ret != nil {
 		return s.retainedLesson(ctx, viewer, courseID, lessonID, ret)
 	}
 	var l LessonText
 	var file *string
-	err = s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(ctx, `
 		SELECT l.id, l.key, l.title, l.chapter_id, l.file, coalesce(l.video_file, ''), coalesce(l.video_url, ''),
 		       `+lessonState+`, coalesce(p.position, 0)
 		FROM lessons l
