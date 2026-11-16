@@ -1,6 +1,9 @@
 package server_test
 
 import (
+	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -70,4 +73,36 @@ func TestAFinishedCourseCannotHaveUpcomingLessons(t *testing.T) {
 	if body := string(r.body); !strings.Contains(body, "待更新") {
 		t.Fatalf("the problem says why: %s", body)
 	}
+}
+
+func TestUpcomingLessonsAreLeftOutOfProgress(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, outlineFiles(outlineManifest()))
+	ids := lessonIDs(t, alice, id)
+
+	alice.mustOK(setProgress(alice, id, ids["l01"], map[string]any{"done": true}))
+	alice.mustOK(setProgress(alice, id, ids["l03"], map[string]any{"done": true}))
+
+	if p := courseProgress(t, alice, id); p["done"] != float64(2) || p["total"] != float64(2) {
+		t.Fatalf("the course is learned through once every lesson with content is: %v", p)
+	}
+	intent := chaptersByKey(courseJSON(t, alice, id))["intent"]
+	if intent["done"] != float64(2) || intent["total"] != float64(2) {
+		t.Fatalf("the chapter counts only lessons with content: %v", intent)
+	}
+	if got := myCourseIDsWhere(t, alice, url.Values{"state": {"done"}}); len(got) != 1 || got[0] != id {
+		t.Fatalf("the course counts as done in my courses: %v", got)
+	}
+}
+
+func TestAnUpcomingLessonCannotBeRead(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, outlineFiles(outlineManifest()))
+	upcoming := lessonIDs(t, alice, id)["l02"]
+
+	expectError(t, lessonText(alice, id, upcoming), http.StatusConflict, "lesson_upcoming")
+	expectError(t, alice.do("POST", fmt.Sprintf("/api/courses/%d/lessons/%d/visit", id, upcoming), nil), http.StatusConflict, "lesson_upcoming")
+	expectError(t, setProgress(alice, id, upcoming, map[string]any{"done": true}), http.StatusConflict, "lesson_upcoming")
 }

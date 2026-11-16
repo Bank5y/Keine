@@ -226,10 +226,13 @@ type Progress struct {
 }
 
 type ChapterDetail struct {
-	ID      int64          `json:"id"`
-	Key     string         `json:"key"`
-	Title   string         `json:"title"`
-	Done    int            `json:"done"`
+	ID    int64  `json:"id"`
+	Key   string `json:"key"`
+	Title string `json:"title"`
+	Done  int    `json:"done"`
+	// Total is how many of its lessons count in progress: all but the
+	// upcoming ones.
+	Total   int            `json:"total"`
 	Lessons []LessonDetail `json:"lessons"`
 }
 
@@ -420,6 +423,9 @@ func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int6
 			Upcoming: *isUpcoming, State: state}
 		last := &out[len(out)-1]
 		last.Lessons = append(last.Lessons, l)
+		if !l.Upcoming {
+			last.Total++
+		}
 		if l.State == StateDone && !l.Upcoming {
 			last.Done++
 		}

@@ -49,6 +49,8 @@ type snapLesson struct {
 	Duration  string `json:"duration"`
 }
 
+func (l snapLesson) upcoming() bool { return l.File == "" && l.VideoFile == "" && l.VideoURL == "" }
+
 // retention is what one subscriber keeps of a course that left the library:
 // its freeze and the lessons they retained, plus their done lessons.
 type retention struct {
@@ -102,6 +104,9 @@ func (r *retention) apply(sm *Summary) {
 	sm.LessonCount, sm.DoneCount = 0, 0
 	for _, ch := range r.snap.Chapters {
 		for _, l := range ch.Lessons {
+			if l.upcoming() {
+				continue
+			}
 			sm.LessonCount++
 			if r.done[l.Key] {
 				sm.DoneCount++
@@ -120,14 +125,17 @@ func (r *retention) structure() []ChapterDetail {
 		c := ChapterDetail{ID: ch.ID, Key: ch.Key, Title: ch.Title, Lessons: []LessonDetail{}}
 		for _, l := range ch.Lessons {
 			d := LessonDetail{ID: l.ID, Key: l.Key, Title: l.Title, Duration: l.Duration, HasText: l.File != "",
-				State: StateUnstarted, Unavailable: !r.retained[l.Key]}
+				State: StateUnstarted, Upcoming: l.upcoming(), Unavailable: !l.upcoming() && !r.retained[l.Key]}
 			switch {
 			case l.VideoFile != "":
 				d.Video = "file"
 			case l.VideoURL != "":
 				d.Video = "url"
 			}
-			if r.done[l.Key] {
+			if !d.Upcoming {
+				c.Total++
+			}
+			if r.done[l.Key] && !d.Upcoming {
 				d.State = StateDone
 				c.Done++
 			}
@@ -279,9 +287,9 @@ func takeSnapshot(ctx context.Context, tx pgx.Tx, courseID int64) (snapshot, str
 		return snap, "", err
 	}
 	rows, err := tx.Query(ctx, `
-		SELECT ch.id, ch.key, ch.title, l.id, l.key, l.title, coalesce(l.file, ''), coalesce(l.video_file, ''),
-		       coalesce(l.video_url, ''), l.duration
-		FROM chapters ch JOIN lessons l ON l.chapter_id = ch.id
+		SELECT ch.id, ch.key, ch.title, l.id, coalesce(l.key, ''), coalesce(l.title, ''), coalesce(l.file, ''),
+		       coalesce(l.video_file, ''), coalesce(l.video_url, ''), coalesce(l.duration, '')
+		FROM chapters ch LEFT JOIN lessons l ON l.chapter_id = ch.id
 		WHERE ch.course_id = $1
 		ORDER BY ch.position, l.position`, courseID)
 	if err != nil {
@@ -291,12 +299,17 @@ func takeSnapshot(ctx context.Context, tx pgx.Tx, courseID int64) (snapshot, str
 	for rows.Next() {
 		var ch snapChapter
 		var l snapLesson
-		if err := rows.Scan(&ch.ID, &ch.Key, &ch.Title, &l.ID, &l.Key, &l.Title, &l.File, &l.VideoFile, &l.VideoURL, &l.Duration); err != nil {
+		var lessonID *int64
+		if err := rows.Scan(&ch.ID, &ch.Key, &ch.Title, &lessonID, &l.Key, &l.Title, &l.File, &l.VideoFile, &l.VideoURL, &l.Duration); err != nil {
 			return snap, "", err
 		}
 		if len(snap.Chapters) == 0 || snap.Chapters[len(snap.Chapters)-1].ID != ch.ID {
 			snap.Chapters = append(snap.Chapters, ch)
 		}
+		if lessonID == nil {
+			continue // an empty chapter
+		}
+		l.ID = *lessonID
 		last := &snap.Chapters[len(snap.Chapters)-1]
 		last.Lessons = append(last.Lessons, l)
 	}

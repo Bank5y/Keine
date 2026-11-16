@@ -169,6 +169,8 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
 	case errors.Is(err, course.ErrLessonNotFound):
 		writeError(w, http.StatusNotFound, "lesson_not_found", "这一讲不存在")
+	case errors.Is(err, course.ErrLessonUpcoming):
+		writeError(w, http.StatusConflict, "lesson_upcoming", "这一讲还没有内容, 待更新")
 	case errors.Is(err, course.ErrFileNotFound):
 		writeError(w, http.StatusNotFound, "file_not_found", "文件不存在")
 	case errors.Is(err, course.ErrBadProgress):
