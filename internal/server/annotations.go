@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/Bank5y/keine/internal/course"
 )
@@ -107,4 +108,31 @@ func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) myAnnotations(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var f course.NoteFilter
+	if v := q.Get("course"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			writeError(w, http.StatusBadRequest, "bad_request", "筛选条件不合法")
+			return
+		}
+		f.CourseID = id
+	}
+	f.Style, f.Color, f.Query, f.Sort = q.Get("style"), q.Get("color"), q.Get("q"), q.Get("sort")
+	switch q.Get("noted") {
+	case "", "0", "false":
+	case "1", "true":
+		f.Noted = true
+	default:
+		writeError(w, http.StatusBadRequest, "bad_request", "筛选条件不合法")
+		return
+	}
+	nb, err := s.courses.Notebook(r.Context(), currentUser(r), f)
+	if !writeAnnotationError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, nb)
 }

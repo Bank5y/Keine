@@ -20,6 +20,22 @@ export interface Annotation {
   range: { start: number; end: number } | null;
 }
 
+// The notes page: every annotation of the reader's, with where it is.
+export interface NoteEntry extends Annotation {
+  createdAt: string;
+  updatedAt: string;
+  course: { id: number; title: string };
+  // null when the course no longer has the lesson
+  lesson: { id: number; title: string; chapter: string } | null;
+}
+export interface NoteCourse { id: number; title: string; count: number }
+export interface Notebook { annotations: NoteEntry[]; courses: NoteCourse[] }
+export type NoteSort = 'time' | 'text';
+
+// the address that opens a lesson at one of its annotations
+export const ANNOTATION_HASH = '#annotation-';
+export const annotationURL = (courseId: number, lessonId: number, id: number) => `/courses/${courseId}/lessons/${lessonId}${ANNOTATION_HASH}${id}`;
+
 // a look is a style with its colour, as the toolbar offers them
 export type Look = { style: 'underline' } | { style: 'highlight'; color: HighlightColor };
 export const lookName = (a: { style: AnnotationStyle; color: HighlightColor | null }) => (a.style === 'underline' ? 'underline' : a.color ?? 'yellow');

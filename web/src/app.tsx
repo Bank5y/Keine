@@ -10,6 +10,7 @@ import { LessonView } from '@/views/lesson';
 import { LibraryView } from '@/views/library';
 import { LoginView } from '@/views/login';
 import { MineView } from '@/views/mine';
+import { NotesView } from '@/views/notes';
 import { NotificationsView } from '@/views/notifications';
 
 function routeView(path: string, user: User): ReactNode {
@@ -19,6 +20,7 @@ function routeView(path: string, user: User): ReactNode {
   if (m) return <CourseView id={Number(m.id)} />;
   if (path.startsWith('/mine')) return <MineView />;
   if (path.startsWith('/notifications')) return <NotificationsView />;
+  if (path.startsWith('/notes')) return <NotesView />;
   if (path.startsWith('/account')) return <AccountView user={user} />;
   if (path.startsWith('/admin') && user.role === 'admin') return <AdminView path={path} user={user} />;
   return <LibraryView />;

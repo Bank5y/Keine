@@ -7,7 +7,7 @@ import { toggleTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
 export function Masthead({ user, path }: { user: User | null | undefined; path: string }) {
-  const nav: [string, string][] = user ? [['/library', '课程库'], ['/mine', '我的课程']] : [];
+  const nav: [string, string][] = user ? [['/library', '课程库'], ['/mine', '我的课程'], ['/notes', '笔记']] : [];
   if (user?.role === 'admin') nav.push(['/admin', '管理']);
   return (
     <header className="masthead">

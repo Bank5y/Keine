@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Copy, NotebookPen, Pencil, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
-import { COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
+import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
 import { cn } from '@/lib/utils';
 
 // one CSS highlight per look; underlines paint above highlights so an
@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils';
 const LOOKS = ['underline', ...HIGHLIGHT_COLORS] as const;
 const highlightName = (look: string) => `ann-${look}`;
 const ACTIVE = 'ann-active';
+// the annotation the notes page jumped to, blinking
+const FLASH = 'ann-flash';
 const supported = () => typeof CSS !== 'undefined' && 'highlights' in CSS;
 
 // Wide screens keep notes in a rail beside the text (see .docs-notes in
@@ -115,6 +117,31 @@ export function Annotator({ courseId, lessonId, root, rail }: { courseId: number
     CSS.highlights.set(ACTIVE, h);
     return () => { CSS.highlights.delete(ACTIVE); };
   }, [focused]);
+
+  // opened at "#annotation-<id>" (from the notes page): bring that annotation
+  // into view and flash it, once it is on the page
+  const jumped = useRef(false);
+  const [flash, setFlash] = useState<Range[] | null>(null);
+  useEffect(() => {
+    if (jumped.current || !location.hash.startsWith(ANNOTATION_HASH)) return;
+    const id = Number(location.hash.slice(ANNOTATION_HASH.length));
+    if (!placed.has(id)) return;
+    jumped.current = true;
+    const ranges = placed.get(id)!;
+    // images above it may still be growing the text: aim again once they settled
+    const aim = () => { const line = firstLine(ranges); if (line) window.scrollTo({ top: line.top + scrollY - innerHeight / 3, behavior: 'instant' }); };
+    aim();
+    window.setTimeout(aim, 350);
+    // on, off, on, off: a short blink, left to run out should the lesson close
+    [0, 350, 550, 1100].forEach((at, i) => window.setTimeout(() => setFlash(i % 2 ? null : ranges), at));
+  }, [placed]);
+  useEffect(() => {
+    if (!supported() || !flash) return undefined;
+    const h = new Highlight(...flash);
+    h.priority = 3;
+    CSS.highlights.set(FLASH, h);
+    return () => { CSS.highlights.delete(FLASH); };
+  }, [flash]);
 
   // a finished selection inside the text offers the toolbar
   useEffect(() => {
