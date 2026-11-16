@@ -27,6 +27,12 @@
   --info-soft: #e1e7f0;
   --warn: #9a6b12;
   --warn-soft: #f2e8d2;
+  /* highlighter colours: solid for the swatches, translucent on the text */
+  --mark-yellow-solid: #f2d34f; --mark-green-solid: #8fd19e; --mark-blue-solid: #8fc0ee; --mark-pink-solid: #f1a1bd;
+  --mark-yellow: color-mix(in srgb, var(--mark-yellow-solid) 55%, transparent);
+  --mark-green: color-mix(in srgb, var(--mark-green-solid) 50%, transparent);
+  --mark-blue: color-mix(in srgb, var(--mark-blue-solid) 50%, transparent);
+  --mark-pink: color-mix(in srgb, var(--mark-pink-solid) 50%, transparent);
 
   --serif: "Noto Serif SC", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", "Microsoft YaHei", "Segoe UI", sans-serif;
@@ -71,6 +77,7 @@
     --brand: #e0694f; --brand-hover: #ec8168; --brand-soft: #3a211b; --on-brand: #1a120f;
     --success: #7fbf9a; --success-soft: #1d2d24; --danger: #ef7a7f; --danger-soft: #3a1c1e;
     --info: #8fb0de; --info-soft: #1d2533; --warn: #d9ad5b; --warn-soft: #33291a;
+    --mark-yellow-solid: #a98f25; --mark-green-solid: #4f9a62; --mark-blue-solid: #4a7fb5; --mark-pink-solid: #b5587a;
     color-scheme: dark;
   }
 }
@@ -80,6 +87,7 @@
   --brand: #e0694f; --brand-hover: #ec8168; --brand-soft: #3a211b; --on-brand: #1a120f;
   --success: #7fbf9a; --success-soft: #1d2d24; --danger: #ef7a7f; --danger-soft: #3a1c1e;
   --info: #8fb0de; --info-soft: #1d2533; --warn: #d9ad5b; --warn-soft: #33291a;
+  --mark-yellow-solid: #a98f25; --mark-green-solid: #4f9a62; --mark-blue-solid: #4a7fb5; --mark-pink-solid: #b5587a;
   color-scheme: dark;
 }
 
@@ -462,6 +470,37 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .reader-prose p { margin: 0 0 18px; }
 .reader-prose img { margin: 26px auto; }
 @media (max-width: 560px) { .reader-doc > h1, .reader-prose > h1:first-child { font-size: 26px; } .reader-prose { font-size: 16px; } }
+
+/* annotations: painted with the CSS Custom Highlight API, so the colours are
+   translucent and overlapping highlights still read */
+::highlight(ann-underline) { text-decoration-line: underline; text-decoration-color: var(--brand); text-decoration-thickness: 2px; }
+::highlight(ann-yellow) { background-color: var(--mark-yellow); }
+::highlight(ann-green) { background-color: var(--mark-green); }
+::highlight(ann-blue) { background-color: var(--mark-blue); }
+::highlight(ann-pink) { background-color: var(--mark-pink); }
+.ann-bar {
+  position: absolute; z-index: 60; display: flex; align-items: center; gap: 2px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; font-family: var(--sans); font-size: 13px; color: var(--text-2);
+  box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--text) 45%, transparent), 0 2px 6px color-mix(in srgb, var(--text) 8%, transparent);
+  animation: fade .12s ease-out both; white-space: nowrap; max-width: calc(100vw - 16px);
+}
+.ann-bar.stacked { flex-direction: column; align-items: stretch; gap: 4px; }
+.ann-row { display: flex; align-items: center; gap: 2px; }
+.ann-bar.stacked .ann-row + .ann-row { border-top: 1px solid var(--line); padding-top: 4px; }
+.ann-quote { max-width: 9em; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; color: var(--text-3); font-family: var(--serif); }
+.ann-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border-radius: 4px; color: inherit; }
+.ann-btn svg { width: 15px; height: 15px; }
+.ann-btn:hover { background: var(--surface-2); color: var(--text); }
+.ann-btn[aria-pressed="true"] { color: var(--brand); background: var(--brand-soft); }
+.ann-btn.danger:hover { color: var(--danger); background: var(--danger-soft); }
+.ann-label { padding: 0 2px 0 8px; color: var(--text-3); font-size: 12px; }
+.ann-swatch { width: 20px; height: 20px; margin: 0 2px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); }
+.ann-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-2); }
+.ann-swatch.c-yellow { background: var(--mark-yellow-solid); }
+.ann-swatch.c-green { background: var(--mark-green-solid); }
+.ann-swatch.c-blue { background: var(--mark-blue-solid); }
+.ann-swatch.c-pink { background: var(--mark-pink-solid); }
+.ann-sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--line); }
 
 /* code highlighting (highlight.js classes), tuned to the paper palette */
 .hljs-comment, .hljs-quote { color: var(--text-3); font-style: italic; }

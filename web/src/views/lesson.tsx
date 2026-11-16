@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronLeft, ChevronRight, ListTree, PanelLeft } from 'lucide-react';
+import { Annotator } from '@/components/annotator';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
 import { Drawer } from '@/components/drawer';
@@ -46,6 +47,8 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const [zoom, setZoom] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<'' | 'toc' | 'headings'>('');
   const doc = useRef<HTMLElement>(null);
+  // the rendered Markdown of the shown lesson, once the renderer has loaded
+  const [prose, setProse] = useState<HTMLElement | null>(null);
   const right = useRef<HTMLElement>(null);
   const current = lesson?.id === lessonId ? lesson : null;
   // a video gives way at once: kept on screen it would play on unseen, and
@@ -109,10 +112,12 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
             {course ? <div className="kicker">{course.title}</div> : null}
             {shown.video || !opensWithTitle(shown.markdown) ? <h1>{shown.title}</h1> : null}
             {shown.video ? <LessonVideoView video={shown.video} position={shown.position} onPosition={savePosition} onNearlyDone={autoDone} /> : null}
-            {shown.markdown ? <LazyMarkdown text={shown.video ? withoutTitle(shown.markdown) : shown.markdown} base={shown.base} className="reader-prose" />
+            {shown.markdown ? <LazyMarkdown text={shown.video ? withoutTitle(shown.markdown) : shown.markdown} base={shown.base} className="reader-prose" rootRef={setProse} />
               : (shown.video ? null : <p className="text-ink-3">这一讲没有文字内容。</p>)}
           </article>
         ) : null}
+        {current && course?.type === 'column' && !current.video && current.markdown
+          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} /> : null}
         {current ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
         {!err && shown ? (
           <nav className="reader-nav" aria-label="翻页">

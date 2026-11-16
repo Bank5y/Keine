@@ -5,6 +5,7 @@ import rehypeSanitize from 'rehype-sanitize';
 import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
+import type { Ref } from 'react';
 import { cn } from '@/lib/utils';
 
 // resolve turns a reference relative to the Markdown file into a URL; links
@@ -19,9 +20,9 @@ function resolver(base?: string) {
 
 // Markdown renders course text like a documentation site. Raw HTML in the
 // text is allowed but sanitized, since course text comes from uploaders.
-export function Markdown({ text, base, className, components }: { text: string; base?: string; className?: string; components?: Components }) {
+export function Markdown({ text, base, className, components, rootRef }: { text: string; base?: string; className?: string; components?: Components; rootRef?: Ref<HTMLDivElement> }) {
   return (
-    <div className={cn('prose', className)}>
+    <div className={cn('prose', className)} ref={rootRef}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeSlug, [rehypeHighlight, { detect: false, ignoreMissing: true }]]}
