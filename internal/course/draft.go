@@ -340,7 +340,7 @@ func (s *Service) CommitDraft(ctx context.Context, viewer auth.User, id int64) (
 // uploaded package. The course itself does not change.
 func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) (CommitResult, error) {
 	dir := newRequestDir()
-	var reqID int64
+	var filed filedRequest
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		// Hold the course's content still while its files are copied: an
 		// approval switching it would drop the folder they come from.
@@ -370,7 +370,7 @@ func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) 
 		if err := s.copyFiles(ctx, id, base, dir, m); err != nil {
 			return err
 		}
-		if reqID, err = fileUpdateRequest(ctx, tx, id, viewer, dir, base, raw); err != nil {
+		if filed, err = fileUpdateRequest(ctx, tx, id, viewer, dir, base, raw); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, "DELETE FROM course_drafts WHERE course_id = $1 AND user_id = $2", id, viewer.ID)
@@ -380,7 +380,8 @@ func (s *Service) requestDraft(ctx context.Context, viewer auth.User, id int64) 
 		s.dropFiles(ctx, id, dir)
 		return CommitResult{}, err
 	}
-	return CommitResult{Outcome: "requested", RequestID: reqID}, nil
+	s.dropReplaced(ctx, id, filed)
+	return CommitResult{Outcome: "requested", RequestID: filed.id}, nil
 }
 
 // copyFiles fills folder to with the files course m needs, copied from

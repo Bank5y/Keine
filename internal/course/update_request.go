@@ -40,32 +40,67 @@ func (s *Service) SubmitUpdate(ctx context.Context, viewer auth.User, id int64, 
 		s.dropFiles(ctx, id, dir)
 		return 0, err
 	}
-	var reqID int64
+	var f filedRequest
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		var err error
-		reqID, err = fileUpdateRequest(ctx, tx, id, viewer, dir, sm.FilesDir, pp.raw)
+		f, err = fileUpdateRequest(ctx, tx, id, viewer, dir, sm.FilesDir, pp.raw)
 		return err
 	})
 	if err != nil {
 		s.dropFiles(ctx, id, dir)
+		return 0, err
 	}
-	return reqID, err
+	s.dropReplaced(ctx, id, f)
+	return f.id, nil
 }
 
 // newRequestDir names a fresh folder for an update request's files.
 func newRequestDir() string { return fmt.Sprintf("r%d", time.Now().UnixNano()) }
 
+// filedRequest is an update request just recorded, with the folders of the
+// requester's earlier pending requests it replaced, to remove once the
+// transaction commits.
+type filedRequest struct {
+	id       int64
+	replaced []string
+}
+
 // fileUpdateRequest records an update request whose course (manifest) and
 // files (in folder dir) are ready, made against the course version in
-// folder base, and tells the admins.
-func fileUpdateRequest(ctx context.Context, tx pgx.Tx, courseID int64, requester auth.User, dir, base string, manifest []byte) (int64, error) {
-	var reqID int64
+// folder base, and tells the admins. The requester's earlier pending
+// request for the course is withdrawn: admins only review the latest one.
+func fileUpdateRequest(ctx context.Context, tx pgx.Tx, courseID int64, requester auth.User, dir, base string, manifest []byte) (filedRequest, error) {
+	var f filedRequest
+	rows, err := tx.Query(ctx, `
+		UPDATE review_requests SET state = 'withdrawn', decided_at = now()
+		WHERE course_id = $1 AND requester_id = $2 AND kind = 'update' AND state = 'pending'
+		RETURNING coalesce(files_dir, '')`, courseID, requester.ID)
+	if err != nil {
+		return f, err
+	}
+	if f.replaced, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+		return f, err
+	}
+	if len(f.replaced) > 0 {
+		if err := closeRequestNotices(ctx, tx, courseID); err != nil {
+			return f, err
+		}
+	}
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
-		VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, courseID, requester.ID, dir, base, manifest).Scan(&reqID); err != nil {
-		return 0, err
+		VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, courseID, requester.ID, dir, base, manifest).Scan(&f.id); err != nil {
+		return f, err
 	}
-	return reqID, tellAdmins(ctx, tx, notify.UpdateRequested, courseID, reqID, requester)
+	return f, tellAdmins(ctx, tx, notify.UpdateRequested, courseID, f.id, requester)
+}
+
+// dropReplaced removes the folders of requests a new one replaced.
+func (s *Service) dropReplaced(ctx context.Context, courseID int64, f filedRequest) {
+	for _, dir := range f.replaced {
+		if dir != "" {
+			s.dropFiles(ctx, courseID, dir)
+		}
+	}
 }
 
 // UpdateRequest is one of the viewer's update requests for a course.

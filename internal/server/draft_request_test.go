@@ -16,6 +16,51 @@ func approveUpdateOf(t *testing.T, admin *client, courseID int) {
 	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/reviews/%d/approve", int(reviews[0]["id"].(float64))), nil))
 }
 
+func TestSubmittingAgainReplacesTheRequestersPendingRequest(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	bob := a.user("bob")
+	carol := a.user("carol")
+	admin := a.admin()
+	id := publishedWith(t, a, alice, func(m map[string]any) { m["completion"] = "ongoing" })
+	_, files := nextVersion()
+	bob.mustOK(submitUpdate(t, bob, id, files))
+	carol.mustOK(addOp(carol, id, map[string]any{"type": "renameLesson", "lesson": "l02", "title": "02｜意图"}))
+	carol.mustOK(commitDraft(carol, id))
+	bob.mustOK(addOp(bob, id, map[string]any{"type": "renameLesson", "lesson": "l01", "title": "01｜输入"}))
+
+	bob.mustOK(commitDraft(bob, id))
+
+	reqs := myUpdateRequests(t, bob, id)
+	if len(reqs) != 2 || reqs[0].(map[string]any)["state"] != "pending" || reqs[1].(map[string]any)["state"] != "withdrawn" {
+		t.Fatalf("the new request replaces the old one: %v", reqs)
+	}
+	if n := len(updateReviews(t, admin, id)); n != 2 {
+		t.Fatalf("admins review bob's latest request and carol's, got %d", n)
+	}
+	for _, k := range a.storedKeys(fmt.Sprintf("courses/%d/", id)) {
+		if strings.HasSuffix(k, "03_plan.md") {
+			t.Fatalf("the replaced request's files are removed, found %s", k)
+		}
+	}
+	unread := 0
+	for _, n := range notificationsOfKind(t, admin, "update_requested") {
+		if n["read"] == false {
+			unread++
+		}
+	}
+	if unread != 2 {
+		t.Fatalf("only the requests still pending call for the admin, got %d unread", unread)
+	}
+
+	// a package replaces a pending draft request the same way
+	bob.mustOK(submitUpdate(t, bob, id, files))
+
+	if reqs := myUpdateRequests(t, bob, id); len(reqs) != 3 || reqs[1].(map[string]any)["state"] != "withdrawn" {
+		t.Fatalf("a package replaces the request too: %v", reqs)
+	}
+}
+
 func TestAPublicCoursesUploaderCommitsADraftAsAnUpdateRequest(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
