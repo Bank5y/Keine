@@ -89,7 +89,8 @@ func (s *Service) lessonMarkdown(ctx context.Context, courseID int64, dir, file 
 // (ADR-0003): it keeps the text each modified lesson had, puts every
 // annotation on it back where its quote is found with confidence and marks
 // the others pending, and turns the annotations of deleted lessons into
-// excerpts.
+// excerpts. Each user with annotations it newly marked pending is told so,
+// once (ticket #38).
 func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentDiff) error {
 	if len(d.removed) > 0 {
 		if _, err := tx.Exec(ctx, "UPDATE annotations SET state = $3 WHERE course_id = $1 AND lesson_key = ANY($2)",
@@ -97,6 +98,7 @@ func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentD
 			return err
 		}
 	}
+	var pending []int64
 	for _, ch := range d.modified {
 		var prev *int64
 		if ch.old != "" {
@@ -107,7 +109,50 @@ func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentD
 			}
 			prev = &id
 		}
-		if err := relocate(ctx, tx, courseID, ch.key, anchor.MarkdownText(ch.new), prev); err != nil {
+		ids, err := relocate(ctx, tx, courseID, ch.key, anchor.MarkdownText(ch.new), prev)
+		if err != nil {
+			return err
+		}
+		pending = append(pending, ids...)
+	}
+	return notifyPending(ctx, tx, courseID, pending)
+}
+
+// notifyPending tells the owners of annotations an update just marked
+// pending how many await migration and in how many lessons.
+func notifyPending(ctx context.Context, tx pgx.Tx, courseID int64, pending []int64) error {
+	if len(pending) == 0 {
+		return nil
+	}
+	cp, err := coursePayload(ctx, tx, courseID)
+	if err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT a.user_id, count(DISTINCT a.lesson_key), count(*),
+			(array_agg(l.id ORDER BY ch.position, l.position))[1]
+		FROM annotations a
+		JOIN lessons l ON l.course_id = a.course_id AND l.key = a.lesson_key
+		JOIN chapters ch ON ch.id = l.chapter_id
+		WHERE a.id = ANY($1)
+		GROUP BY a.user_id ORDER BY a.user_id`, pending)
+	if err != nil {
+		return err
+	}
+	type told struct {
+		user int64
+		p    notify.PendingPayload
+	}
+	list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (told, error) {
+		t := told{p: notify.PendingPayload{CoursePayload: cp}}
+		err := r.Scan(&t.user, &t.p.Lessons, &t.p.Annotations, &t.p.LessonID)
+		return t, err
+	})
+	if err != nil {
+		return err
+	}
+	for _, t := range list {
+		if err := notify.Send(ctx, tx, t.user, notify.AnnotationsPending, t.p); err != nil {
 			return err
 		}
 	}
@@ -117,11 +162,12 @@ func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentD
 // relocate finds the annotations shown in, or awaiting, a lesson again in
 // its new text. One that cannot be put back is pending against prev, the
 // text it was shown in; one already pending keeps the text it was made on.
-func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text anchor.Text, prev *int64) error {
+// It returns the annotations it newly marked pending.
+func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text anchor.Text, prev *int64) ([]int64, error) {
 	rows, err := tx.Query(ctx, `SELECT id, state, quote, prefix, suffix FROM annotations
 		WHERE course_id = $1 AND lesson_key = $2 AND state IN ($3, $4)`, courseID, key, AnnotationAttached, AnnotationPending)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	type found struct {
 		id    int64
@@ -134,8 +180,9 @@ func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text a
 		return f, err
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var pending []int64
 	for _, f := range list {
 		var err error
 		switch _, ok := text.Relocate(f.q); {
@@ -143,12 +190,13 @@ func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text a
 			_, err = tx.Exec(ctx, "UPDATE annotations SET state = $2, previous_text_id = NULL WHERE id = $1", f.id, AnnotationAttached)
 		case f.state == AnnotationAttached:
 			_, err = tx.Exec(ctx, "UPDATE annotations SET state = $2, previous_text_id = $3 WHERE id = $1", f.id, AnnotationPending, prev)
+			pending = append(pending, f.id)
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return pending, nil
 }
 
 // PreviousText is the text a lesson had before a course update changed it.
