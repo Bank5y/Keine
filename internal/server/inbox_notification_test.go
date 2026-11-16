@@ -178,3 +178,22 @@ func TestAdminsAreToldOfAnUpdateRequestUntilItIsWithdrawn(t *testing.T) {
 		t.Fatalf("a withdrawn request leaves the inbox: %v", kinds(in))
 	}
 }
+
+func TestALaterUpdateThatReattachesEverythingClearsTheNotice(t *testing.T) {
+	a := newApp(t)
+	erin, _, _ := pendingFor(t, a)
+	id := courseOfPending(t, erin)
+
+	a.admin().mustOK(updateCourse(t, a.admin(), id, annotatedFiles(openingText)))
+
+	for _, n := range inbox(t, erin) {
+		if n["kind"] == "annotations_pending" {
+			t.Fatalf("the quote is back, nothing awaits migration, so the notice goes: %v", kinds(inbox(t, erin)))
+		}
+	}
+}
+
+func courseOfPending(t *testing.T, c *client) int {
+	t.Helper()
+	return int(notificationsOfKind(t, c, "annotations_pending")[0]["payload"].(map[string]any)["courseId"].(float64))
+}

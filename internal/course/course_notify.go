@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/notify"
 )
 
@@ -91,7 +92,7 @@ func settleLeaving(ctx context.Context, tx pgx.Tx, courseID int64, kind, reason 
 	}); err != nil {
 		return l, err
 	}
-	return l, closeRequestNotices(ctx, tx)
+	return l, closeRequestNotices(ctx, tx, courseID)
 }
 
 // notifyLeaving tells the users of a course leaving the library (kind
@@ -152,36 +153,40 @@ func subscribers(ctx context.Context, tx pgx.Tx, courseID int64) ([]int64, error
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }
 
-// tellAdmins tells every admin about a request waiting for them.
-func tellAdmins(ctx context.Context, tx pgx.Tx, kind notify.Kind, courseID, requestID int64, requester string) error {
+// tellAdmins tells every admin (but the requester) about a request waiting
+// for them.
+func tellAdmins(ctx context.Context, tx pgx.Tx, kind notify.Kind, courseID, requestID int64, requester auth.User) error {
 	c, err := coursePayload(ctx, tx, courseID)
 	if err != nil {
 		return err
 	}
-	return notify.SendToAdmins(ctx, tx, kind, notify.RequestPayload{CoursePayload: c, Requester: requester, RequestID: requestID})
+	return notify.SendToAdmins(ctx, tx, requester.ID, kind, notify.RequestPayload{CoursePayload: c, Requester: requester.Username, RequestID: requestID})
 }
 
-// closeRequestNotices marks read every admin's notice about a request that
-// is no longer pending, so whoever decided (or the requester withdrawing)
-// clears it for all admins.
-func closeRequestNotices(ctx context.Context, tx pgx.Tx) error {
+// closeRequestNotices marks read every admin's notice about a request of a
+// course that is no longer pending, so whoever decided (or the requester
+// withdrawing) clears it for all admins.
+func closeRequestNotices(ctx context.Context, tx pgx.Tx, courseID int64) error {
 	_, err := tx.Exec(ctx, `
 		UPDATE notifications n SET read_at = now()
 		FROM review_requests r
-		WHERE n.read_at IS NULL AND n.kind IN ($1, $2)
+		WHERE n.read_at IS NULL AND n.kind IN ($1, $2) AND (n.payload->>'courseId')::bigint = $4
 		  AND r.id = (n.payload->>'requestId')::bigint AND r.state <> $3`,
-		string(notify.PublishRequested), string(notify.UpdateRequested), reviewPending)
+		string(notify.PublishRequested), string(notify.UpdateRequested), reviewPending, courseID)
 	return err
 }
 
-// clearPendingNotice takes the user's annotations_pending notices about a
-// course out of their inbox once none of their annotations there awaits
-// migration any more.
-func (s *Service) clearPendingNotice(ctx context.Context, userID, courseID int64) error {
-	var left bool
-	if err := s.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM annotations WHERE user_id = $1 AND course_id = $2 AND state = $3)",
-		userID, courseID, AnnotationPending).Scan(&left); err != nil || left {
-		return err
-	}
-	return notify.ClearPending(ctx, s.db, userID, courseID)
+// clearPendingNotices takes annotations_pending notices about a course out
+// of the inbox of every user (or only userID, when not 0) none of whose
+// annotations there awaits migration any more: they handled them, or a
+// later update re-attached or deleted them. One statement, so an update
+// marking new annotations pending meanwhile cannot have its notice cleared.
+func clearPendingNotices(ctx context.Context, db notify.Execer, courseID, userID int64) error {
+	_, err := db.Exec(ctx, `
+		UPDATE notifications n SET dismissed_at = now(), read_at = coalesce(n.read_at, now())
+		WHERE n.kind = $1 AND n.dismissed_at IS NULL AND (n.payload->>'courseId')::bigint = $2
+		  AND ($3 = 0 OR n.user_id = $3)
+		  AND NOT EXISTS (SELECT 1 FROM annotations a WHERE a.user_id = n.user_id AND a.course_id = $2 AND a.state = $4)`,
+		string(notify.AnnotationsPending), courseID, userID, AnnotationPending)
+	return err
 }

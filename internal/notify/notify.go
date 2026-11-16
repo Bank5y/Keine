@@ -117,23 +117,14 @@ func Send(ctx context.Context, db Execer, userID int64, kind Kind, payload any) 
 	return err
 }
 
-// SendToAdmins records the same notification for every admin.
-func SendToAdmins(ctx context.Context, db Execer, kind Kind, payload any) error {
+// SendToAdmins records the same notification for every admin but except
+// (the one who caused it, who needs no telling).
+func SendToAdmins(ctx context.Context, db Execer, except int64, kind Kind, payload any) error {
 	b, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(ctx, "INSERT INTO notifications (user_id, kind, payload) SELECT id, $1, $2 FROM users WHERE role = 'admin'", string(kind), b)
-	return err
-}
-
-// ClearPending takes a user's annotations_pending notices about a course out
-// of their inbox, once nothing there awaits migration any more.
-func ClearPending(ctx context.Context, db Execer, userID, courseID int64) error {
-	_, err := db.Exec(ctx, `
-		UPDATE notifications SET dismissed_at = now(), read_at = coalesce(read_at, now())
-		WHERE user_id = $1 AND kind = $2 AND (payload->>'courseId')::bigint = $3 AND dismissed_at IS NULL`,
-		userID, string(AnnotationsPending), courseID)
+	_, err = db.Exec(ctx, "INSERT INTO notifications (user_id, kind, payload) SELECT id, $1, $2 FROM users WHERE role = 'admin' AND id <> $3", string(kind), b, except)
 	return err
 }
 

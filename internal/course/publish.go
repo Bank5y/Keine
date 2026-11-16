@@ -51,7 +51,7 @@ func (s *Service) RequestPublish(ctx context.Context, viewer auth.User, id int64
 			reviewPublish, id, viewer.ID).Scan(&reqID); err != nil {
 			return err
 		}
-		if err := tellAdmins(ctx, tx, notify.PublishRequested, id, reqID, viewer.Username); err != nil {
+		if err := tellAdmins(ctx, tx, notify.PublishRequested, id, reqID, viewer); err != nil {
 			return err
 		}
 		return setPublishState(ctx, tx, id, Pending)
@@ -399,11 +399,12 @@ func decide(ctx context.Context, tx pgx.Tx, reviewID int64, state, reason string
 	if by != nil {
 		byID = &by.ID
 	}
-	if _, err := tx.Exec(ctx, "UPDATE review_requests SET state = $2, reason = $3, decided_at = now(), decided_by = $4 WHERE id = $1",
-		reviewID, state, reason, byID); err != nil {
+	var courseID int64
+	if err := tx.QueryRow(ctx, "UPDATE review_requests SET state = $2, reason = $3, decided_at = now(), decided_by = $4 WHERE id = $1 RETURNING course_id",
+		reviewID, state, reason, byID).Scan(&courseID); err != nil {
 		return err
 	}
-	return closeRequestNotices(ctx, tx)
+	return closeRequestNotices(ctx, tx, courseID)
 }
 
 // settleRequests decides every pending request of one kind for a course,
@@ -425,7 +426,7 @@ func settleRequests(ctx context.Context, tx pgx.Tx, courseID int64, kind, state 
 	if err != nil {
 		return nil, err
 	}
-	return requesters, closeRequestNotices(ctx, tx)
+	return requesters, closeRequestNotices(ctx, tx, courseID)
 }
 
 func (s *Service) tx(ctx context.Context, f func(pgx.Tx) error) error {

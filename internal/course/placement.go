@@ -87,7 +87,7 @@ func (s *Service) Place(ctx context.Context, viewer auth.User, id int64, p Place
 	if err != nil {
 		return a, err
 	}
-	return a, s.clearPendingNotice(ctx, viewer.ID, courseID)
+	return a, clearPendingNotices(ctx, s.db, courseID, viewer.ID)
 }
 
 // KeepAsExcerpt keeps one of the viewer's annotations that awaits migration
@@ -98,7 +98,7 @@ func (s *Service) KeepAsExcerpt(ctx context.Context, viewer auth.User, id int64)
 	err := s.db.QueryRow(ctx, "UPDATE annotations SET state = $3, updated_at = now() WHERE id = $1 AND user_id = $2 AND state = $4 RETURNING course_id",
 		id, viewer.ID, AnnotationChanged, AnnotationPending).Scan(&courseID)
 	if err == nil {
-		return s.clearPendingNotice(ctx, viewer.ID, courseID)
+		return clearPendingNotices(ctx, s.db, courseID, viewer.ID)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return err

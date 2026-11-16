@@ -47,7 +47,7 @@ func (s *Service) SubmitUpdate(ctx context.Context, viewer auth.User, id int64, 
 			VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, id, viewer.ID, dir, sm.FilesDir, pp.raw).Scan(&reqID); err != nil {
 			return err
 		}
-		return tellAdmins(ctx, tx, notify.UpdateRequested, id, reqID, viewer.Username)
+		return tellAdmins(ctx, tx, notify.UpdateRequested, id, reqID, viewer)
 	})
 	if err != nil {
 		s.dropFiles(ctx, id, dir)
@@ -94,7 +94,7 @@ func (s *Service) WithdrawUpdate(ctx context.Context, viewer auth.User, courseID
 		if err != nil {
 			return err
 		}
-		return closeRequestNotices(ctx, tx)
+		return closeRequestNotices(ctx, tx, courseID)
 	})
 	if err == nil && dir != "" {
 		s.dropFiles(ctx, courseID, dir)

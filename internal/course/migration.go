@@ -114,6 +114,9 @@ func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentD
 		}
 		pending = append(pending, ids...)
 	}
+	if err := clearPendingNotices(ctx, tx, courseID, 0); err != nil {
+		return err
+	}
 	return notifyPending(ctx, tx, courseID, pending)
 }
 

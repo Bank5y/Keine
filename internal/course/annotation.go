@@ -237,5 +237,5 @@ func (s *Service) DeleteAnnotation(ctx context.Context, viewer auth.User, id int
 	if err != nil {
 		return err
 	}
-	return s.clearPendingNotice(ctx, viewer.ID, courseID)
+	return clearPendingNotices(ctx, s.db, courseID, viewer.ID)
 }
