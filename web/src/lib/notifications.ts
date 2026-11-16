@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { api } from '@/lib/api';
+import { migrateURL } from '@/lib/annotations';
 import { navigate } from '@/lib/router';
 
 // A notification is a kind plus a kind-specific payload. To add a kind, add
@@ -27,9 +28,9 @@ export interface Rendered { title: string; detail?: string; href: string }
 const DELETED_REASON = '课程已删除';
 const requestHref = (p: any) => (p.reason === DELETED_REASON ? '/mine' : `/courses/${p.courseId}`);
 
-// Where an annotations_pending notification leads: the first lesson with
-// annotations awaiting migration, until the migration page (#39) exists.
-export const migrationHref = (p: any) => `/courses/${p.courseId}/lessons/${p.lessonId}`;
+// Where an annotations_pending notification leads: the migration page of
+// the first lesson with annotations awaiting migration.
+export const migrationHref = (p: any) => migrateURL(p.courseId, p.lessonId);
 
 function changes(p: any) {
   const parts = [['新增', p.added], ['删除', p.removed], ['修改', p.modified]]
