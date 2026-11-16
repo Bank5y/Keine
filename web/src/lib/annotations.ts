@@ -1,3 +1,5 @@
+import { api } from '@/lib/api';
+
 // Annotations remember their place by the quoted text and a little text
 // around it (ADR-0003). The server finds them in the lesson text and answers
 // with a range counted in non-whitespace characters; TextMap turns such a
@@ -51,6 +53,15 @@ export const lookName = (a: { style: AnnotationStyle; color: HighlightColor | nu
 
 export interface Quote { quote: string; prefix: string; suffix: string }
 
+// Annotation migration: an annotation awaiting migration (or kept as an
+// excerpt) is placed on a quote of the lesson's text as it is now, however
+// that place was picked: a selection, a suggestion or a drop.
+export const placeAnnotation = (id: number, at: Quote) => api<Annotation>('POST', `/api/annotations/${id}/place`, at);
+// keepAsExcerpt keeps an annotation awaiting migration as an excerpt
+// (state changed): out of the text, its quote and note kept.
+export const keepAsExcerpt = (id: number) => api<void>('POST', `/api/annotations/${id}/excerpt`);
+export const migrateURL = (courseId: number, lessonId: number) => `/courses/${courseId}/lessons/${lessonId}/migrate`;
+
 // whitespace the server skips as well
 const SPACE = /[\s\u0085\uFEFF]/u;
 // how much text before and after a selection a quote keeps
@@ -88,9 +99,13 @@ export class TextMap {
     this.visible = out.join('');
   }
 
+  // the visible text: the lesson's characters without whitespace, as the
+  // server counts ranges
+  get text() { return this.visible; }
+
   // domRanges covers [start, end), split around page furniture so that is
   // never part of an annotation
-  private domRanges(start: number, end: number): Range[] | null {
+  domRanges(start: number, end: number): Range[] | null {
     if (start < 0 || end > this.chars.length || start >= end) return null;
     const out: Range[] = [];
     const span = (a: Char, b: Char) => {
@@ -131,6 +146,39 @@ export class TextMap {
       if (best < 0 || Math.abs(at - a.range.start) < Math.abs(best - a.range.start)) best = at;
     }
     return best < 0 ? null : this.domRanges(best, best + Array.from(want).length);
+  }
+
+  // find looks for a quote on the page without the server's help (in a
+  // previous text, say): where its text is, the place whose surroundings
+  // match its prefix and suffix best.
+  find(q: Quote): { start: number; end: number } | null {
+    const want = strip(q.quote);
+    if (!want) return null;
+    const len = Array.from(want).length;
+    const pre = Array.from(strip(q.prefix)), suf = Array.from(strip(q.suffix));
+    const cps = Array.from(this.visible);
+    const hay = cps.join('');
+    let best: { start: number; score: number } | null = null;
+    for (let i = hay.indexOf(want); i >= 0; i = hay.indexOf(want, i + 1)) {
+      const at = Array.from(hay.slice(0, i)).length;
+      let score = 0;
+      while (score < pre.length && cps[at - 1 - score] === pre[pre.length - 1 - score]) score++;
+      for (let j = 0; j < suf.length && cps[at + len + j] === suf[j]; j++) score++;
+      if (!best || score > best.score) best = { start: at, score };
+    }
+    return best && { start: best.start, end: best.start + len };
+  }
+
+  // quoteOf reads [start, end) of the visible text as an annotation would
+  // keep it, like a selection of exactly that text (for a suggested or
+  // dropped place, say).
+  quoteOf(start: number, end: number): Quote | null {
+    if (start < 0 || end > this.chars.length || start >= end) return null;
+    const rawAt = (c: Char) => this.nodes.find((n) => n.node === c.node)!.start + c.offset;
+    const a = rawAt(this.chars[start]);
+    const last = this.chars[end - 1];
+    const b = rawAt(last) + last.len;
+    return { quote: this.raw.slice(a, b).trim(), prefix: tail(this.raw.slice(0, a)), suffix: head(this.raw.slice(b)) };
   }
 
   // quote reads a selection inside the root as an annotation would keep it;

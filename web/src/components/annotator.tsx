@@ -14,7 +14,7 @@ const highlightName = (look: string) => `ann-${look}`;
 const ACTIVE = 'ann-active';
 // the annotation the notes page jumped to, blinking
 const FLASH = 'ann-flash';
-const supported = () => typeof CSS !== 'undefined' && 'highlights' in CSS;
+export const supported = () => typeof CSS !== 'undefined' && 'highlights' in CSS;
 
 // Wide screens keep notes in a rail beside the text (see .docs-notes in
 // styles.css, which shows the rail at the same width); narrower ones show a
@@ -46,12 +46,25 @@ function useMedia(query: string) {
   return on;
 }
 
+// useTextMap maps the rendered text under root, afresh whenever React
+// re-renders nodes inside it
+export function useTextMap(root: HTMLElement | null) {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    if (!root) return undefined;
+    const mo = new MutationObserver(() => setVersion((v) => v + 1));
+    mo.observe(root, { childList: true, subtree: true, characterData: true });
+    return () => mo.disconnect();
+  }, [root]);
+  return useMemo(() => (root ? new TextMap(root) : null), [root, version]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 // a spot on the page, in document coordinates, that a floating bar points at
-interface Spot { x: number; top: number; bottom: number }
-const spotOf = (r: DOMRect): Spot => ({ x: r.left + r.width / 2 + scrollX, top: r.top + scrollY, bottom: r.bottom + scrollY });
+export interface Spot { x: number; top: number; bottom: number }
+export const spotOf = (r: DOMRect): Spot => ({ x: r.left + r.width / 2 + scrollX, top: r.top + scrollY, bottom: r.bottom + scrollY });
 
 // the first line box an annotation's text sits on
-const firstLine = (ranges: Range[]) => ranges.flatMap((r) => Array.from(r.getClientRects())).find((c) => c.width > 0 && c.height > 0) ?? null;
+export const firstLine = (ranges: Range[]) => ranges.flatMap((r) => Array.from(r.getClientRects())).find((c) => c.width > 0 && c.height > 0) ?? null;
 
 // a note being written: on a selection not yet annotated, or on an annotation
 type Editing =
@@ -71,15 +84,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   courseId: number; lessonId: number; root: HTMLElement | null; rail: HTMLElement | null; onPending?: (n: number) => void;
 }) {
   const [anns, setAnns] = useState<Annotation[]>([]);
-  // the text is mapped afresh whenever React re-renders nodes inside it
-  const [version, setVersion] = useState(0);
-  useEffect(() => {
-    if (!root) return undefined;
-    const mo = new MutationObserver(() => setVersion((v) => v + 1));
-    mo.observe(root, { childList: true, subtree: true, characterData: true });
-    return () => mo.disconnect();
-  }, [root]);
-  const map = useMemo(() => (root ? new TextMap(root) : null), [root, version]); // eslint-disable-line react-hooks/exhaustive-deps
+  const map = useTextMap(root);
   const placed = useMemo(() => {
     const out = new Map<number, Range[]>();
     if (map) for (const a of anns) { const r = map.place(a); if (r) out.set(a.id, r); }
@@ -410,7 +415,7 @@ function Looks({ current, onPick }: { current?: string; onPick: (look: Look) => 
 }
 
 // Floating sits above the spot, or below it when there is no room above.
-function Floating({ spot, ref, label, stacked, children }: { spot: Spot; ref: RefObject<HTMLDivElement | null>; label: string; stacked?: boolean; children: ReactNode }) {
+export function Floating({ spot, ref, label, stacked, children }: { spot: Spot; ref: RefObject<HTMLDivElement | null>; label: string; stacked?: boolean; children: ReactNode }) {
   const [below, setBelow] = useState(false);
   const [shift, setShift] = useState(0);
   useEffect(() => {

@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/skeleton';
 import { LessonVideoView } from '@/components/video';
 import { ImageZoom } from '@/components/zoom';
 import { api } from '@/lib/api';
+import { migrateURL } from '@/lib/annotations';
 import { lessonURL, pad2, type CourseDetail, type LessonItem, type LessonState, type LessonText } from '@/lib/courses';
 import { useReadingProgress } from '@/lib/use-reading-progress';
 import { Link, navigate } from '@/lib/router';
@@ -126,8 +127,10 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
         {err ? <Empty glyph="阙" title={err} /> : null}
         {!err && !shown ? <ReaderSkeleton /> : null}
         {current && pending?.lesson === current.id && pending.n > 0 ? (
-          // the way into the migration page (#39) goes here once it exists
-          <div className="migrate-banner" role="status">本讲内容已更新，你有 {pending.n} 条标注待迁移</div>
+          <div className="migrate-banner" role="status">
+            <span>本讲内容已更新，你有 {pending.n} 条标注待迁移</span>
+            <Link href={migrateURL(courseId, current.id)}>去迁移<ChevronRight /></Link>
+          </div>
         ) : null}
         {!err && shown ? (
           <article key={shown.id} className={cn('reader-doc', current ? 'fresh' : 'stale')} ref={doc} aria-busy={!current}>

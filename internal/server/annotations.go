@@ -19,6 +19,8 @@ func writeAnnotationError(w http.ResponseWriter, r *http.Request, err error) boo
 		writeError(w, http.StatusConflict, "not_annotatable", "这一讲不能做标注")
 	case errors.Is(err, course.ErrQuoteNotFound):
 		writeError(w, http.StatusUnprocessableEntity, "quote_not_found", "正文里找不到选中的文字")
+	case errors.Is(err, course.ErrNotPending):
+		writeError(w, http.StatusConflict, "annotation_not_pending", "这条标注不在待迁移状态")
 	default:
 		return writeCourseError(w, r, err)
 	}
@@ -90,6 +92,35 @@ func (s *Server) deleteAnnotation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !writeAnnotationError(w, r, s.courses.DeleteAnnotation(r.Context(), currentUser(r), id)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// placeAnnotation migrates an annotation onto a quote of the lesson's
+// current text.
+func (s *Server) placeAnnotation(w http.ResponseWriter, r *http.Request) {
+	id, ok := annotationIDParam(w, r)
+	if !ok {
+		return
+	}
+	var in course.Placement
+	if !readJSON(w, r, &in) {
+		return
+	}
+	a, err := s.courses.Place(r.Context(), currentUser(r), id, in)
+	if !writeAnnotationError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (s *Server) keepAsExcerpt(w http.ResponseWriter, r *http.Request) {
+	id, ok := annotationIDParam(w, r)
+	if !ok {
+		return
+	}
+	if !writeAnnotationError(w, r, s.courses.KeepAsExcerpt(r.Context(), currentUser(r), id)) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

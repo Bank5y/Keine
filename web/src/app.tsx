@@ -9,11 +9,14 @@ import { CourseView } from '@/views/course';
 import { LessonView } from '@/views/lesson';
 import { LibraryView } from '@/views/library';
 import { LoginView } from '@/views/login';
+import { MigrateView } from '@/views/migrate';
 import { MineView } from '@/views/mine';
 import { NotesView } from '@/views/notes';
 import { NotificationsView } from '@/views/notifications';
 
 function routeView(path: string, user: User): ReactNode {
+  const mg = match('/courses/:id/lessons/:lesson/migrate', path);
+  if (mg) return <MigrateView courseId={Number(mg.id)} lessonId={Number(mg.lesson)} />;
   const l = match('/courses/:id/lessons/:lesson', path);
   if (l) return <LessonView courseId={Number(l.id)} lessonId={Number(l.lesson)} />;
   const m = match('/courses/:id', path);
