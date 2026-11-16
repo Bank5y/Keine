@@ -63,8 +63,8 @@ export function CourseEditView({ id }: { id: number }) {
       />
       {draft.mode === 'request' ? (
         <div className="request-note edit-note" role="note">
-          <b>暂不支持提交为更新申请</b>
-          <span>这门课的修改需要管理员审核。编辑稿可以先保存, 提交功能稍后开放; 现在仍可在课程页「提交更新」上传课程包。</span>
+          <b>提交后成为更新申请</b>
+          <span>这门课的修改需要管理员审核, 通过后才生效。再次提交会替换你还在审核中的申请。</span>
         </div>
       ) : null}
 
@@ -153,9 +153,15 @@ export function CourseEditView({ id }: { id: number }) {
       </Confirm>
       <Confirm open={dialog === 'commit'} title="提交编辑稿" confirm="提交" onClose={() => setDialog('')}
         onConfirm={async () => {
-          try { await commitDraft(id); toast.success('课程已更新'); navigate(`/courses/${id}`); } catch (ex) { fail(ex); setDialog(''); }
+          try {
+            const r = await commitDraft(id);
+            toast.success(r.outcome === 'requested' ? '已提交更新申请, 等待管理员审核' : '课程已更新');
+            navigate(`/courses/${id}`);
+          } catch (ex) { fail(ex); setDialog(''); }
         }}>
-        {changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。
+        {draft.mode === 'request'
+          ? <>{changes} 处修改会成为一份更新申请, 管理员批准后生效; 你对这门课还在审核中的申请会被替换。</>
+          : <>{changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。</>}
       </Confirm>
       <UploadDialog courseId={id} open={dialog === 'package'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); void load(); }} />
     </div>

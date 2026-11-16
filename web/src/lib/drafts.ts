@@ -27,7 +27,7 @@ export interface DraftCourse {
   chapters: DraftChapter[];
 }
 // mode: how committing takes effect — at once ("direct"), or as an update
-// request ("request", not supported yet).
+// request for an admin to review ("request").
 export interface Draft { ops: unknown[]; mode: 'direct' | 'request'; course: DraftCourse }
 
 const base = (id: number) => `/api/courses/${id}/draft`;
@@ -35,7 +35,7 @@ export const getDraft = (id: number) => api<Draft>('GET', base(id));
 export const addOp = (id: number, op: Op) => api<Draft>('POST', `${base(id)}/ops`, op);
 export const undoOp = (id: number) => api<Draft>('POST', `${base(id)}/undo`);
 export const discardDraft = (id: number) => api('DELETE', base(id));
-export const commitDraft = (id: number) => api<{ outcome: 'updated' }>('POST', `${base(id)}/commit`);
+export const commitDraft = (id: number) => api<{ outcome: 'updated' | 'requested'; requestId?: number }>('POST', `${base(id)}/commit`);
 
 // The moves below are what the editor's buttons send; dragging (#47) must
 // send the same operations.

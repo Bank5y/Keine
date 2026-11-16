@@ -35,7 +35,7 @@ const requestHref = (p: any) => (p.reason === DELETED_REASON ? '/mine' : `/cours
 export const migrationHref = (p: any) => migrateURL(p.courseId, p.lessonId);
 
 function changes(p: any) {
-  const parts = [['新增', p.added], ['删除', p.removed], ['修改', p.modified]]
+  const parts = [['新增', p.added], ['删除', p.removed], ['修改', p.modified], ['改名', p.renamed], ['移动', p.moved]]
     .filter(([, n]) => n > 0)
     .map(([verb, n]) => `${verb} ${n} 讲`);
   return parts.length ? `${parts.join('，')}。` : '课程内容有调整。';
