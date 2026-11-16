@@ -1,8 +1,12 @@
 // Course drafts (ADR-0006): the course editor's changes are kept on the
 // server as an ordered list of operations; the server applies them to the
 // course's latest version and sends back the course they make.
-import { api } from '@/lib/api';
-import type { Completion, CourseType } from '@/lib/courses';
+import { api, sendFile } from '@/lib/api';
+import type { Completion, CourseType, LessonVideo } from '@/lib/courses';
+
+// LessonContent is a lesson's content from an upload of the draft: its
+// text and video are found in the upload, or the video is a link.
+export interface LessonContent { upload?: string; videoUrl?: string }
 
 export interface InfoChange { title?: string; completion?: Completion; intro?: string; authorName?: string; authorIntro?: string }
 
@@ -18,9 +22,12 @@ export type Op =
   | { type: 'renameLesson'; lesson: string; title: string }
   | { type: 'deleteLesson'; lesson: string }
   | { type: 'moveLesson'; lesson: string; chapter: string; after: string }
-  | { type: 'setInfo'; info: InfoChange };
+  | { type: 'setInfo'; info: InfoChange }
+  | { type: 'addLesson'; chapter: string; title: string; content: LessonContent }
+  | { type: 'replaceLesson'; lesson: string; title?: string; content: LessonContent }
+  | { type: 'uploadLessonContent'; lesson: string; content: LessonContent };
 
-export interface DraftLesson { key: string; title: string; video: '' | 'file' | 'url'; hasText: boolean; upcoming?: boolean; added?: boolean }
+export interface DraftLesson { key: string; title: string; video: '' | 'file' | 'url'; hasText: boolean; upcoming?: boolean; added?: boolean; changed?: boolean }
 export interface DraftChapter { key: string; title: string; added?: boolean; lessons: DraftLesson[] }
 export interface DraftCourse {
   title: string; type: CourseType; completion: Completion; intro: string; authorName: string; authorIntro: string;
@@ -36,6 +43,18 @@ export const addOp = (id: number, op: Op) => api<Draft>('POST', `${base(id)}/ops
 export const undoOp = (id: number) => api<Draft>('POST', `${base(id)}/undo`);
 export const discardDraft = (id: number) => api('DELETE', base(id));
 export const commitDraft = (id: number) => api<{ outcome: 'updated' }>('POST', `${base(id)}/commit`);
+
+// Lesson files go to an upload of the draft one request per file, so a
+// failed or cancelled file is sent again on its own. A .zip is a single
+// lesson's zip, unpacked by the server.
+export const startUpload = (id: number) => api<{ upload: string }>('POST', `${base(id)}/uploads`).then((r) => r.upload);
+export const putUploadFile = (id: number, upload: string, file: File, onProgress: (p: number) => void, signal?: AbortSignal) =>
+  sendFile(`${base(id)}/uploads/${upload}/files/${encodeURIComponent(file.name)}`, file, onProgress, signal);
+
+// LessonPreview is a lesson of the draft as the reader would show it; its
+// images and uploaded video are served from the draft.
+export interface LessonPreview { key: string; title: string; markdown: string; base: string; video: LessonVideo | null }
+export const previewLesson = (id: number, key: string) => api<LessonPreview>('GET', `${base(id)}/lessons/${encodeURIComponent(key)}`);
 
 // The moves below are what the editor's buttons send; dragging (#47) must
 // send the same operations.

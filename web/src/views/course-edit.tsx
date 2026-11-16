@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Eye, FilePlus2, FileUp, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -8,6 +8,7 @@ import { Confirm } from '@/components/confirm';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { Skeleton } from '@/components/skeleton';
 import { UploadDialog } from '@/components/upload-dialog';
+import { LessonPreviewDialog, LessonUploadDialog, type LessonTarget } from '@/components/lesson-upload';
 import { ApiError } from '@/lib/api';
 import { COMPLETION_LABEL, pad2, type Completion } from '@/lib/courses';
 import {
@@ -32,6 +33,8 @@ export function CourseEditView({ id }: { id: number }) {
   const [ask, setAsk] = useState<Ask | null>(null);
   const [dialog, setDialog] = useState<'' | 'commit' | 'discard' | 'package'>('');
   const [dropChapter, setDropChapter] = useState<DraftChapter | null>(null);
+  const [lessonUpload, setLessonUpload] = useState<LessonTarget | null>(null);
+  const [previewing, setPreviewing] = useState<string | null>(null);
 
   const load = () => getDraft(id).then(setDraft).catch((e) => setErr(e instanceof ApiError ? e.message : '加载失败'));
   useEffect(() => { void load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -95,8 +98,12 @@ export function CourseEditView({ id }: { id: number }) {
                         <span className="e-no">{pad2(++n)}</span>
                         <span className="ed-title" title={l.title}>{l.title}</span>
                         {l.upcoming ? <span className="upcoming-mark">待更新</span> : null}
-                        {l.added ? <span className="tag new">新</span> : null}
+                        {l.added ? <span className="tag new">新</span> : l.changed ? <span className="tag new">已替换</span> : null}
                         <div className="ed-tools">
+                          {l.changed ? <Tool label="预览" onClick={() => setPreviewing(l.key)}><Eye /></Tool> : null}
+                          {l.upcoming
+                            ? <Tool label="上传内容" onClick={() => setLessonUpload({ kind: 'fill', lesson: l.key, title: l.title })} disabled={busy}><FileUp /></Tool>
+                            : <Tool label="替换讲" onClick={() => setLessonUpload({ kind: 'replace', lesson: l.key, title: l.title })} disabled={busy}><FileUp /></Tool>}
                           <Tool label="讲改名" onClick={() => setAsk({ title: '修改讲的标题', label: '标题', initial: l.title, done: (t) => ({ type: 'renameLesson', lesson: l.key, title: t }) })} disabled={busy}><Pencil /></Tool>
                           <Tool label="讲上移" onClick={() => send(up)} disabled={busy || !up}><ArrowUp /></Tool>
                           <Tool label="讲下移" onClick={() => send(down)} disabled={busy || !down}><ArrowDown /></Tool>
@@ -112,10 +119,16 @@ export function CourseEditView({ id }: { id: number }) {
                       </div>
                     );
                   })}
-                  <Button variant="text" size="bare" className="ed-add" disabled={busy}
-                    onClick={() => setAsk({ title: '添加待更新的讲', label: '标题', initial: '', done: (t) => ({ type: 'addUpcomingLesson', chapter: ch.key, title: t }) })}>
-                    <Plus />添加待更新的讲
-                  </Button>
+                  <div className="ed-adds">
+                    <Button variant="text" size="bare" className="ed-add" disabled={busy}
+                      onClick={() => setLessonUpload({ kind: 'add', chapter: ch.key, chapterTitle: ch.title })}>
+                      <FilePlus2 />添加讲
+                    </Button>
+                    <Button variant="text" size="bare" className="ed-add" disabled={busy}
+                      onClick={() => setAsk({ title: '添加待更新的讲', label: '标题', initial: '', done: (t) => ({ type: 'addUpcomingLesson', chapter: ch.key, title: t }) })}>
+                      <Plus />添加待更新的讲
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -157,6 +170,9 @@ export function CourseEditView({ id }: { id: number }) {
         }}>
         {changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。
       </Confirm>
+      <LessonUploadDialog courseId={id} courseType={c.type} target={lessonUpload} onClose={() => setLessonUpload(null)}
+        onDone={(d) => { setDraft(d); setLessonUpload(null); toast.success('已保存到编辑稿'); }} />
+      <LessonPreviewDialog courseId={id} lesson={previewing} onClose={() => setPreviewing(null)} />
       <UploadDialog courseId={id} open={dialog === 'package'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); void load(); }} />
     </div>
   );
