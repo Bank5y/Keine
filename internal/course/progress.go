@@ -12,12 +12,11 @@ import (
 // Lesson states, as the viewer sees a lesson.
 const (
 	StateUnstarted = "unstarted"
-	StateStudying  = "studying"
 	StateDone      = "done"
 )
 
 // lessonState is the SQL for a lesson's state from its lesson_progress row p.
-const lessonState = `CASE WHEN p.done THEN 'done' WHEN p.lesson_key IS NOT NULL THEN 'studying' ELSE 'unstarted' END`
+const lessonState = `CASE WHEN p.done THEN 'done' ELSE 'unstarted' END`
 
 // ErrBadProgress rejects a progress update that makes no sense.
 var ErrBadProgress = errors.New("invalid progress")
@@ -35,9 +34,9 @@ func (s *Service) lessonKey(ctx context.Context, viewer auth.User, courseID, les
 	return key, err
 }
 
-// Visit records that the viewer opened a lesson: an unstarted lesson
-// becomes studying, it becomes the course's last studied lesson, and a
-// course not started yet is started.
+// Visit records that the viewer opened a lesson: it becomes the course's
+// last studied lesson and a course not started yet is started. The lesson's
+// state does not change.
 func (s *Service) Visit(ctx context.Context, viewer auth.User, courseID, lessonID int64) error {
 	key, err := s.lessonKey(ctx, viewer, courseID, lessonID)
 	if err != nil {
@@ -68,7 +67,7 @@ type ProgressUpdate struct {
 }
 
 // SetProgress marks a lesson done or not done and/or remembers the
-// position in it. Undoing done leaves the lesson studying.
+// position in it. Undoing done leaves the lesson unstarted.
 func (s *Service) SetProgress(ctx context.Context, viewer auth.User, courseID, lessonID int64, u ProgressUpdate) error {
 	if u.Position != nil && *u.Position < 0 {
 		return ErrBadProgress
