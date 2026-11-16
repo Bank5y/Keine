@@ -43,7 +43,20 @@ const (
 	// CourseDeleted tells a subscriber a course was deleted, and how many of
 	// its lessons they retain.
 	CourseDeleted Kind = "course_deleted"
+	// AnnotationsPending tells an annotator that a course update left some
+	// of their annotations awaiting annotation migration, and how many.
+	AnnotationsPending Kind = "annotations_pending"
 )
+
+// PendingPayload counts the annotations, and the lessons they are in, that
+// one course update left awaiting migration for a user; LessonID is the
+// first of those lessons in course order.
+type PendingPayload struct {
+	CoursePayload
+	Lessons     int   `json:"lessons"`
+	Annotations int   `json:"annotations"`
+	LessonID    int64 `json:"lessonId"`
+}
 
 // UpdatedPayload counts the lessons an update added, removed and modified
 // (kept lessons whose text changed).
