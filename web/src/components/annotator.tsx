@@ -65,7 +65,11 @@ type Editing =
 // the rail, each level with the line its annotation starts on; elsewhere the
 // bar shows them. The annotations are painted with the CSS Custom Highlight
 // API, so the rendered Markdown is never touched.
-export function Annotator({ courseId, lessonId, root, rail }: { courseId: number; lessonId: number; root: HTMLElement | null; rail: HTMLElement | null }) {
+// onPending hears how many of the reader's annotations on the lesson await
+// migration; only attached annotations show in the text.
+export function Annotator({ courseId, lessonId, root, rail, onPending }: {
+  courseId: number; lessonId: number; root: HTMLElement | null; rail: HTMLElement | null; onPending?: (n: number) => void;
+}) {
   const [anns, setAnns] = useState<Annotation[]>([]);
   // the text is mapped afresh whenever React re-renders nodes inside it
   const [version, setVersion] = useState(0);
@@ -93,9 +97,13 @@ export function Annotator({ courseId, lessonId, root, rail }: { courseId: number
   useEffect(() => {
     let alive = true;
     api<{ annotations: Annotation[] }>('GET', `/api/courses/${courseId}/lessons/${lessonId}/annotations`)
-      .then((r) => { if (alive) setAnns(r.annotations); }).catch(() => {});
+      .then((r) => {
+        if (!alive) return;
+        setAnns(r.annotations.filter((a) => a.state === 'attached'));
+        onPending?.(r.annotations.filter((a) => a.state === 'pending').length);
+      }).catch(() => {});
     return () => { alive = false; };
-  }, [courseId, lessonId]);
+  }, [courseId, lessonId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // paint
   useEffect(() => {

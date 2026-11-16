@@ -54,6 +54,8 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   // the rail the notes sit in on wide screens, beside the text of a column
   const [rail, setRail] = useState<HTMLElement | null>(null);
   const noted = course?.type === 'column';
+  // how many of the reader's annotations on the current lesson await migration
+  const [pending, setPending] = useState<{ lesson: number; n: number } | null>(null);
   const current = lesson?.id === lessonId ? lesson : null;
   // a video gives way at once: kept on screen it would play on unseen, and
   // its last position would no longer reach the lesson it belongs to
@@ -123,6 +125,10 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
         </div>
         {err ? <Empty glyph="阙" title={err} /> : null}
         {!err && !shown ? <ReaderSkeleton /> : null}
+        {current && pending?.lesson === current.id && pending.n > 0 ? (
+          // the way into the migration page (#39) goes here once it exists
+          <div className="migrate-banner" role="status">本讲内容已更新，你有 {pending.n} 条标注待迁移</div>
+        ) : null}
         {!err && shown ? (
           <article key={shown.id} className={cn('reader-doc', current ? 'fresh' : 'stale')} ref={doc} aria-busy={!current}>
             {course ? <div className="kicker">{course.title}</div> : null}
@@ -133,7 +139,8 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
           </article>
         ) : null}
         {current && course?.type === 'column' && !current.video && current.markdown
-          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} rail={rail} /> : null}
+          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} rail={rail}
+            onPending={(n) => setPending({ lesson: current.id, n })} /> : null}
         {current ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
         {!err && shown ? (
           <nav className="reader-nav" aria-label="翻页">

@@ -70,6 +70,38 @@ func (t Text) Locate(q Quote) (Range, bool) {
 	return best, bestScore >= 0
 }
 
+// Relocate finds a quote again in a text that changed since the quote was
+// taken, reporting false unless it can put it back with confidence: the
+// place must hold the quoted text with at least one side of its
+// surroundings intact (so an edit next to it on one side is tolerated, but
+// another place that merely holds the same words is not), and agree with
+// the surroundings better than any other such place.
+func (t Text) Relocate(q Quote) (Range, bool) {
+	exact := visible(q.Exact)
+	if len(exact) == 0 {
+		return Range{}, false
+	}
+	prefix, suffix := visible(q.Prefix), visible(q.Suffix)
+	best, bestScore, tied := Range{}, -1, false
+	for i := 0; i+len(exact) <= len(t.chars); i++ {
+		if !equal(t.chars[i:i+len(exact)], exact) {
+			continue
+		}
+		end := i + len(exact)
+		before, after := commonSuffix(t.chars[:i], prefix), commonPrefix(t.chars[end:], suffix)
+		if before < len(prefix) && after < len(suffix) {
+			continue
+		}
+		switch score := before + after; {
+		case score > bestScore:
+			best, bestScore, tied = Range{Start: i, End: end}, score, false
+		case score == bestScore:
+			tied = true
+		}
+	}
+	return best, bestScore >= 0 && !tied
+}
+
 func equal(a, b []rune) bool {
 	for i := range a {
 		if a[i] != b[i] {

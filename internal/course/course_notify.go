@@ -1,7 +1,6 @@
 package course
 
 import (
-	"bytes"
 	"context"
 	"io"
 
@@ -24,49 +23,6 @@ func lessonFiles(ctx context.Context, tx pgx.Tx, courseID int64) (map[string]str
 		return nil
 	})
 	return out, err
-}
-
-// updateSummary counts what replacing a course's lessons (before, with
-// their files in oldDir) by manifest m (files in newDir) adds, removes and
-// modifies: a kept lesson is modified when its text changed.
-func (s *Service) updateSummary(ctx context.Context, courseID int64, before map[string]string, oldDir string, m Manifest, newDir string) (notify.UpdatedPayload, error) {
-	var p notify.UpdatedPayload
-	incoming := map[string]bool{}
-	for _, ch := range m.Chapters {
-		for _, l := range ch.Lessons {
-			incoming[l.Key] = true
-			old, kept := before[l.Key]
-			if !kept {
-				p.Added++
-				continue
-			}
-			same, err := s.sameText(ctx, courseID, oldDir, old, newDir, l.File)
-			if err != nil {
-				return p, err
-			}
-			if !same {
-				p.Modified++
-			}
-		}
-	}
-	for k := range before {
-		if !incoming[k] {
-			p.Removed++
-		}
-	}
-	return p, nil
-}
-
-func (s *Service) sameText(ctx context.Context, courseID int64, oldDir, oldFile, newDir, newFile string) (bool, error) {
-	if oldFile == "" || newFile == "" {
-		return oldFile == newFile, nil
-	}
-	a, err := s.readFile(ctx, filesPrefix(courseID, oldDir)+oldFile)
-	if err != nil {
-		return false, err
-	}
-	b, err := s.readFile(ctx, filesPrefix(courseID, newDir)+newFile)
-	return bytes.Equal(a, b), err
 }
 
 func (s *Service) readFile(ctx context.Context, key string) ([]byte, error) {

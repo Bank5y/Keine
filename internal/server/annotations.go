@@ -36,6 +36,18 @@ func (s *Server) listAnnotations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"annotations": list})
 }
 
+func (s *Server) listPreviousTexts(w http.ResponseWriter, r *http.Request) {
+	id, lessonID, ok := lessonParams(w, r)
+	if !ok {
+		return
+	}
+	list, err := s.courses.PreviousTexts(r.Context(), currentUser(r), id, lessonID)
+	if !writeCourseError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"previousTexts": list})
+}
+
 func (s *Server) createAnnotation(w http.ResponseWriter, r *http.Request) {
 	id, lessonID, ok := lessonParams(w, r)
 	if !ok {

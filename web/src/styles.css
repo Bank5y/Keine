@@ -611,6 +611,11 @@ mark { background: none; color: var(--brand); border-bottom: 1px solid var(--bra
 .nb-where .sep { margin: 0 6px; color: var(--rule); }
 .nb-course { color: var(--text-2); }
 .nb-badges:empty { display: none; }
+.nb-badge { padding: 1px 6px; font-size: 11px; letter-spacing: .04em; white-space: nowrap; border-radius: 2px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--rule); }
+.nb-badge.s-pending { color: var(--warn); background: var(--warn-soft); box-shadow: none; }
+.nb-badge.s-deleted { color: var(--text-3); }
+/* above a lesson whose update left some of the reader's annotations pending */
+.migrate-banner { margin: 0 0 20px; padding: 10px 14px; font-size: 14px; color: var(--warn); background: var(--warn-soft); border-radius: var(--radius); }
 .nb-meta time { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .nb-quote { display: block; margin: 10px 0 0; font-family: var(--serif); font-size: 16px; line-height: 1.85; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
 a.nb-quote:hover .nq-text { color: var(--brand); }

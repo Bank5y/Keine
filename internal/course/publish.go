@@ -184,18 +184,21 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 		if err != nil {
 			return err
 		}
-		summary, err := s.updateSummary(ctx, r.courseID, before, drop.dir, m, r.filesDir)
+		diff, err := s.diffContent(ctx, r.courseID, before, drop.dir, m, r.filesDir)
 		if err != nil {
 			return err
 		}
 		if err := switchContent(ctx, tx, r.courseID, m, r.filesDir); err != nil {
 			return err
 		}
+		if err := carryAnnotations(ctx, tx, r.courseID, diff); err != nil {
+			return err
+		}
 		drop.courseID = r.courseID
 		if err := notifyCourse(ctx, tx, r.requesterID, notify.UpdateApproved, r.courseID, ""); err != nil {
 			return err
 		}
-		if err := notifyUpdated(ctx, tx, r.courseID, r.requesterID, summary); err != nil {
+		if err := notifyUpdated(ctx, tx, r.courseID, r.requesterID, diff.summary()); err != nil {
 			return err
 		}
 		if r.requesterID == uploader {

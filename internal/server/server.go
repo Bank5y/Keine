@@ -83,6 +83,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/courses/{id}/lessons/{lesson}/progress", s.signedIn(s.setProgress))
 	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}/annotations", s.signedIn(s.listAnnotations))
 	s.mux.HandleFunc("POST /api/courses/{id}/lessons/{lesson}/annotations", s.signedIn(s.createAnnotation))
+	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}/previous-texts", s.signedIn(s.listPreviousTexts))
 	s.mux.HandleFunc("PATCH /api/annotations/{id}", s.signedIn(s.restyleAnnotation))
 	s.mux.HandleFunc("DELETE /api/annotations/{id}", s.signedIn(s.deleteAnnotation))
 	s.mux.HandleFunc("PUT /api/annotations/{id}/note", s.signedIn(s.writeNote))

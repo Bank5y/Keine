@@ -45,8 +45,13 @@ type Annotation struct {
 	Prefix string  `json:"prefix"`
 	Suffix string  `json:"suffix"`
 	Note   *string `json:"note"`
+	// State is attached, pending, changed or deleted (see AnnotationAttached).
+	State string `json:"state"`
+	// PreviousTextID is, while pending, the previous text the annotation was
+	// last shown in (see PreviousTexts); nil when it has none.
+	PreviousTextID *int64 `json:"previousTextId"`
 	// Range is where the quote sits in the lesson text as it is now; nil
-	// when the text no longer holds it.
+	// unless the annotation is attached and the text holds it.
 	Range     *anchor.Range `json:"range"`
 	CreatedAt time.Time     `json:"createdAt"`
 	UpdatedAt time.Time     `json:"updatedAt"`
@@ -97,14 +102,17 @@ func (s *Service) annotatable(ctx context.Context, viewer auth.User, courseID, l
 	return l, anchor.MarkdownText(l.Markdown), nil
 }
 
-const annotationColumns = "id, style, color, quote, prefix, suffix, note, created_at, updated_at"
+const annotationColumns = "id, style, color, quote, prefix, suffix, note, state, previous_text_id, created_at, updated_at"
 
 func scanAnnotation(row pgx.Row, a *Annotation) error {
-	return row.Scan(&a.ID, &a.Style, &a.Color, &a.Quote, &a.Prefix, &a.Suffix, &a.Note, &a.CreatedAt, &a.UpdatedAt)
+	return row.Scan(&a.ID, &a.Style, &a.Color, &a.Quote, &a.Prefix, &a.Suffix, &a.Note, &a.State, &a.PreviousTextID, &a.CreatedAt, &a.UpdatedAt)
 }
 
-// locate finds an annotation in the lesson text.
+// locate finds an attached annotation in the lesson text.
 func locate(text anchor.Text, a *Annotation) {
+	if a.State != AnnotationAttached {
+		return
+	}
 	if r, ok := text.Locate(anchor.Quote{Exact: a.Quote, Prefix: a.Prefix, Suffix: a.Suffix}); ok {
 		a.Range = &r
 	}
@@ -158,7 +166,7 @@ func (s *Service) Annotate(ctx context.Context, viewer auth.User, courseID, less
 	if err != nil {
 		return Annotation{}, err
 	}
-	a := Annotation{Quote: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix}
+	a := Annotation{Quote: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix, State: AnnotationAttached}
 	if locate(text, &a); a.Range == nil {
 		return Annotation{}, ErrQuoteNotFound
 	}

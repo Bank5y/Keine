@@ -17,8 +17,17 @@ export interface Annotation {
   prefix: string;
   suffix: string;
   note: string | null;
+  // attached: shown in the lesson text. pending: its text changed in a
+  // course update and it awaits migration. changed / deleted: an excerpt
+  // whose text changed / whose lesson was deleted.
+  state: AnnotationState;
+  // while pending, the previous text it was last shown in
+  // (GET /api/courses/{id}/lessons/{lesson}/previous-texts)
+  previousTextId: number | null;
   range: { start: number; end: number } | null;
 }
+export type AnnotationState = 'attached' | 'pending' | 'changed' | 'deleted';
+export const STATE_LABEL: Record<Exclude<AnnotationState, 'attached'>, string> = { pending: '待迁移', changed: '原文已变化', deleted: '原文已删除' };
 
 // The notes page: every annotation of the reader's, with where it is.
 export interface NoteEntry extends Annotation {

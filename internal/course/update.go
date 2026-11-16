@@ -50,17 +50,20 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		if err != nil {
 			return err
 		}
-		summary, err := s.updateSummary(ctx, sm.ID, before, sm.FilesDir, pp.manifest, next)
+		diff, err := s.diffContent(ctx, sm.ID, before, sm.FilesDir, pp.manifest, next)
 		if err != nil {
 			return err
 		}
 		if err := switchContent(ctx, tx, sm.ID, pp.manifest, next); err != nil {
 			return err
 		}
+		if err := carryAnnotations(ctx, tx, sm.ID, diff); err != nil {
+			return err
+		}
 		if sm.Visibility != Public {
 			return nil // only the uploader reads a private course as it is
 		}
-		return notifyUpdated(ctx, tx, sm.ID, viewer.ID, summary)
+		return notifyUpdated(ctx, tx, sm.ID, viewer.ID, diff.summary())
 	})
 	if err != nil {
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))

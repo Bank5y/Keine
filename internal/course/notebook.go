@@ -172,7 +172,7 @@ func (s *Service) Notebook(ctx context.Context, viewer auth.User, f NoteFilter) 
 	all, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (row, error) {
 		var x row
 		err := r.Scan(&x.courseID, &x.key, &x.a.ID, &x.a.Style, &x.a.Color, &x.a.Quote, &x.a.Prefix, &x.a.Suffix,
-			&x.a.Note, &x.a.CreatedAt, &x.a.UpdatedAt)
+			&x.a.Note, &x.a.State, &x.a.PreviousTextID, &x.a.CreatedAt, &x.a.UpdatedAt)
 		return x, err
 	})
 	if err != nil {

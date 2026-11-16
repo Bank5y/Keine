@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { Facet } from '@/components/facet';
 import { api, ApiError } from '@/lib/api';
-import { COLOR_LABEL, HIGHLIGHT_COLORS, annotationURL, lookName, type HighlightColor, type NoteEntry, type Notebook, type NoteSort } from '@/lib/annotations';
+import { COLOR_LABEL, HIGHLIGHT_COLORS, STATE_LABEL, annotationURL, lookName, type HighlightColor, type NoteEntry, type Notebook, type NoteSort } from '@/lib/annotations';
 import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
@@ -144,8 +144,9 @@ function NoteCardView({ a, onSaved }: { a: NoteEntry; onSaved: (id: number, note
           <span className="nb-course">{a.course.title}</span>
           {a.lesson ? <><span className="sep">/</span><span className="nb-lesson" title={a.lesson.chapter}>{a.lesson.title}</span></> : null}
         </span>
-        {/* room for the annotation's state badge (待迁移 and the like) */}
-        <span className="nb-badges" />
+        <span className="nb-badges">
+          {a.state !== 'attached' ? <span className={cn('nb-badge', `s-${a.state}`)}>{STATE_LABEL[a.state]}</span> : null}
+        </span>
         <time dateTime={a.createdAt}>{when(a.createdAt)}</time>
       </div>
       {a.lesson ? (
