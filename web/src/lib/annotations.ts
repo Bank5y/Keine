@@ -33,14 +33,27 @@ const CONTEXT = 32;
 
 interface Char { node: Text; offset: number; len: number }
 
+// Page furniture inside the rendered text (a code block's title bar, say) is
+// not lesson text; it is marked data-chrome and skipped.
+const CHROME = '[data-chrome]';
+
 export class TextMap {
   private chars: Char[] = [];
   private visible = '';
+  // the lesson's text nodes and where each starts in raw
+  private nodes: { node: Text; start: number }[] = [];
+  private raw = '';
+  private chrome: Element[];
 
-  constructor(private root: HTMLElement) {
-    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  constructor(root: HTMLElement) {
+    this.chrome = Array.from(root.querySelectorAll(CHROME));
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (n.parentElement?.closest(CHROME) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    });
     const out: string[] = [];
     for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) {
+      this.nodes.push({ node: n, start: this.raw.length });
+      this.raw += n.data;
       let off = 0;
       for (const ch of n.data) {
         if (!SPACE.test(ch)) { this.chars.push({ node: n, offset: off, len: ch.length }); out.push(ch); }
@@ -50,13 +63,27 @@ export class TextMap {
     this.visible = out.join('');
   }
 
-  private domRange(start: number, end: number) {
+  // domRanges covers [start, end), split around page furniture so that is
+  // never part of an annotation
+  private domRanges(start: number, end: number): Range[] | null {
     if (start < 0 || end > this.chars.length || start >= end) return null;
-    const a = this.chars[start], b = this.chars[end - 1];
-    const r = document.createRange();
-    r.setStart(a.node, a.offset);
-    r.setEnd(b.node, b.offset + b.len);
-    return r;
+    const out: Range[] = [];
+    const span = (a: Char, b: Char) => {
+      const r = document.createRange();
+      r.setStart(a.node, a.offset);
+      r.setEnd(b.node, b.offset + b.len);
+      return r;
+    };
+    let first = this.chars[start];
+    for (let i = start + 1; i < end; i++) {
+      const prev = this.chars[i - 1], c = this.chars[i];
+      if (c.node !== prev.node && this.chrome.some((el) => span(prev, c).intersectsNode(el))) {
+        out.push(span(first, prev));
+        first = c;
+      }
+    }
+    out.push(span(first, this.chars[end - 1]));
+    return out;
   }
 
   // codepoint offsets of the visible text, to compare server ranges with
@@ -67,10 +94,10 @@ export class TextMap {
   // place finds an annotation on the page: where the server says it is, or,
   // should the page's text differ from the server's there, the nearest place
   // on the page that holds its quote.
-  place(a: Annotation): Range | null {
+  place(a: Annotation): Range[] | null {
     if (!a.range) return null;
     const want = strip(a.quote);
-    if (this.slice(a.range.start, a.range.end) === want) return this.domRange(a.range.start, a.range.end);
+    if (this.slice(a.range.start, a.range.end) === want) return this.domRanges(a.range.start, a.range.end);
     const cps = Array.from(this.visible);
     const hay = cps.join('');
     let best = -1;
@@ -78,21 +105,28 @@ export class TextMap {
       const at = Array.from(hay.slice(0, i)).length;
       if (best < 0 || Math.abs(at - a.range.start) < Math.abs(best - a.range.start)) best = at;
     }
-    return best < 0 ? null : this.domRange(best, best + Array.from(want).length);
+    return best < 0 ? null : this.domRanges(best, best + Array.from(want).length);
   }
 
   // quote reads a selection inside the root as an annotation would keep it;
   // null when it holds no text (an image alone, say).
   quote(sel: Range): Quote | null {
-    const before = document.createRange();
-    before.selectNodeContents(this.root);
-    const after = before.cloneRange();
-    if (!this.root.contains(sel.commonAncestorContainer)) return null;
-    before.setEnd(sel.startContainer, sel.startOffset);
-    after.setStart(sel.endContainer, sel.endOffset);
-    const quote = sel.toString();
+    const a = this.indexOf(sel.startContainer, sel.startOffset);
+    const b = this.indexOf(sel.endContainer, sel.endOffset);
+    const quote = this.raw.slice(a, b);
     if (!strip(quote)) return null;
-    return { quote: quote.trim(), prefix: tail(before.toString()), suffix: head(after.toString()) };
+    return { quote: quote.trim(), prefix: tail(this.raw.slice(0, a)), suffix: head(this.raw.slice(b)) };
+  }
+
+  // indexOf turns a DOM boundary point into an index into raw
+  private indexOf(container: Node, offset: number) {
+    const at = document.createRange();
+    at.setStart(container, offset);
+    for (const { node, start } of this.nodes) {
+      if (node === container) return start + offset;
+      if (at.comparePoint(node, 0) >= 0) return start; // the node lies after the point
+    }
+    return this.raw.length;
   }
 }
 

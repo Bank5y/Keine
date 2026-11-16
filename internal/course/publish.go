@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/Bank5y/keine/internal/auth"
+	"github.com/Bank5y/keine/internal/notify"
 )
 
 var (
@@ -165,7 +166,10 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 			return err
 		}
 		if r.kind == reviewPublish {
-			return publish(ctx, tx, r.courseID)
+			if err := publish(ctx, tx, r.courseID); err != nil {
+				return err
+			}
+			return notifyCourse(ctx, tx, r.requesterID, notify.PublishApproved, r.courseID, "")
 		}
 		var uploader int64
 		if err := tx.QueryRow(ctx, "SELECT uploader_id, files_dir FROM courses WHERE id = $1 FOR UPDATE", r.courseID).Scan(&uploader, &drop.dir); err != nil {
@@ -179,6 +183,9 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 			return err
 		}
 		drop.courseID = r.courseID
+		if err := notifyCourse(ctx, tx, r.requesterID, notify.UpdateApproved, r.courseID, ""); err != nil {
+			return err
+		}
 		if r.requesterID == uploader {
 			return nil
 		}
@@ -207,9 +214,12 @@ func (s *Service) Reject(ctx context.Context, admin auth.User, reviewID int64, r
 			return err
 		}
 		if r.kind == reviewPublish {
-			return setPublishState(ctx, tx, r.courseID, Rejected)
+			if err := setPublishState(ctx, tx, r.courseID, Rejected); err != nil {
+				return err
+			}
+			return notifyCourse(ctx, tx, r.requesterID, notify.PublishRejected, r.courseID, reason)
 		}
-		return nil
+		return notifyCourse(ctx, tx, r.requesterID, notify.UpdateRejected, r.courseID, reason)
 	})
 	if err == nil && r.filesDir != "" {
 		s.dropFiles(ctx, r.courseID, r.filesDir)
@@ -228,10 +238,20 @@ func (s *Service) Publish(ctx context.Context, admin auth.User, id int64) error 
 		return ErrInvalidState
 	}
 	return s.tx(ctx, func(tx pgx.Tx) error {
-		if err := settleRequests(ctx, tx, id, reviewPublish, reviewApproved, &admin); err != nil {
+		var requester int64
+		err := tx.QueryRow(ctx, `
+			UPDATE review_requests SET state = 'approved', decided_at = now(), decided_by = $2
+			WHERE course_id = $1 AND kind = 'publish' AND state = 'pending' RETURNING requester_id`, id, admin.ID).Scan(&requester)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		return publish(ctx, tx, id)
+		if err := publish(ctx, tx, id); err != nil {
+			return err
+		}
+		if requester == 0 {
+			return nil // nobody asked, so nobody is told
+		}
+		return notifyCourse(ctx, tx, requester, notify.PublishApproved, id, "")
 	})
 }
 
@@ -303,6 +323,20 @@ func (s *Service) EditInfo(ctx context.Context, admin auth.User, id int64, e Edi
 			author_intro = coalesce($5, author_intro), completion = coalesce($6, completion), updated_at = now()
 		WHERE id = $1`, id, e.Title, e.Intro, e.AuthorName, e.AuthorIntro, e.Completion)
 	return err
+}
+
+// notifyCourse tells a user about one of their requests on a course; a
+// non-empty reason makes it a rejection.
+func notifyCourse(ctx context.Context, tx pgx.Tx, userID int64, kind notify.Kind, courseID int64, reason string) error {
+	var p notify.CoursePayload
+	p.CourseID = courseID
+	if err := tx.QueryRow(ctx, "SELECT title FROM courses WHERE id = $1", courseID).Scan(&p.CourseTitle); err != nil {
+		return err
+	}
+	if reason != "" {
+		return notify.Send(ctx, tx, userID, kind, notify.RejectedPayload{CoursePayload: p, Reason: reason})
+	}
+	return notify.Send(ctx, tx, userID, kind, p)
 }
 
 func publish(ctx context.Context, tx pgx.Tx, courseID int64) error {

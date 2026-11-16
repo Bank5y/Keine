@@ -10,6 +10,7 @@ import { LessonView } from '@/views/lesson';
 import { LibraryView } from '@/views/library';
 import { LoginView } from '@/views/login';
 import { MineView } from '@/views/mine';
+import { NotificationsView } from '@/views/notifications';
 
 function routeView(path: string, user: User): ReactNode {
   const l = match('/courses/:id/lessons/:lesson', path);
@@ -17,6 +18,7 @@ function routeView(path: string, user: User): ReactNode {
   const m = match('/courses/:id', path);
   if (m) return <CourseView id={Number(m.id)} />;
   if (path.startsWith('/mine')) return <MineView />;
+  if (path.startsWith('/notifications')) return <NotificationsView />;
   if (path.startsWith('/account')) return <AccountView user={user} />;
   if (path.startsWith('/admin') && user.role === 'admin') return <AdminView path={path} user={user} />;
   return <LibraryView />;

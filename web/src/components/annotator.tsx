@@ -34,13 +34,21 @@ const spotOf = (r: DOMRect): Spot => ({ x: r.left + r.width / 2 + scrollX, top: 
 // never touched.
 export function Annotator({ courseId, lessonId, root }: { courseId: number; lessonId: number; root: HTMLElement | null }) {
   const [anns, setAnns] = useState<Annotation[]>([]);
-  const map = useMemo(() => (root ? new TextMap(root) : null), [root]);
+  // the text is mapped afresh whenever React re-renders nodes inside it
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    if (!root) return undefined;
+    const mo = new MutationObserver(() => setVersion((v) => v + 1));
+    mo.observe(root, { childList: true, subtree: true, characterData: true });
+    return () => mo.disconnect();
+  }, [root]);
+  const map = useMemo(() => (root ? new TextMap(root) : null), [root, version]); // eslint-disable-line react-hooks/exhaustive-deps
   const placed = useMemo(() => {
-    const out = new Map<number, Range>();
+    const out = new Map<number, Range[]>();
     if (map) for (const a of anns) { const r = map.place(a); if (r) out.set(a.id, r); }
     return out;
   }, [map, anns]);
-  const [pick, setPick] = useState<{ spot: Spot; quote: Quote; range: Range } | null>(null);
+  const [pick, setPick] = useState<{ spot: Spot; quote: Quote } | null>(null);
   const [open, setOpen] = useState<{ spot: Spot; ids: number[] } | null>(null);
   const bar = useRef<HTMLDivElement>(null);
 
@@ -55,7 +63,7 @@ export function Annotator({ courseId, lessonId, root }: { courseId: number; less
   useEffect(() => {
     if (!supported()) return undefined;
     for (const look of LOOKS) {
-      const h = new Highlight(...anns.filter((a) => lookName(a) === look && placed.has(a.id)).map((a) => placed.get(a.id)!));
+      const h = new Highlight(...anns.filter((a) => lookName(a) === look).flatMap((a) => placed.get(a.id) ?? []));
       h.priority = look === 'underline' ? 1 : 0;
       CSS.highlights.set(highlightName(look), h);
     }
@@ -74,7 +82,7 @@ export function Annotator({ courseId, lessonId, root }: { courseId: number; less
       const quote = root.contains(range.commonAncestorContainer) ? map.quote(range) : null;
       if (!quote) { setPick(null); return; }
       setOpen(null);
-      setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange() });
+      setPick({ spot: spotOf(range.getBoundingClientRect()), quote });
     };
     const onChange = () => { clearTimeout(t); if (!down) t = window.setTimeout(read, 120); };
     const onDown = (e: PointerEvent) => { if (!bar.current?.contains(e.target as Node)) down = true; };
@@ -100,8 +108,7 @@ export function Annotator({ courseId, lessonId, root }: { courseId: number; less
       const hits: number[] = [];
       let at: DOMRect | null = null;
       for (const a of anns) {
-        const r = placed.get(a.id);
-        const rect = r && Array.from(r.getClientRects()).find((c) => e.clientX >= c.left && e.clientX <= c.right && e.clientY >= c.top && e.clientY <= c.bottom);
+        const rect = (placed.get(a.id) ?? []).flatMap((r) => Array.from(r.getClientRects())).find((c) => e.clientX >= c.left && e.clientX <= c.right && e.clientY >= c.top && e.clientY <= c.bottom);
         if (rect) { hits.push(a.id); at ??= rect; }
       }
       setOpen(hits.length && at ? { spot: { x: e.clientX + scrollX, top: at.top + scrollY, bottom: at.bottom + scrollY }, ids: hits } : null);

@@ -1,5 +1,6 @@
 import { LogOut, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { NotificationBell } from '@/components/notification-bell';
 import { Link } from '@/lib/router';
 import { logout, type User } from '@/lib/session';
 import { toggleTheme } from '@/lib/theme';
@@ -21,6 +22,7 @@ export function Masthead({ user, path }: { user: User | null | undefined; path: 
           ))}
         </nav>
         <div className="mast-tools">
+          {user ? <NotificationBell path={path} /> : null}
           {user ? <Link className="mast-user" href="/account" title="账号设置">{user.username}</Link> : null}
           <Button variant="round" size="round" title="切换深色 / 浅色" aria-label="切换主题" onClick={toggleTheme}>
             <Sun className="i-sun" />

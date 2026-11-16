@@ -39,11 +39,11 @@ export function MineView() {
       <PageHead
         kicker="My courses"
         title="我的课程"
-        sub="你正在学习的课程, 以及你上传的私有课程。"
+        sub="你订阅的课程, 以及你上传的私有课程。"
         actions={<Button variant="default" onClick={() => setUploading(true)}><Upload />上传课程</Button>}
       />
       <div className="facets">
-        <Facet label="学习" value={state} onPick={setState} items={[['', '全部'], ['studying', '学习中'], ['done', '已学完']]} />
+        <Facet label="学习" value={state} onPick={setState} items={[['', '全部'], ['unfinished', '未学完'], ['done', '已学完']]} />
         <Facet label="类型" value={type} onPick={setType} items={[['', '全部'], ['column', TYPE_LABEL.column], ['video', TYPE_LABEL.video]]} />
         <Facet label="状态" value={completion} onPick={setCompletion} items={[['', '全部'], ['finished', COMPLETION_LABEL.finished], ['ongoing', COMPLETION_LABEL.ongoing], ['incomplete', COMPLETION_LABEL.incomplete]]} />
       </div>
@@ -51,7 +51,7 @@ export function MineView() {
       {courses ? <div className="result-bar"><span className="count"><b>{courses.length}</b>门课程</span><span>按最近学习排序</span></div> : null}
       {courses && !courses.length ? (
         <Empty glyph={filtered ? '无' : '空'} title={filtered ? '没有符合条件的课程' : '还没有课程'}>
-          <div>{filtered ? '换个筛选条件试试' : '上传一个课程包, 或去课程库挑一门课开始学习'}</div>
+          <div>{filtered ? '换个筛选条件试试' : '上传一个课程包, 或去课程库订阅一门课'}</div>
         </Empty>
       ) : null}
       {courses && courses.length ? <Shelf courses={courses} hrefOf={(c) => `/courses/${c.id}`} onDelete={setDeleting} onRemove={setRemoving} showProgress /> : null}
@@ -60,9 +60,9 @@ export function MineView() {
         onConfirm={() => act('DELETE', `/api/courses/${deleting!.id}`, `已删除「${deleting!.title}」`)}>
         确定删除「{deleting?.title}」吗? 课程内容、文件和学习记录都会被删除, 无法恢复。
       </Confirm>
-      <Confirm open={!!removing} title="移出我的课程" confirm="移出" onClose={() => setRemoving(null)}
-        onConfirm={() => act('DELETE', `/api/courses/${removing!.id}/enroll`, `已移出「${removing!.title}」`)}>
-        「{removing?.title}」会从我的课程中移出, 你的学习进度会保留。以后在课程库重新开始学习, 进度会恢复。
+      <Confirm open={!!removing} title="取消订阅" confirm="取消订阅" onClose={() => setRemoving(null)}
+        onConfirm={() => act('DELETE', `/api/courses/${removing!.id}/subscribe`, `已取消订阅「${removing!.title}」`)}>
+        「{removing?.title}」会离开我的课程, 你的学习进度会保留。以后再次订阅, 进度会恢复。
       </Confirm>
     </div>
   );

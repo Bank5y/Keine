@@ -17,6 +17,7 @@ import { Link, navigate } from '@/lib/router';
 import { useHeadings, type Heading } from '@/lib/use-headings';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { cn } from '@/lib/utils';
+import { SubscribeButton } from '@/components/peek';
 import { useCourse } from '@/views/course';
 
 // a text that opens with its own "# title" shows that instead of ours; a
@@ -54,8 +55,19 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   // a video gives way at once: kept on screen it would play on unseen, and
   // its last position would no longer reach the lesson it belongs to
   const shown = current ?? (slow || lesson?.video ? null : lesson);
-  const { headings: found, active } = useHeadings(doc, shown?.id);
+  const { headings: found, active, jump } = useHeadings(doc, shown?.id);
   const headings = current ? found : [];
+
+  // opened at "#heading": go there once that heading has rendered
+  const hashDone = useRef<number | null>(null);
+  useEffect(() => {
+    if (!current || hashDone.current === current.id || !location.hash) return;
+    let id = location.hash.slice(1);
+    try { id = decodeURIComponent(id); } catch { /* keep it as written */ }
+    if (!headings.some((h) => h.id === id)) return;
+    hashDone.current = current.id;
+    jump(id, 'instant');
+  }, [current, headings, jump]);
   const { prev, next } = useMemo(() => neighbours(course, lessonId), [course, lessonId]);
   const { state, setDone, autoDone, savePosition } = useReadingProgress(courseId, current, doc, reload);
   useScrollFade(right);
@@ -91,12 +103,13 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   };
 
   const toc = course ? <CourseToc c={course} current={lessonId} /> : <Skeleton className="h-40" />;
-  const onThisPage = <HeadingToc headings={headings} active={active} onPick={() => setDrawer('')} />;
+  const onThisPage = <HeadingToc headings={headings} active={active} onPick={(id) => { setDrawer(''); jump(id, 'smooth'); }} />;
 
   return (
     <div className="page enter docs" onClick={onClick}>
       <aside className="docs-side docs-left" aria-label="课程目录">
         <Link className="back" href={`/courses/${courseId}?tab=toc`}><ArrowLeft />返回课程</Link>
+        {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
         {course ? <CourseToc c={course} current={lessonId} docked /> : <Skeleton className="h-40" />}
       </aside>
 
@@ -250,13 +263,13 @@ function CourseToc({ c, current, docked }: { c: CourseDetail; current: number; d
 
 const noBox = { current: null };
 
-function HeadingToc({ headings, active, onPick }: { headings: Heading[]; active: string; onPick: () => void }) {
+function HeadingToc({ headings, active, onPick }: { headings: Heading[]; active: string; onPick: (id: string) => void }) {
   return (
     <div className="on-page">
       <div className="on-page-title">本讲目录</div>
       {headings.map((h) => (
         <a key={h.id} href={'#' + h.id} className={cn('op-item', h.level === 3 && 'sub', h.id === active && 'active')}
-          onClick={(e) => { e.preventDefault(); document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' }); history.replaceState(null, '', '#' + h.id); onPick(); }}>
+          onClick={(e) => { e.preventDefault(); history.replaceState(null, '', '#' + h.id); onPick(h.id); }}>
           {h.text}
         </a>
       ))}

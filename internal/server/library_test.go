@@ -89,44 +89,52 @@ func TestLibraryFiltersAndSearches(t *testing.T) {
 	}
 }
 
-func TestStartingToLearnALibraryCourse(t *testing.T) {
+func TestSubscribingToALibraryCourse(t *testing.T) {
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
 	if contains(myCourseIDs(t, bob), id) {
-		t.Fatal("not started yet")
+		t.Fatal("not subscribed yet")
 	}
-	if d := courseJSON(t, bob, id); d["enrolled"] != false {
-		t.Fatalf("expected not enrolled, got %v", d["enrolled"])
+	if d := courseJSON(t, bob, id); d["subscribed"] != false {
+		t.Fatalf("expected not subscribed, got %v", d["subscribed"])
 	}
 
-	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/enroll", id), nil))
+	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
 
 	if !contains(myCourseIDs(t, bob), id) {
 		t.Fatal("the course should be in my courses")
 	}
-	if d := courseJSON(t, bob, id); d["enrolled"] != true {
-		t.Fatalf("expected enrolled, got %v", d["enrolled"])
+	if d := courseJSON(t, bob, id); d["subscribed"] != true {
+		t.Fatalf("expected subscribed, got %v", d["subscribed"])
 	}
 	lib := bob.mustOK(bob.do("GET", "/api/library", nil)).list("courses")
-	if lib[0].(map[string]any)["enrolled"] != true {
-		t.Fatalf("the library card should show it is started: %v", lib[0])
+	if lib[0].(map[string]any)["subscribed"] != true {
+		t.Fatalf("the library card should show it is subscribed: %v", lib[0])
 	}
-	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/enroll", id), nil)) // starting again is harmless
+	bob.mustOK(bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil)) // subscribing again is harmless
 }
 
-func TestOpeningALessonStartsLearningTheCourse(t *testing.T) {
+func TestReadingALessonWithoutSubscribing(t *testing.T) {
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
+	l01 := lessonIDs(t, bob, id)["l01"]
 
-	visit(t, bob, id, lessonIDs(t, bob, id)["l01"])
+	visit(t, bob, id, l01)
+	bob.mustOK(setProgress(bob, id, l01, map[string]any{"done": true}))
 
-	if !contains(myCourseIDs(t, bob), id) {
-		t.Fatal("opening a lesson should start learning the course")
+	if contains(myCourseIDs(t, bob), id) {
+		t.Fatal("reading a lesson does not subscribe to the course")
 	}
-	if p := courseProgress(t, bob, id); p["lastLessonId"] != float64(lessonIDs(t, bob, id)["l01"]) {
-		t.Fatalf("expected the lesson as the last one, got %v", p)
+	if d := courseJSON(t, bob, id); d["subscribed"] != false {
+		t.Fatalf("expected not subscribed, got %v", d["subscribed"])
+	}
+	if p := courseProgress(t, bob, id); p["lastLessonId"] != float64(l01) || p["done"] != float64(1) {
+		t.Fatalf("the reading is still recorded, got %v", p)
+	}
+	if s := lessonStates(t, bob, id)["l01"]; s != "done" {
+		t.Fatalf("expected the lesson done, got %s", s)
 	}
 }
 
@@ -142,11 +150,11 @@ func TestProgressIsPerUser(t *testing.T) {
 	}
 }
 
-func TestCannotStartLearningAnInvisibleCourse(t *testing.T) {
+func TestCannotSubscribeToAnInvisibleCourse(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
 
-	expectError(t, bob.do("POST", fmt.Sprintf("/api/courses/%d/enroll", id), nil), http.StatusNotFound, "course_not_found")
+	expectError(t, bob.do("POST", fmt.Sprintf("/api/courses/%d/subscribe", id), nil), http.StatusNotFound, "course_not_found")
 }
