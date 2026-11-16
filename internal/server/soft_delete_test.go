@@ -128,3 +128,26 @@ func TestTheLastRetainerLeavingRemovesADeletedCourse(t *testing.T) {
 	expectError(t, dave.do("GET", fmt.Sprintf("/api/courses/%d", id), nil), http.StatusNotFound, "course_not_found")
 	expectError(t, deleteCourse(admin, id), http.StatusNotFound, "course_not_found")
 }
+
+func TestSubscriberKeepsAnnotatedLessonsOfADeletedCourse(t *testing.T) {
+	a := newApp(t)
+	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
+	ann := annotate(t, bob, id, lessons["l02"], map[string]any{"style": "underline", "quote": "02"}) // annotated, not done
+
+	expectStatus(t, deleteCourse(a.admin(), id), http.StatusNoContent)
+
+	d := courseJSON(t, bob, id)
+	if d["retention"] != "deleted" || d["retainedCount"] != float64(2) {
+		t.Fatalf("bob retains the done and the annotated lesson: %v", d)
+	}
+	if byKey := lessonsByKey(d); byKey["l02"]["unavailable"] == true || byKey["l00"]["unavailable"] != true {
+		t.Fatalf("the annotated lesson stays readable: %v", byKey)
+	}
+	l := bob.mustOK(lessonText(bob, id, lessons["l02"])).json()
+	if !strings.Contains(l["markdown"].(string), "# 02") {
+		t.Fatalf("the annotated lesson is readable: %v", l)
+	}
+	if got := listAnnotations(t, bob, id, lessons["l02"]); len(got) != 1 || got[0]["id"] != ann["id"] {
+		t.Fatalf("bob's annotation is still there: %v", got)
+	}
+}
