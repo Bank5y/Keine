@@ -3,11 +3,9 @@ package course
 import (
 	"context"
 	"errors"
-	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/auth"
 )
 
@@ -24,8 +22,8 @@ type Placement struct {
 
 // ownAnnotation loads one of the viewer's annotations with the lesson it is on.
 func (s *Service) ownAnnotation(ctx context.Context, viewer auth.User, id int64) (a Annotation, courseID int64, key string, err error) {
-	err = s.db.QueryRow(ctx, "SELECT course_id, lesson_key, "+annotationColumns+" FROM annotations WHERE id = $1 AND user_id = $2", id, viewer.ID).
-		Scan(&courseID, &key, &a.ID, &a.Style, &a.Color, &a.Quote, &a.Prefix, &a.Suffix, &a.Note, &a.State, &a.PreviousTextID, &a.CreatedAt, &a.UpdatedAt)
+	err = scanAnnotation(s.db.QueryRow(ctx, "SELECT course_id, lesson_key, "+annotationColumns+" FROM annotations WHERE id = $1 AND user_id = $2", id, viewer.ID),
+		&a, &courseID, &key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ErrAnnotationNotFound
 	}
@@ -60,8 +58,7 @@ func (s *Service) lessonIDByKey(ctx context.Context, viewer auth.User, courseID 
 // comes back attached and located. Whatever picks the place (a selection, a
 // suggestion, a drop) goes through here.
 func (s *Service) Place(ctx context.Context, viewer auth.User, id int64, p Placement) (Annotation, error) {
-	if anchor.NewText(p.Quote).String() == "" || utf8.RuneCountInString(p.Quote) > maxQuote ||
-		utf8.RuneCountInString(p.Prefix) > maxContext || utf8.RuneCountInString(p.Suffix) > maxContext {
+	if !validQuote(p.Quote, p.Prefix, p.Suffix) {
 		return Annotation{}, ErrBadInput
 	}
 	a, courseID, key, err := s.ownAnnotation(ctx, viewer, id)

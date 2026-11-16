@@ -179,7 +179,7 @@ func (s *Server) myAnnotations(w http.ResponseWriter, r *http.Request) {
 		}
 		f.CourseID = id
 	}
-	f.Style, f.Color, f.Query, f.Sort = q.Get("style"), q.Get("color"), q.Get("q"), q.Get("sort")
+	f.Style, f.Color, f.Query, f.Sort = course.Style(q.Get("style")), q.Get("color"), q.Get("q"), q.Get("sort")
 	switch q.Get("noted") {
 	case "", "0", "false":
 	case "1", "true":

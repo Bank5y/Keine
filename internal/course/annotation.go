@@ -13,10 +13,13 @@ import (
 	"github.com/Bank5y/keine/internal/auth"
 )
 
+// Style is how an annotation marks its text.
+type Style string
+
 // Annotation styles and the colours of a highlight.
 const (
-	StyleUnderline = "underline"
-	StyleHighlight = "highlight"
+	StyleUnderline Style = "underline"
+	StyleHighlight Style = "highlight"
 )
 
 var highlightColors = map[string]bool{"yellow": true, "green": true, "blue": true, "pink": true}
@@ -38,15 +41,14 @@ const (
 
 // Annotation is one of the viewer's annotations on a lesson.
 type Annotation struct {
-	ID     int64   `json:"id"`
-	Style  string  `json:"style"`
-	Color  *string `json:"color"`
-	Quote  string  `json:"quote"`
-	Prefix string  `json:"prefix"`
-	Suffix string  `json:"suffix"`
-	Note   *string `json:"note"`
-	// State is attached, pending, changed or deleted (see AnnotationAttached).
-	State string `json:"state"`
+	ID     int64           `json:"id"`
+	Style  Style           `json:"style"`
+	Color  *string         `json:"color"`
+	Quote  string          `json:"quote"`
+	Prefix string          `json:"prefix"`
+	Suffix string          `json:"suffix"`
+	Note   *string         `json:"note"`
+	State  AnnotationState `json:"state"`
 	// PreviousTextID is, while pending, the previous text the annotation was
 	// last shown in (see PreviousTexts); nil when it has none.
 	PreviousTextID *int64 `json:"previousTextId"`
@@ -59,7 +61,7 @@ type Annotation struct {
 
 // NewAnnotation is what a reader sends to annotate a selection.
 type NewAnnotation struct {
-	Style  string `json:"style"`
+	Style  Style  `json:"style"`
 	Color  string `json:"color"`
 	Quote  string `json:"quote"`
 	Prefix string `json:"prefix"`
@@ -70,7 +72,7 @@ type NewAnnotation struct {
 
 // AnnotationStyle restyles an annotation.
 type AnnotationStyle struct {
-	Style string `json:"style"`
+	Style Style  `json:"style"`
 	Color string `json:"color"`
 }
 
@@ -104,8 +106,18 @@ func (s *Service) annotatable(ctx context.Context, viewer auth.User, courseID, l
 
 const annotationColumns = "id, style, color, quote, prefix, suffix, note, state, previous_text_id, created_at, updated_at"
 
-func scanAnnotation(row pgx.Row, a *Annotation) error {
-	return row.Scan(&a.ID, &a.Style, &a.Color, &a.Quote, &a.Prefix, &a.Suffix, &a.Note, &a.State, &a.PreviousTextID, &a.CreatedAt, &a.UpdatedAt)
+// scanAnnotation scans annotationColumns into a, after any leading columns
+// into lead.
+func scanAnnotation(row pgx.Row, a *Annotation, lead ...any) error {
+	return row.Scan(append(lead, &a.ID, &a.Style, &a.Color, &a.Quote, &a.Prefix, &a.Suffix, &a.Note, &a.State,
+		&a.PreviousTextID, &a.CreatedAt, &a.UpdatedAt)...)
+}
+
+// validQuote tells whether a quote and the text around it, as a selection
+// gives them, may be stored: a quote that is not blank, within the limits.
+func validQuote(quote, prefix, suffix string) bool {
+	return anchor.NewText(quote).String() != "" && utf8.RuneCountInString(quote) <= maxQuote &&
+		utf8.RuneCountInString(prefix) <= maxContext && utf8.RuneCountInString(suffix) <= maxContext
 }
 
 // locate finds an attached annotation in the lesson text.
@@ -152,7 +164,7 @@ func (s *Service) Annotate(ctx context.Context, viewer auth.User, courseID, less
 	if err != nil {
 		return Annotation{}, err
 	}
-	if anchor.NewText(in.Quote).String() == "" || utf8.RuneCountInString(in.Quote) > maxQuote || utf8.RuneCountInString(in.Prefix) > maxContext || utf8.RuneCountInString(in.Suffix) > maxContext {
+	if !validQuote(in.Quote, in.Prefix, in.Suffix) {
 		return Annotation{}, ErrBadInput
 	}
 	var note *string

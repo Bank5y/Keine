@@ -192,7 +192,7 @@ type Summary struct {
 	// Retention is set when the course left the library and the viewer, a
 	// subscriber, reads only their retained lessons of it: "unpublished" or
 	// "deleted".
-	Retention string `json:"retention,omitempty"`
+	Retention RetentionReason `json:"retention,omitempty"`
 	// RetainedCount is how many lessons the viewer retains, with Retention.
 	RetainedCount int `json:"retainedCount,omitempty"`
 	// FilesDir is the folder of the course's files the viewer reads.

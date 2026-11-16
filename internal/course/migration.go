@@ -11,15 +11,18 @@ import (
 	"github.com/Bank5y/keine/internal/notify"
 )
 
-// Annotation states (see migration 0013): an attached annotation shows in
-// the lesson text; a pending one awaits annotation migration after its text
-// changed; changed and deleted ones are excerpts, kept after their text
-// changed or their lesson was deleted.
+// AnnotationState is where an annotation stands after course updates (see
+// migration 0013): an attached annotation shows in the lesson text; a
+// pending one awaits annotation migration after its text changed; changed
+// and deleted ones are excerpts, kept after their text changed or their
+// lesson was deleted.
+type AnnotationState string
+
 const (
-	AnnotationAttached = "attached"
-	AnnotationPending  = "pending"
-	AnnotationChanged  = "changed"
-	AnnotationDeleted  = "deleted"
+	AnnotationAttached AnnotationState = "attached"
+	AnnotationPending  AnnotationState = "pending"
+	AnnotationChanged  AnnotationState = "changed"
+	AnnotationDeleted  AnnotationState = "deleted"
 )
 
 // lessonChange is a kept lesson whose text an update changed.
@@ -167,7 +170,7 @@ func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text a
 	}
 	type found struct {
 		id    int64
-		state string
+		state AnnotationState
 		q     anchor.Quote
 	}
 	list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (found, error) {

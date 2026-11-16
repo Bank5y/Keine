@@ -10,10 +10,13 @@ import (
 	"github.com/Bank5y/keine/internal/auth"
 )
 
-// Why a subscriber reads a course from its freeze (ADR-0004).
+// RetentionReason is why a subscriber reads a course from its freeze
+// (ADR-0004).
+type RetentionReason string
+
 const (
-	RetentionUnpublished = "unpublished"
-	RetentionDeleted     = "deleted"
+	RetentionUnpublished RetentionReason = "unpublished"
+	RetentionDeleted     RetentionReason = "deleted"
 )
 
 // snapshot is a course's information and structure at the moment it was
@@ -49,7 +52,7 @@ type snapLesson struct {
 // retention is what one subscriber keeps of a course that left the library:
 // its freeze and the lessons they retained, plus their done lessons.
 type retention struct {
-	reason   string
+	reason   RetentionReason
 	filesDir string
 	snap     snapshot
 	retained map[string]bool
@@ -223,7 +226,7 @@ func (s *Service) retentions(ctx context.Context, viewer auth.User, courseIDs []
 // the lessons they finished or annotated. A course already frozen keeps its first freeze
 // (and its retained lessons) and only takes the new reason. It reports
 // whether anyone retains lessons; with nobody, no freeze is kept.
-func freeze(ctx context.Context, tx pgx.Tx, courseID int64, reason string) (bool, error) {
+func freeze(ctx context.Context, tx pgx.Tx, courseID int64, reason RetentionReason) (bool, error) {
 	var existed bool
 	if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM course_freezes WHERE course_id = $1)", courseID).Scan(&existed); err != nil {
 		return false, err
