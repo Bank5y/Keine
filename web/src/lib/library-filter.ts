@@ -9,7 +9,7 @@ export interface LibraryFilter { type: CourseType | ''; completion: Completion |
 export const LIBRARY_TYPES: CourseType[] = ['column', 'video'];
 export const LIBRARY_COMPLETIONS: Completion[] = ['finished', 'ongoing', 'incomplete'];
 
-const oneOf = <T extends string>(v: string | null, allowed: T[]): T | '' => (allowed as string[]).includes(v ?? '') ? v as T : '';
+export const oneOf = <T extends string>(v: string | null, allowed: T[]): T | '' => (allowed as string[]).includes(v ?? '') ? v as T : '';
 
 // An unknown value reads as 全部 rather than an empty library.
 export function readLibraryFilter(search: string): LibraryFilter {

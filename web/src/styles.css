@@ -1185,3 +1185,36 @@ a.rn:hover .t { color: var(--brand); }
 .cr-body .tag { margin-top: 4px; }
 .tag.subscribed { background: transparent; color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
 .cr-action { padding-top: 16px; }
+
+/* ---------- narrow my courses and notes (#68): progress and ⋯ on course rows,
+   notes filtered by round buttons, each note led by its quote ---------- */
+.cr-progress { align-self: stretch; display: flex; align-items: center; gap: 12px; margin-top: 6px; font-family: var(--mono); font-size: 12px; color: var(--success); }
+.cr-progress .pbar { flex: 1; max-width: 150px; height: 3px; }
+.row-more {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; margin-right: -6px;
+  border-radius: 50%; color: var(--text-3); -webkit-tap-highlight-color: transparent;
+}
+.row-more svg { width: 18px; height: 18px; }
+.row-more[data-state="open"] { background: var(--surface-2); color: var(--text); }
+.filter-item:not([data-state]) svg { color: var(--text-3); }
+.filter-item.danger, .filter-item.danger svg { color: var(--danger); }
+.filter-btn > span { max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+.filter-bar + .result-bar { margin: 20px 0 14px; }
+
+.notes-narrow .notes-search { height: 40px; border-radius: 20px; margin: -8px 0 12px; }
+.notes-narrow .result-bar { margin: 8px 0 12px; }
+.notes-sort-toggle { color: var(--text-3); font-size: 13px; }
+.nb-card.narrow { padding: 16px 0 14px; }
+.nb-card.narrow .nb-quote { margin: 0; padding-left: 12px; border-left: 3px solid var(--mark-yellow-solid); font-family: inherit; font-size: 15px; line-height: 1.75; }
+.nb-card.narrow .nq-text { background: none; text-decoration: none; }
+.nb-card.narrow.look-underline .nb-quote { border-left-color: var(--brand); }
+.nb-card.narrow.look-green .nb-quote { border-left-color: var(--mark-green-solid); }
+.nb-card.narrow.look-blue .nb-quote { border-left-color: var(--mark-blue-solid); }
+.nb-card.narrow.look-pink .nb-quote { border-left-color: var(--mark-pink-solid); }
+.nb-note-tap {
+  display: block; width: calc(100% - 15px); margin: 10px 0 0 15px; padding: 8px 10px; border: 0; border-radius: 2px;
+  background: var(--surface-2); color: var(--text-2); font-size: 13px; line-height: 1.6; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.nb-card.narrow .nb-editor { margin-left: 15px; }
+.nb-card.narrow .note-actions .hint { visibility: hidden; }
+.nb-card.narrow .nb-meta { margin: 10px 0 0 15px; }
