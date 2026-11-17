@@ -1131,6 +1131,42 @@ a.rn:hover .t { color: var(--brand); }
 /* an open chapter leaves room for focus rings and drop lines at its edges */
 .ed .fold.open .fold-inner { overflow: clip; overflow-clip-margin: 4px; }
 
+/* ---------- narrow course page (#69): no cover or spec, tools beside the
+   tabs, a bar of course actions in place of the bottom nav ---------- */
+@media (max-width: 760px) {
+  /* the back link scrolls away with the page (undoing the sticky bar above) */
+  .colophon > .back { position: static; display: inline-flex; margin: 0 0 12px; padding: 0; background: none; box-shadow: none; }
+  .colophon > .colophon-body { display: block; }
+  .colophon h1 { font-size: 26px; margin: 0 0 14px; }
+  .course-progress { margin-bottom: 0; }
+  .course > section { margin-top: 28px; }
+  .toc-head { flex-wrap: nowrap; }
+  .toc-tabs { min-width: 0; }
+}
+.course-tools { display: flex; align-items: center; gap: 2px; margin-right: -8px; }
+.course-bar { gap: 12px; padding: 12px var(--gutter) calc(12px + env(safe-area-inset-bottom)); }
+.course-bar > * { flex: 1; min-width: 0; height: 44px; }
+/* a sheet of choices rising from the bottom */
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; max-height: 85vh; overflow-y: auto; outline: none;
+  padding: 10px var(--gutter) calc(16px + env(safe-area-inset-bottom));
+  background: var(--surface); border-radius: 14px 14px 0 0; box-shadow: 0 -8px 30px rgb(0 0 0 / .12);
+}
+.sheet-grip { display: block; width: 40px; height: 4px; margin: 0 auto 14px; border-radius: 2px; background: var(--rule); }
+.sheet-title { margin: 0 0 4px; font-family: var(--serif); font-size: 17px; font-weight: 700; }
+.sheet .reject-note, .sheet-note { margin: 10px 0 4px; }
+.sheet-note { font-size: 13px; color: var(--text-3); }
+.sheet-row {
+  display: flex; align-items: center; gap: 14px; width: 100%; height: 52px; padding: 0; border: 0; border-bottom: 1px solid var(--line);
+  background: none; font-size: 15px; color: var(--text); text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.sheet-row svg { width: 20px; height: 20px; color: var(--text-2); flex-shrink: 0; }
+.sheet-row.danger, .sheet-row.danger svg { color: var(--danger); }
+.sheet-cancel {
+  display: block; width: 100%; height: 44px; margin-top: 12px; border: 1px solid var(--rule); border-radius: var(--radius);
+  background: var(--bg); font-size: 15px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+
 /* ---------- narrow filters and course rows (#67): round filter buttons with a menu,
    courses as a list; the library, my courses and notes share them ---------- */
 .page-head > div > h1:first-child { margin-top: 0; }
