@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, ChevronRight, PlayCircle } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, BookOpen, ChevronRight, PlayCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
-import { CourseActions } from '@/components/course-actions';
+import { CourseActions, CourseTools } from '@/components/course-actions';
 import { Fold, useChapterFolds } from '@/components/fold';
-import { SubscribeButton } from '@/components/peek';
+import { SubscribeButton, subscribe } from '@/components/peek';
 import { TabPane, Tabs, useAddressTab, useTabFade } from '@/components/tabs';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
+import { readerBar } from '@/lib/course-actions';
 import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, readable, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
+import { useNarrow } from '@/lib/use-narrow';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { useStuck } from '@/lib/use-stuck';
 import { cn } from '@/lib/utils';
@@ -35,6 +38,9 @@ export function CourseView({ id }: { id: number }) {
   const [shown, fading] = useTabFade(tab);
   const colophonBody = useRef<HTMLDivElement>(null);
   useScrollFade(colophonBody);
+  // a phone gets the course's actions as a bar at the bottom and tools
+  // beside the tabs; the colophon keeps only the title, tags and progress
+  const narrow = useNarrow();
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
   return (
@@ -42,8 +48,8 @@ export function CourseView({ id }: { id: number }) {
       <div className="course">
         <aside className="colophon">
           <BackLink library={!!course && course.visibility === 'public' && !course.subscribed} />
-          {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
-          <div className="colophon-body side-scroll side-fade" ref={colophonBody}>{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</div>
+          {course && !narrow ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
+          <div className="colophon-body side-scroll side-fade" ref={colophonBody}>{course ? <Colophon c={course} onChange={reload} narrow={narrow} /> : <Skeleton className={narrow ? 'h-24 w-full' : 'aspect-[3/4] w-full'} />}</div>
         </aside>
         <section>
           <div className="toc-head">
@@ -51,6 +57,7 @@ export function CourseView({ id }: { id: number }) {
               ['intro', '课程介绍'],
               ['toc', <>目录{course ? <sup>{course.lessonCount}</sup> : null}</>],
             ]} />
+            {course && narrow ? <CourseTools c={course} onChange={reload} /> : null}
           </div>
           {course?.retention ? (
             <div className="retention-note" role="status">
@@ -60,7 +67,26 @@ export function CourseView({ id }: { id: number }) {
           {!course ? <Lines /> : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} /> : <Intro c={course} />}</TabPane>}
         </section>
       </div>
+      {course && narrow ? <CourseBar c={course} onSubscribed={() => void reload()} /> : null}
     </div>
+  );
+}
+
+// CourseBar is the narrow course page's bottom bar, in place of the nav:
+// subscribing and reading (see readerBar). It is drawn on the body: the
+// page's entrance animation moves it, which would hold a fixed bar to the
+// page instead of the window.
+function CourseBar({ c, onSubscribed }: { c: CourseDetail; onSubscribed: () => void }) {
+  const { subscribe: canSubscribe, read } = readerBar(c);
+  return createPortal(
+    <div className="tabbar course-bar">
+      {canSubscribe ? (
+        <Button variant="outline" size="block" onClick={() => void subscribe(c).then((ok) => { if (ok) onSubscribed(); })}><Plus />订阅课程</Button>
+      ) : null}
+      {read ? <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, read.lessonId))}><BookOpen />{read.label}</Button> : null}
+    </div>
+,
+    document.body,
   );
 }
 
@@ -79,7 +105,9 @@ function ContinueButton({ c }: { c: CourseDetail }) {
 }
 
 // BackLink stays in view: in the sticky column on a wide screen, and as a
-// bar under the masthead on a narrow one (which shows its edge once stuck).
+// bar under the masthead on a middling one (which shows its edge once
+// stuck). A phone lets it scroll away: the top bar and the course bar
+// already frame the page.
 function BackLink({ library }: { library?: boolean }) {
   const ref = useRef<HTMLAnchorElement>(null);
   useStuck(ref);
@@ -90,10 +118,10 @@ function Lines() {
   return <div className="mt-4 space-y-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-4" />)}</div>;
 }
 
-function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
+function Colophon({ c, onChange, narrow }: { c: CourseDetail; onChange: () => void; narrow: boolean }) {
   return (
     <>
-      <div className="book-cover"><Cover course={c} /></div>
+      {narrow ? null : <div className="book-cover"><Cover course={c} /></div>}
       <div>
         <h1>{c.title}</h1>
         <div className="tags">
@@ -102,18 +130,20 @@ function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
           {c.retention ? <span className="tag retained">{RETENTION_LABEL[c.retention]}</span>
             : c.visibility === 'private' ? <span className={cn('tag private', c.publishState)}>{PUBLISH_LABEL[c.publishState]}</span> : null}
         </div>
-        <dl className="spec">
+        {narrow ? null : <dl className="spec">
           <dt>讲数</dt><dd className="num">{c.lessonCount}</dd>
           <dt>章数</dt><dd className="num">{c.chapters.length}</dd>
           {c.authorName ? <><dt>讲师</dt><dd>{c.authorName}</dd></> : null}
           {c.contributors.length ? <><dt>贡献者</dt><dd>{c.contributors.join('、')}</dd></> : null}
-        </dl>
+        </dl>}
         <div className="course-progress">
           <div className="cp-head"><span>学习进度</span><b>{c.progress.done} / {c.progress.total}</b></div>
           <ProgressBar done={c.progress.done} total={c.progress.total} />
         </div>
-        <div className="stack"><ContinueButton c={c} /></div>
-        {c.retention ? null : <CourseActions c={c} onChange={onChange} />}
+        {narrow ? null : <>
+          <div className="stack"><ContinueButton c={c} /></div>
+          {c.retention ? null : <CourseActions c={c} onChange={onChange} />}
+        </>}
       </div>
     </>
   );
