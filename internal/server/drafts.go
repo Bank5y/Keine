@@ -87,6 +87,8 @@ func writeDraftError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, http.StatusUnprocessableEntity, "draft_op_rejected", rejected.Message)
 	case isUploadNotFound(err):
 		writeError(w, http.StatusNotFound, "draft_upload_not_found", "上传的文件已不在编辑稿里, 请重新上传")
+	case errors.Is(err, course.ErrNothingApplies):
+		writeError(w, http.StatusConflict, "draft_nothing_applies", "编辑稿里的修改都已无法应用到课程的最新版本, 没有可提交的内容; 请撤销或放弃编辑稿")
 	case errors.Is(err, course.ErrDraftEmpty):
 		writeError(w, http.StatusConflict, "draft_empty", "编辑稿里还没有修改")
 	case errors.Is(err, course.ErrUpdateNotAllowed):

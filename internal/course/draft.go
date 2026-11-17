@@ -21,6 +21,9 @@ import (
 var (
 	// ErrDraftEmpty means the draft holds no operation to undo or commit.
 	ErrDraftEmpty = errors.New("the course draft is empty")
+	// ErrNothingApplies means every operation of the draft conflicts with
+	// the course's latest version, so committing it would change nothing.
+	ErrNothingApplies = errors.New("no operation of the draft applies to the course")
 )
 
 // How a user's committed draft takes effect.
@@ -354,7 +357,7 @@ var ErrCourseBusy = errors.New("the course changed while the change was prepared
 const busyAttempts = 3
 
 func (s *Service) commitDraft(ctx context.Context, viewer auth.User, id int64, skip []string) (CommitResult, error) {
-	_, mode, err := s.loadToEdit(ctx, viewer, id)
+	sm, mode, err := s.loadToEdit(ctx, viewer, id)
 	if err != nil {
 		return CommitResult{}, err
 	}
@@ -368,6 +371,9 @@ func (s *Service) commitDraft(ctx context.Context, viewer auth.User, id int64, s
 	if len(unconfirmed(seen.conflicts, skip)) > 0 {
 		// the course and the draft stay as they are
 		return CommitResult{Outcome: "conflicts", Conflicts: seen.conflicts}, nil
+	}
+	if len(seen.conflicts) == len(seen.row.Ops) {
+		return CommitResult{}, ErrNothingApplies
 	}
 	dir := newFilesDir()
 	lock := " FOR UPDATE" // nothing else switches the content meanwhile
@@ -388,7 +394,9 @@ func (s *Service) commitDraft(ctx context.Context, viewer auth.User, id int64, s
 		if err != nil {
 			return err
 		}
-		if !now.same(seen) {
+		// mode was decided from the course as loadToEdit read it; under the
+		// lock it must still be the course that decided it
+		if !now.same(seen) || now.visibility != sm.Visibility || now.completion != sm.Completion {
 			return ErrCourseBusy
 		}
 		if mode == EditDirect {

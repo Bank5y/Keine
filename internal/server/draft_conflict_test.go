@@ -198,3 +198,23 @@ func TestAConflictTakingTheSamePlaceIsNotSkippedUnseen(t *testing.T) {
 		t.Fatalf("no request was filed, got %d", n)
 	}
 }
+
+func TestADraftWhoseEveryOperationConflictsCannotBeCommitted(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "renameLesson", "lesson": "l00", "title": "前言"}))
+	admin.mustOK(addOp(admin, id, map[string]any{"type": "deleteLesson", "lesson": "l00"}))
+	admin.mustOK(commitDraft(admin, id))
+	seen := conflictIDs(getDraft(t, alice, id))
+
+	expectError(t, alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": seen}), http.StatusConflict, "draft_nothing_applies")
+
+	if n := len(myUpdateRequests(t, alice, id)); n != 0 {
+		t.Fatalf("no empty request is filed, got %d", n)
+	}
+	if n := len(draftOps(t, alice, id)); n != 1 {
+		t.Fatalf("the draft stays, got %d operations", n)
+	}
+}

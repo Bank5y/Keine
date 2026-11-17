@@ -179,6 +179,7 @@ export function CourseEditView({ id }: { id: number }) {
         编辑稿里的 {changes} 处修改都会丢弃, 无法恢复。
       </Confirm>
       <Confirm open={dialog === 'commit'} title="提交编辑稿" confirm={conflicts.length ? '跳过这些修改并提交' : '提交'} onClose={() => setDialog('')}
+        disabled={conflicts.length > 0 && conflicts.length === changes}
         onConfirm={async () => {
           try {
             const r = await commitDraft(id, conflicts.map((x) => x.id));
@@ -195,7 +196,9 @@ export function CourseEditView({ id }: { id: number }) {
         {conflicts.length ? <>
           课程在你编辑期间被更新过, 下面 <b>{conflicts.length}</b> 处修改无法应用到最新版本, 提交时会跳过:
           <ConflictList conflicts={conflicts} />
-          其余 {changes - conflicts.length} 处修改{draft.mode === 'request' ? '会成为一份更新申请, 管理员批准后生效' : '会作为一次课程更新生效'}。
+          {conflicts.length === changes
+            ? '编辑稿里的修改都已无法应用, 没有可提交的内容; 请撤销或放弃编辑稿。'
+            : <>其余 {changes - conflicts.length} 处修改{draft.mode === 'request' ? '会成为一份更新申请, 管理员批准后生效' : '会作为一次课程更新生效'}。</>}
         </> : draft.mode === 'request'
           ? <>{changes} 处修改会成为一份更新申请, 管理员批准后生效; 你对这门课还在审核中的申请会被替换。</>
           : <>{changes} 处修改会作为一次课程更新生效。学习进度按讲保留, 订阅者会收到一条「课程有更新」。</>}
