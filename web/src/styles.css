@@ -1264,9 +1264,7 @@ a.rn:hover .t { color: var(--brand); }
   border-radius: 50%; color: var(--text-3); -webkit-tap-highlight-color: transparent;
 }
 .row-more svg { width: 18px; height: 18px; }
-.row-more[data-state="open"] { background: var(--surface-2); color: var(--text); }
-.filter-item:not([data-state]) svg { color: var(--text-3); }
-.filter-item.danger, .filter-item.danger svg { color: var(--danger); }
+.row-more[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
 .filter-btn > span { max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
 .filter-bar + .result-bar { margin: 20px 0 14px; }
 
