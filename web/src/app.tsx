@@ -39,8 +39,13 @@ function routeView(path: string, user: User): ReactNode {
 // top bar and the bottom nav for now; a page that needs its own (the course
 // page's actions in place of the nav, the lesson's own top bar) gets a case
 // here and a value for its bar.
-interface Chrome { top: 'main'; bottom: 'nav' }
-const chromeFor = (_path: string): Chrome => ({ top: 'main', bottom: 'nav' });
+// bottom 'course': the course page draws its own bar of course actions in
+// place of the nav; the shell only keeps the page clear of it.
+interface Chrome { top: 'main'; bottom: 'nav' | 'course' }
+const chromeFor = (path: string): Chrome => {
+  if (match('/courses/:id', path)) return { top: 'main', bottom: 'course' };
+  return { top: 'main', bottom: 'nav' };
+};
 
 export function App() {
   const user = useUser();
@@ -62,7 +67,7 @@ export function App() {
   // signed out, a phone keeps the plain masthead: there is nothing to search or navigate yet
   const chrome = narrow && user ? chromeFor(path) : null;
   return (
-    <div className={cn('shell', chrome?.bottom === 'nav' && 'with-bar')}>
+    <div className={cn('shell', chrome?.bottom && 'with-bar')}>
       {chrome && user ? <TopBar path={path} /> : <Masthead user={user} path={path} />}
       <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
       {chrome?.bottom === 'nav' && user ? <BottomNav user={user} path={path} /> : null}

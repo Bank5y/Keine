@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { PenLine } from 'lucide-react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { ArrowDown, Check, Ellipsis, FilePenLine, Globe, PenLine, Pencil, Send, Settings, Trash2, Undo2, X, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -7,19 +7,22 @@ import { Input } from '@/components/ui/input';
 import { Confirm } from '@/components/confirm';
 import { ErrorBox } from '@/components/common';
 import { RejectDialog } from '@/components/reject-dialog';
+import { Sheet } from '@/components/sheet';
 import { UploadDialog } from '@/components/upload-dialog';
 import { api, ApiError } from '@/lib/api';
+import { courseActions, menuActions, type CourseAction } from '@/lib/course-actions';
 import { COMPLETION_LABEL, type Completion, type CourseDetail, type Review, type UpdateRequest } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
 import { useUser } from '@/lib/session';
+import { cn } from '@/lib/utils';
 
 const fail = (ex: unknown) => toast.error(ex instanceof ApiError ? ex.message : '操作失败');
 
-// CourseActions offers what the viewer may do with a course in its current
-// state: those who may change it open the course editor; the uploader asks for it to be published (or withdraws, or asks
-// again after a rejection); an admin reviews, publishes, unpublishes, edits
-// and deletes.
-export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
+// useCourseActions holds what the course's actions need, for the desktop
+// colophon and the narrow ⋯ menu alike: the actions the viewer has
+// (courseActions), what each one does, the notes on earlier requests, and
+// the dialogs some of them open (rendered with `dialogs`).
+function useCourseActions(c: CourseDetail, onChange: () => void) {
   const user = useUser();
   const admin = user?.role === 'admin';
   const [dialog, setDialog] = useState<'' | 'unpublish' | 'delete' | 'edit' | 'reject' | 'request'>('');
@@ -39,62 +42,27 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
   const act = async (method: string, path: string, done: string, body?: unknown) => {
     try { await api(method, path, body); toast.success(done); setDialog(''); onChange(); } catch (ex) { fail(ex); }
   };
-  const isPrivate = c.visibility === 'private';
-  const canRequest = !isPrivate && !admin && (c.isUploader || c.completion !== 'finished');
-  // the course editor: directly for a private course's uploader and for an
-  // admin on a public course; as an update request for the others who may
-  // ask for one
-  const canEdit = (isPrivate && c.isUploader) || (admin && !isPrivate) || canRequest;
   const pending = requests.find((r) => r.state === 'pending');
   const latest = requests[0];
+  const actions = courseActions(c, { admin, reviewing: !!review, updatePending: !!pending });
 
-  return (
-    <div className="stack">
-      {isPrivate && c.isUploader && c.publishState === 'rejected' ? (
-        <div className="reject-note"><b>公开申请被驳回</b>{c.rejectReason ? <p>{c.rejectReason}</p> : null}</div>
-      ) : null}
-      {isPrivate && c.isUploader && c.publishState !== 'pending' && !admin ? (
-        <Button onClick={() => act('POST', `/api/courses/${c.id}/publish-request`, '已提交公开申请, 等待管理员审核')}>
-          {c.publishState === 'rejected' ? '再次申请公开' : '申请公开'}
-        </Button>
-      ) : null}
-      {canEdit ? (
-        <Button variant="ghost" asChild><Link href={`/courses/${c.id}/edit`}><PenLine />编辑课程</Link></Button>
-      ) : null}
-      {isPrivate && c.isUploader && c.publishState === 'pending' ? (
-        <Button variant="ghost" onClick={() => act('DELETE', `/api/courses/${c.id}/publish-request`, '已撤回公开申请')}>撤回公开申请</Button>
-      ) : null}
-      {review ? (
-        <div className="review-box">
-          <div className="t">{review.requester.username} 申请公开这门课程</div>
-          <div className="row">
-            <Button variant="default" size="sm" onClick={() => act('POST', `/api/admin/reviews/${review.id}/approve`, '已批准, 课程进入课程库')}>批准</Button>
-            <Button size="sm" onClick={() => setDialog('reject')}>驳回</Button>
-          </div>
-        </div>
-      ) : null}
-      {canRequest && !pending ? (
-        <Button variant="ghost" onClick={() => setDialog('request')}>{c.completion === 'incomplete' && !c.isUploader ? '申请补全' : '提交更新'}</Button>
-      ) : null}
-      {pending ? (
-        <div className="request-note">
-          <b>更新申请审核中</b>
-          <Button variant="text" size="bare" onClick={() => act('DELETE', `/api/courses/${c.id}/update-requests/${pending.id}`, '已撤回更新申请').then(loadRequests)}>撤回</Button>
-        </div>
-      ) : latest && latest.state === 'rejected' ? (
-        <div className="reject-note"><b>更新申请被驳回</b><p>{latest.reason}</p></div>
-      ) : null}
-      {admin && isPrivate && !review ? (
-        <Button onClick={() => act('POST', `/api/admin/courses/${c.id}/publish`, '已公开到课程库')}>直接公开</Button>
-      ) : null}
-      {admin ? (
-        <div className="admin-tools">
-          {!isPrivate ? <Button variant="text" size="bare" onClick={() => setDialog('edit')}>编辑信息</Button> : null}
-          {!isPrivate ? <Button variant="text" size="bare" onClick={() => setDialog('unpublish')}>下架</Button> : null}
-          <Button variant="text" size="bare" onClick={() => setDialog('delete')}>删除课程</Button>
-        </div>
-      ) : null}
+  const run = {
+    publishRequest: () => act('POST', `/api/courses/${c.id}/publish-request`, '已提交公开申请, 等待管理员审核'),
+    withdrawPublish: () => act('DELETE', `/api/courses/${c.id}/publish-request`, '已撤回公开申请'),
+    approve: () => act('POST', `/api/admin/reviews/${review?.id}/approve`, '已批准, 课程进入课程库'),
+    withdrawUpdate: () => act('DELETE', `/api/courses/${c.id}/update-requests/${pending?.id}`, '已撤回更新申请').then(loadRequests),
+    directPublish: () => act('POST', `/api/admin/courses/${c.id}/publish`, '已公开到课程库'),
+  };
 
+  const notes = {
+    publishRejected: c.visibility === 'private' && c.isUploader && c.publishState === 'rejected'
+      ? <div className="reject-note"><b>公开申请被驳回</b>{c.rejectReason ? <p>{c.rejectReason}</p> : null}</div> : null,
+    updateRejected: !pending && latest?.state === 'rejected'
+      ? <div className="reject-note"><b>更新申请被驳回</b><p>{latest.reason}</p></div> : null,
+  };
+
+  const dialogs = (
+    <>
       <Confirm open={dialog === 'unpublish'} title="下架课程" confirm="下架" onClose={() => setDialog('')}
         onConfirm={() => act('POST', `/api/admin/courses/${c.id}/unpublish`, '已下架, 课程回到上传者的私有课程')}>
         「{c.title}」会从课程库移除, 变回上传者的私有课程。订阅者仍可阅读各自保留的讲 (已学完或有标注的讲), 其余的讲看不到。
@@ -107,6 +75,97 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
         onReject={(reason) => act('POST', `/api/admin/reviews/${review?.id}/reject`, '已驳回', { reason })} />
       <UploadDialog courseId={c.id} request open={dialog === 'request'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); void loadRequests(); }} />
       <EditDialog c={c} open={dialog === 'edit'} onClose={() => setDialog('')} onSaved={() => { setDialog(''); onChange(); }} />
+    </>
+  );
+
+  return { actions, has: (a: CourseAction) => actions.includes(a), review, run, setDialog, notes, dialogs };
+}
+
+const publishLabel = (c: CourseDetail) => (c.publishState === 'rejected' ? '再次申请公开' : '申请公开');
+const updateLabel = (c: CourseDetail) => (c.completion === 'incomplete' && !c.isUploader ? '申请补全' : '提交更新');
+const editHref = (c: CourseDetail) => `/courses/${c.id}/edit`;
+
+// CourseActions offers, in the desktop colophon, what the viewer may do
+// with a course in its current state (see courseActions).
+export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
+  const { has, review, run, setDialog, notes, dialogs } = useCourseActions(c, onChange);
+  return (
+    <div className="stack">
+      {notes.publishRejected}
+      {has('publish-request') ? <Button onClick={run.publishRequest}>{publishLabel(c)}</Button> : null}
+      {has('edit') ? (
+        <Button variant="ghost" asChild><Link href={editHref(c)}><PenLine />编辑课程</Link></Button>
+      ) : null}
+      {has('withdraw-publish') ? <Button variant="ghost" onClick={run.withdrawPublish}>撤回公开申请</Button> : null}
+      {has('review') && review ? (
+        <div className="review-box">
+          <div className="t">{review.requester.username} 申请公开这门课程</div>
+          <div className="row">
+            <Button variant="default" size="sm" onClick={run.approve}>批准</Button>
+            <Button size="sm" onClick={() => setDialog('reject')}>驳回</Button>
+          </div>
+        </div>
+      ) : null}
+      {has('update-request') ? <Button variant="ghost" onClick={() => setDialog('request')}>{updateLabel(c)}</Button> : null}
+      {has('withdraw-update') ? (
+        <div className="request-note">
+          <b>更新申请审核中</b>
+          <Button variant="text" size="bare" onClick={run.withdrawUpdate}>撤回</Button>
+        </div>
+      ) : notes.updateRejected}
+      {has('direct-publish') ? <Button onClick={run.directPublish}>直接公开</Button> : null}
+      {has('delete') ? (
+        <div className="admin-tools">
+          {has('edit-info') ? <Button variant="text" size="bare" onClick={() => setDialog('edit')}>编辑信息</Button> : null}
+          {has('unpublish') ? <Button variant="text" size="bare" onClick={() => setDialog('unpublish')}>下架</Button> : null}
+          <Button variant="text" size="bare" onClick={() => setDialog('delete')}>删除课程</Button>
+        </div>
+      ) : null}
+      {dialogs}
+    </div>
+  );
+}
+
+// CourseTools are the narrow course page's entries beside 课程介绍 / 目录:
+// a gear into the course editor, for those who may open it, and a ⋯ menu
+// rising from the bottom with every other action. Either is left out when
+// the viewer has nothing behind it.
+export function CourseTools({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
+  const { actions, has, review, run, setDialog, notes, dialogs } = useCourseActions(c, onChange);
+  const [open, setOpen] = useState(false);
+  const menu = menuActions(actions);
+  // a row closes the menu first, so a dialog it opens is not stacked on it
+  const row = (Icon: LucideIcon, label: ReactNode, onClick: () => void, danger = false) => (
+    <button type="button" className={cn('sheet-row', danger && 'danger')} onClick={() => { setOpen(false); onClick(); }}>
+      <Icon aria-hidden="true" />{label}
+    </button>
+  );
+  const rows: Record<Exclude<CourseAction, 'edit'>, ReactNode> = {
+    'publish-request': row(Send, publishLabel(c), run.publishRequest),
+    'withdraw-publish': row(Undo2, '撤回公开申请', run.withdrawPublish),
+    review: <>{row(Check, '批准公开申请', run.approve)}{row(X, '驳回公开申请', () => setDialog('reject'))}</>,
+    'update-request': row(FilePenLine, updateLabel(c), () => setDialog('request')),
+    'withdraw-update': row(Undo2, '撤回更新申请', run.withdrawUpdate),
+    'direct-publish': row(Globe, '直接公开', run.directPublish),
+    'edit-info': row(Pencil, '编辑信息', () => setDialog('edit')),
+    unpublish: row(ArrowDown, '下架', () => setDialog('unpublish')),
+    delete: row(Trash2, '删除课程', () => setDialog('delete'), true),
+  };
+  return (
+    <div className="course-tools">
+      {has('edit') ? (
+        <Button variant="round" size="round" asChild><Link href={editHref(c)} aria-label="编辑课程" title="编辑课程"><Settings /></Link></Button>
+      ) : null}
+      {menu.length ? (
+        <Button variant="round" size="round" aria-label="课程操作" title="课程操作" onClick={() => setOpen(true)}><Ellipsis /></Button>
+      ) : null}
+      <Sheet open={open} onOpenChange={setOpen} title="课程操作">
+        {notes.publishRejected}
+        {has('review') && review ? <div className="sheet-note">{review.requester.username} 申请公开这门课程</div> : null}
+        {has('withdraw-update') ? <div className="sheet-note">更新申请审核中</div> : notes.updateRejected}
+        {menu.map((a) => <div key={a} className="contents">{rows[a as Exclude<CourseAction, 'edit'>]}</div>)}
+      </Sheet>
+      {dialogs}
     </div>
   );
 }
