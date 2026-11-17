@@ -1,3 +1,9 @@
+## Navigation
+
+- **Seeing the UI** (screenshots, PR evidence, design references): `scripts/demo/run.sh` starts a throwaway instance with sample data; never sign in to the :8080 instance.
+- **Server test helpers** (`newApp`, `uploadCourse`, `publishedCourse`, `addOp`, `putFile`…): `internal/server/helpers_test.go`, `import_test.go` (sample course packages), `draft_test.go`.
+- **Course manifest format** (`course.json`): the validator in `internal/course/manifest.go` is the source of truth.
+
 ## Agent skills
 
 ### Issue tracker

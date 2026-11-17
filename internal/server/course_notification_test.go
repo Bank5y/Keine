@@ -73,7 +73,7 @@ func TestUploaderAndSubscribersAreToldOfUnpublishing(t *testing.T) {
 	subscribe(t, carol, id)
 	lessonIDs(t, dave, id)
 	_, files := nextVersion()
-	bob.mustOK(submitUpdate(t, bob, id, files))   // not subscribed
+	bob.mustOK(submitUpdate(t, bob, id, files))     // not subscribed
 	carol.mustOK(submitUpdate(t, carol, id, files)) // subscribed
 
 	unpublish(t, a, id)
@@ -109,7 +109,7 @@ func TestSubscribersAreToldOfDeletionWithTheLessonsTheyRetain(t *testing.T) {
 	id := publishedWith(t, a, alice, func(m map[string]any) { m["completion"] = "incomplete" })
 	subscribe(t, bob, id)
 	bob.mustOK(setProgress(bob, id, lessonIDs(t, bob, id)["l01"], map[string]any{"done": true})) // bob retains l01
-	subscribe(t, carol, id) // finished nothing
+	subscribe(t, carol, id)                                                                      // finished nothing
 	lessonIDs(t, dave, id)
 	_, files := nextVersion()
 	erin.mustOK(submitUpdate(t, erin, id, files))

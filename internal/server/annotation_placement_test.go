@@ -24,7 +24,7 @@ func pendingAfterRewording(t *testing.T, a *app, bob *client) (courseID, lessonI
 	return id, lessons["l00"], ann
 }
 
-func placePath(ann map[string]any) string { return annotationPath(ann) + "/place" }
+func placePath(ann map[string]any) string   { return annotationPath(ann) + "/place" }
 func excerptPath(ann map[string]any) string { return annotationPath(ann) + "/excerpt" }
 
 func TestPendingAnnotationIsPlacedOnASelectionOfTheNewText(t *testing.T) {
