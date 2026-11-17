@@ -1,8 +1,10 @@
 ## Navigation
 
-- **Seeing the UI** (screenshots, PR evidence, design references): `scripts/demo/run.sh` starts a throwaway instance with sample data; never sign in to the :8080 instance.
+- **Seeing the UI** (screenshots, PR evidence, design references): `scripts/demo/run.sh` starts a throwaway instance with sample data; drive it with `scripts/demo/shoot.py`, which keeps screenshots in `.scratch/shots/`. Never sign in to the :8080 instance.
+- **Frontend tests** (pure logic in `web/src/lib`): `npm test` (vitest), next to the code as `*.test.ts`.
 - **Server test helpers** (`newApp`, `uploadCourse`, `publishedCourse`, `addOp`, `putFile`…): `internal/server/helpers_test.go`, `import_test.go` (sample course packages), `draft_test.go`.
 - **Course manifest format** (`course.json`): the validator in `internal/course/manifest.go` is the source of truth.
+- **Draft operation format** (what a recorded operation carries, before claiming what the draft API returns): `Op` in `internal/course/draft_ops.go`.
 
 ## Agent skills
 
