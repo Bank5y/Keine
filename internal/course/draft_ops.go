@@ -64,6 +64,10 @@ type Op struct {
 	// a conflict can say what it was about once that is gone. Set by the
 	// system.
 	Target string `json:"target,omitempty"`
+	// From is the key of the chapter a moved lesson was in when the
+	// operation was recorded, so the editor can tell moving it to another
+	// chapter from reordering its own. Set by the system.
+	From string `json:"from,omitempty"`
 }
 
 // Conflict is an operation of a draft that no longer applies to the
@@ -108,6 +112,7 @@ func reject(format string, args ...any) error {
 func prepareOp(op Op) (Op, error) {
 	op.Title = strings.TrimSpace(op.Title)
 	op.Target = ""
+	op.From = ""
 	op.ID = newKey("o")
 	switch op.Type {
 	case OpAddChapter:
@@ -191,6 +196,17 @@ func (m *Manifest) target(op Op) string {
 		if ci, li, ok := m.lesson(op.Lesson); ok {
 			return m.Chapters[ci].Lessons[li].Title
 		}
+	}
+	return ""
+}
+
+// from is the key of the chapter the lesson of a lesson move is in.
+func (m *Manifest) from(op Op) string {
+	if op.Type != OpMoveLesson {
+		return ""
+	}
+	if ci, _, ok := m.lesson(op.Lesson); ok {
+		return m.Chapters[ci].Key
 	}
 	return ""
 }

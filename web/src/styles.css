@@ -49,6 +49,7 @@
   --back-h: 22px; /* the back link above a page */
   --back-gap: 28px; /* and the space below it */
   --sticky-foot: 24px; /* space left below a sticky column */
+  --main-foot: 96px; /* space below a page */
   /* thin scrollbars in the page's own ink, in either theme */
   --scroll-thumb: color-mix(in srgb, var(--text) 22%, transparent);
   color-scheme: light;
@@ -217,7 +218,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
   :root:not([data-theme="light"]) .i-moon { display: block; }
 }
 
-.main { max-width: var(--page); margin: 0 auto; padding: var(--main-top) var(--gutter) 96px; outline: none; }
+.main { max-width: var(--page); margin: 0 auto; padding: var(--main-top) var(--gutter) var(--main-foot); outline: none; }
 .page.enter { animation: rise .35s ease-out both; }
 
 /* tabs: the underline slides to the chosen tab, the content fades across */
@@ -402,10 +403,23 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .colophon { position: sticky; top: var(--sticky-top); max-height: calc(100vh - var(--sticky-top) - var(--sticky-foot)); display: flex; flex-direction: column; }
 .colophon-body { padding: 0 4px 4px; margin: 0 -4px; } /* room for focus rings, which the scroll box would clip */
 .course > section { padding-top: calc(var(--back-h) + var(--back-gap)); }
+/* A sticky column can only travel within its grid row. The page's foot space
+   is pulled into the row (onto the main column), so even beside a short
+   main column the sticky one has room to stay put down to the page's end. */
+.course, .docs { margin-bottom: calc(-1 * var(--main-foot)); }
+.course > section, .docs-main { padding-bottom: var(--main-foot); }
 @media (max-width: 900px) {
-  .colophon { position: static; max-height: none; display: block; }
+  /* one column: the back link alone stays, as a bar under the masthead,
+     so it needs the whole page as its containing block */
+  .course, .colophon { display: contents; }
+  .colophon > .back {
+    position: sticky; top: calc(var(--mast-h) + 1px); z-index: 10; display: flex; height: auto; align-self: stretch;
+    margin: -10px calc(-1 * var(--gutter)) 14px; padding: 10px var(--gutter);
+    background: var(--bg); box-shadow: 0 1px 0 transparent; transition: box-shadow .15s;
+  }
+  .colophon > .back.stuck { box-shadow: 0 1px 0 var(--line); }
   .colophon > .colophon-body { overflow: visible; mask-image: none; padding: 0; margin: 0; display: grid; grid-template-columns: 120px 1fr; gap: 20px; align-items: start; }
-  .course > section { padding-top: 0; }
+  .course > section { padding-top: 0; padding-bottom: 0; margin-top: 32px; }
 }
 .colophon h1 { font-family: var(--serif); font-size: 28px; line-height: 1.3; margin: 24px 0 14px; word-break: break-word; }
 @media (max-width: 900px) { .colophon h1 { margin-top: 0; font-size: 24px; } }
@@ -1041,3 +1055,33 @@ a.rn:hover .t { color: var(--brand); }
 .lu-file.failed .s { color: var(--danger); }
 .lu-file .bar { flex-basis: 100%; margin: 2px 0 0; }
 .lesson-preview .video-frame, .lesson-preview .video-player { margin-bottom: 20px; }
+/* the commit dialog's list of a draft's operations: capped, scrolling inside */
+.dlg .op-list-lead { margin-bottom: 8px; }
+.op-list {
+  list-style: none; margin: 0 0 14px; padding: 0 12px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.op-list li { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; font-size: 14px; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
+.op-list li + li { border-top: 1px solid var(--line); }
+.op-list li.skipped .op-what { color: var(--text-3); text-decoration: line-through; }
+.op-list .op-why { font-size: 12px; color: var(--warn); }
+/* the editor: replacing the whole course with a package, then two tabs */
+.package-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; margin-bottom: 36px; padding: 11px 11px 11px 20px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); font-size: 14px; color: var(--text-2);
+}
+@media (max-width: 560px) { .package-bar { flex-direction: column; align-items: flex-start; padding: 14px 16px; } }
+.course-edit .edit-note + .ed-tabs { margin-top: 12px; }
+.ed-tabs { flex-wrap: nowrap; }
+.ed-tabs .toc-tabs { min-width: 0; }
+.tab-dot { display: inline-block; width: 6px; height: 6px; margin-left: 3px; border-radius: 50%; background: var(--brand); vertical-align: super; }
+.ed-tab-hint { margin: 20px 0 28px; color: var(--text-3); font-size: 12px; line-height: 1.7; }
+/* folding chapters, as in a course's table of contents */
+.ed-fold { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-right: -2px; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; flex-shrink: 0; }
+.ed-fold:hover { color: var(--text); }
+.ed-fold .chev { width: 14px; height: 14px; transition: transform .2s; }
+.ed-fold.open .chev { transform: rotate(90deg); }
+.ed-count { font-size: 12px; color: var(--text-3); flex-shrink: 0; }
+.ed-ch.drop-into { background: var(--brand-soft); box-shadow: inset 0 -2px 0 var(--brand); }
+/* an open chapter leaves room for focus rings and drop lines at its edges */
+.ed .fold.open .fold-inner { overflow: clip; overflow-clip-margin: 4px; }

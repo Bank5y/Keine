@@ -6,7 +6,7 @@ import { CourseActions } from '@/components/course-actions';
 import { Fold, useChapterFolds } from '@/components/fold';
 import { SubscribeButton } from '@/components/peek';
 import { Highlight } from '@/components/highlight';
-import { TabPane, Tabs, useTabFade } from '@/components/tabs';
+import { TabPane, Tabs, useAddressTab, useTabFade } from '@/components/tabs';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, readable, type ChapterItem, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
 import { useScrollFade } from '@/lib/use-scroll-fade';
+import { useStuck } from '@/lib/use-stuck';
 import { cn } from '@/lib/utils';
 
 export function useCourse(id: number) {
@@ -25,23 +26,13 @@ export function useCourse(id: number) {
   return { course, err, reload };
 }
 
-type Tab = 'intro' | 'toc';
-
-// readTab is the tab named in the address (?tab=), if any.
-const readTab = (): Tab | null => {
-  const t = new URLSearchParams(location.search).get('tab');
-  return t === 'intro' || t === 'toc' ? t : null;
-};
+const TABS = ['intro', 'toc'] as const;
 
 export function CourseView({ id }: { id: number }) {
   const { course, err, reload } = useCourse(id);
   // the table of contents comes first; the chosen tab is kept in the
   // address so coming back from a lesson returns to it
-  const [tab, setTabState] = useState<Tab>(() => readTab() ?? 'toc');
-  const setTab = (t: Tab) => {
-    setTabState(t);
-    history.replaceState(history.state, '', `${location.pathname}?tab=${t}${location.hash}`);
-  };
+  const [tab, setTab] = useAddressTab(TABS, 'toc');
   const [shown, fading] = useTabFade(tab);
   const [q, setQ] = useState('');
   const colophonBody = useRef<HTMLDivElement>(null);
@@ -95,8 +86,12 @@ function ContinueButton({ c }: { c: CourseDetail }) {
   );
 }
 
+// BackLink stays in view: in the sticky column on a wide screen, and as a
+// bar under the masthead on a narrow one (which shows its edge once stuck).
 function BackLink({ library }: { library?: boolean }) {
-  return library ? <Link className="back" href="/library"><ArrowLeft />课程库</Link> : <Link className="back" href="/mine"><ArrowLeft />我的课程</Link>;
+  const ref = useRef<HTMLAnchorElement>(null);
+  useStuck(ref);
+  return library ? <Link ref={ref} className="back" href="/library"><ArrowLeft />课程库</Link> : <Link ref={ref} className="back" href="/mine"><ArrowLeft />我的课程</Link>;
 }
 
 function Lines() {

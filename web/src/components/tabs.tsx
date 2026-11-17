@@ -53,6 +53,23 @@ export function useTabFade<T>(value: T, half = 75): [shown: T, fading: boolean] 
   return [shown, value !== shown];
 }
 
+// useAddressTab keeps the chosen tab in the address (?tab=), so a page can
+// be opened or come back on the tab it was left at. Switching replaces the
+// history entry: tabs are a view of one page, not pages of their own.
+export function useAddressTab<T extends string>(tabs: readonly T[], fallback: T): [T, (t: T) => void] {
+  const [tab, setTab] = useState<T>(() => {
+    const t = new URLSearchParams(location.search).get('tab');
+    return tabs.find((x) => x === t) ?? fallback;
+  });
+  const choose = (t: T) => {
+    setTab(t);
+    const q = new URLSearchParams(location.search);
+    q.set('tab', t);
+    history.replaceState(history.state, '', `${location.pathname}?${q}${location.hash}`);
+  };
+  return [tab, choose];
+}
+
 export function TabPane({ fading, className, children }: { fading: boolean; className?: string; children: ReactNode }) {
   return <div className={cn('tab-pane', fading && 'fading', className)}>{children}</div>;
 }
