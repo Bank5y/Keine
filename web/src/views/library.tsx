@@ -6,6 +6,7 @@ import { Facet } from '@/components/facet';
 import { Peek } from '@/components/peek';
 import { CourseCard } from '@/components/shelf';
 import { api } from '@/lib/api';
+import { setParam, useParam } from '@/lib/router';
 import { COMPLETION_LABEL, TYPE_LABEL, type CourseSummary } from '@/lib/courses';
 
 const canHover = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
@@ -13,8 +14,10 @@ const canHover = typeof window !== 'undefined' && window.matchMedia?.('(hover: h
 export function LibraryView() {
   const [type, setType] = useState('');
   const [completion, setCompletion] = useState('');
-  const [text, setText] = useState('');
-  const [q, setQ] = useState('');
+  // the keywords live in the address (?q=), so a search typed in the top bar
+  // on any page, or a shared link, opens the library on its results
+  const text = useParam('q');
+  const [q, setQ] = useState(() => text.trim());
   const [courses, setCourses] = useState<CourseSummary[] | null>(null);
   const [err, setErr] = useState('');
   const [touched, setTouched] = useState<CourseSummary | null>(null);
@@ -34,7 +37,7 @@ export function LibraryView() {
       <PageHead kicker="Library" title="课程库" sub="所有人都能学习的公开课程。把鼠标移到课程上, 先看看介绍和目录。" />
       <div className="searchbar">
         <Search />
-        <input placeholder="搜索课程名或讲师…" aria-label="搜索课程" value={text} onChange={(e) => setText(e.target.value)} />
+        <input placeholder="搜索课程名或讲师…" aria-label="搜索课程" value={text} onChange={(e) => setParam('q', e.target.value)} />
       </div>
       <div className="facets">
         <Facet label="类型" value={type} onPick={setType} items={[['', '全部'], ['column', TYPE_LABEL.column], ['video', TYPE_LABEL.video]]} />

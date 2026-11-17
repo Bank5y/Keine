@@ -1,8 +1,11 @@
 import { useEffect, type ReactNode } from 'react';
 import { Toaster } from 'sonner';
-import { Masthead } from '@/components/masthead';
+import { BottomNav } from '@/components/bottom-nav';
+import { Masthead, TopBar } from '@/components/masthead';
 import { match, navigate, usePath } from '@/lib/router';
 import { useUser, type User } from '@/lib/session';
+import { useNarrow } from '@/lib/use-narrow';
+import { cn } from '@/lib/utils';
 import { AccountView } from '@/views/account';
 import { AdminView } from '@/views/admin';
 import { CourseView } from '@/views/course';
@@ -32,9 +35,17 @@ function routeView(path: string, user: User): ReactNode {
   return <LibraryView />;
 }
 
+// The bars that frame a page on a narrow screen. Every page has the main
+// top bar and the bottom nav for now; a page that needs its own (the course
+// page's actions in place of the nav, the lesson's own top bar) gets a case
+// here and a value for its bar.
+interface Chrome { top: 'main'; bottom: 'nav' }
+const chromeFor = (_path: string): Chrome => ({ top: 'main', bottom: 'nav' });
+
 export function App() {
   const user = useUser();
   const path = usePath();
+  const narrow = useNarrow();
 
   useEffect(() => {
     if (user === null && path !== '/login') navigate('/login', { replace: true });
@@ -48,11 +59,14 @@ export function App() {
   if (user === null) view = <LoginView />;
   else if (user) view = routeView(path, user);
 
+  // signed out, a phone keeps the plain masthead: there is nothing to search or navigate yet
+  const chrome = narrow && user ? chromeFor(path) : null;
   return (
-    <>
-      <Masthead user={user} path={path} />
+    <div className={cn('shell', chrome?.bottom === 'nav' && 'with-bar')}>
+      {chrome && user ? <TopBar path={path} /> : <Masthead user={user} path={path} />}
       <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
+      {chrome?.bottom === 'nav' && user ? <BottomNav user={user} path={path} /> : null}
       <Toaster position="top-center" toastOptions={{ style: { background: 'var(--text)', color: 'var(--bg)', border: 0, borderRadius: 'var(--radius)' } }} />
-    </>
+    </div>
   );
 }

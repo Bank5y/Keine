@@ -17,8 +17,27 @@ export function navigate(to: string, opts: { replace?: boolean; keepScroll?: boo
   emit();
 }
 
+const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
+
 export function usePath() {
-  return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => location.pathname);
+  return useSyncExternalStore(subscribe, () => location.pathname);
+}
+
+// useParam reads one query parameter of the address ('' when absent).
+export function useParam(name: string) {
+  return useSyncExternalStore(subscribe, () => new URLSearchParams(location.search).get(name) ?? '');
+}
+
+// setParam writes one query parameter in place: the history entry is
+// replaced and the page stays where it is, as the address only records
+// the page's state (a search being typed).
+export function setParam(name: string, value: string) {
+  const q = new URLSearchParams(location.search);
+  if (value) q.set(name, value);
+  else q.delete(name);
+  const s = q.toString();
+  history.replaceState(history.state, '', `${location.pathname}${s ? '?' + s : ''}${location.hash}`);
+  emit();
 }
 
 // match returns the named segments of a pattern like "/courses/:id", or null.

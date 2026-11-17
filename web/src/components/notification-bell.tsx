@@ -4,6 +4,7 @@ import { Popover } from 'radix-ui';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/lib/router';
 import { NotificationItem } from '@/components/notification-item';
+import { useNarrow } from '@/lib/use-narrow';
 import { dismissNotification, listNotifications, markAllRead, refreshUnread, useUnread, type Notification } from '@/lib/notifications';
 
 const PREVIEW = 8;
@@ -11,8 +12,11 @@ const PREVIEW = 8;
 // NotificationBell shows the unread count, refreshed on every page change
 // and once a minute, and drops down the inbox: unread notifications, with
 // the sticky ones (annotations awaiting migration) first until dismissed.
+// On a narrow screen there is no room for the drop-down: it opens the
+// notifications page instead.
 export function NotificationBell({ path }: { path: string }) {
   const unread = useUnread();
+  const narrow = useNarrow();
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<Notification[] | null>(null);
 
@@ -38,13 +42,23 @@ export function NotificationBell({ path }: { path: string }) {
   }
 
   const label = unread ? `通知 (${unread} 条未读)` : '通知';
+  const bellFace = (
+    <>
+      <Bell />
+      {unread ? <span className="bell-count" data-testid="unread-count">{unread > 99 ? '99+' : unread}</span> : null}
+    </>
+  );
+  if (narrow) {
+    return (
+      <Button asChild variant="round" size="round" className="bell">
+        <Link href="/notifications" title={label} aria-label={label}>{bellFace}</Link>
+      </Button>
+    );
+  }
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <Button variant="round" size="round" title={label} aria-label={label} className="bell">
-          <Bell />
-          {unread ? <span className="bell-count" data-testid="unread-count">{unread > 99 ? '99+' : unread}</span> : null}
-        </Button>
+        <Button variant="round" size="round" title={label} aria-label={label} className="bell">{bellFace}</Button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="end" sideOffset={10} collisionPadding={12} className="notif-pop z-30 data-[state=open]:animate-in data-[state=open]:fade-in-0">
