@@ -10,7 +10,10 @@
 # with a pending publish request; bob subscribed to "Agent 系统设计 40 讲" with
 # progress and annotations; bob's update request from a draft; alice's draft
 # with two conflicts. Logins: alice / bob / carol with password <name>-password,
-# admin / admin-password.
+# admin / admin-password. Editing: admin edits any course directly; alice's
+# course 1 is public, so her edits there become an update request.
+#
+# Screenshots and browser flows: scripts/demo/shoot.py.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -27,6 +30,14 @@ stop() {
   rm -rf "$STATE"
 }
 
+# wait_for WHAT CMD... retries CMD for 30s; it fails the script if CMD never succeeds.
+wait_for() {
+  local what=$1; shift
+  for _ in $(seq 1 30); do "$@" >/dev/null 2>&1 && return 0; sleep 1; done
+  echo "demo: $what did not come up" >&2
+  return 1
+}
+
 if [[ ${1:-} == stop ]]; then stop; echo "demo stopped"; exit 0; fi
 
 stop
@@ -35,13 +46,15 @@ docker run -d --rm --name "$PG" -e POSTGRES_PASSWORD=demo -e POSTGRES_DB=keine \
   -p "127.0.0.1:$PG_PORT:5432" postgres:17-alpine >/dev/null
 (cd "$ROOT/web" && npm run -s build >/dev/null)
 (cd "$ROOT" && go build -o "$STATE/keine" ./cmd/keine)
-for _ in $(seq 1 30); do docker exec "$PG" pg_isready -U postgres -q && break; sleep 1; done
+# over TCP: the image's init runs a temporary server on the socket only, then
+# restarts, so a socket check passes too early
+wait_for postgres docker exec "$PG" pg_isready -h 127.0.0.1 -U postgres -q
 
 KEINE_ADDR=127.0.0.1:$PORT KEINE_DATA_DIR=$STATE/data \
 KEINE_DATABASE_URL="postgres://postgres:demo@127.0.0.1:$PG_PORT/keine?sslmode=disable" \
   nohup "$STATE/keine" >"$STATE/keine.log" 2>&1 &
 echo $! >"$STATE/keine.pid"
-for _ in $(seq 1 30); do curl -sf -o /dev/null "$DEMO_URL/" && break; sleep 1; done
+wait_for keine curl -sf -o /dev/null "$DEMO_URL/" || { tail -n 20 "$STATE/keine.log" >&2; exit 1; }
 
 python3 "$ROOT/scripts/demo/seed.py" >"$STATE/seed.json"
 echo "demo at $DEMO_URL (log: $STATE/keine.log, ids: $STATE/seed.json)"

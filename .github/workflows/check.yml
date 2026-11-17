@@ -17,6 +17,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
+      - run: npm test
+        working-directory: web
       # typecheck, then build into internal/web/dist, which the Go binary embeds
       - run: npm run build
         working-directory: web
