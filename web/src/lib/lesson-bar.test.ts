@@ -46,6 +46,13 @@ describe('the lesson top bar', () => {
     expect(shownAfter(scroll(300), scroll(600), tap(422, 'page', true))).toBe(false);
   });
 
+  it('ignores a tap that began on a selection, though the selection is gone by the tap', () => {
+    const press = (selecting: boolean): BarEvent => ({ type: 'press', selecting });
+    expect(shownAfter(scroll(300), scroll(600), press(true), tap(422))).toBe(false);
+    // the next plain tap is the reader's again
+    expect(shownAfter(scroll(300), scroll(600), press(true), tap(422), press(false), tap(422))).toBe(true);
+  });
+
   it('stays at the top of the page whatever the tap', () => {
     expect(shownAfter(tap(422))).toBe(true);
   });

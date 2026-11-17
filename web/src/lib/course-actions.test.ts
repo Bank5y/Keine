@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { courseActions, menuActions, readerBar } from '@/lib/course-actions';
+import { courseActions, menuActions, readTarget, readerBar } from '@/lib/course-actions';
 import type { CourseDetail, LessonItem } from '@/lib/courses';
 
 const lesson = (id: number, more: Partial<LessonItem> = {}): LessonItem => ({ id, key: String(id), title: `第 ${id} 讲`, video: '', duration: '', hasText: true, state: 'unstarted', ...more });
@@ -12,6 +12,13 @@ const course = (more: Partial<CourseDetail> = {}): CourseDetail => ({
   chapters: [{ id: 10, key: 'a', title: '开篇', done: 0, total: 3, lessons: [lesson(1, { upcoming: true }), lesson(2), lesson(3)] }],
   progress: { done: 0, total: 3, lastLessonId: null },
   ...more,
+});
+
+describe('readTarget', () => {
+  it('opens the lesson studied last, else the first readable one', () => {
+    expect(readTarget(course())).toEqual({ lessonId: 2, started: false });
+    expect(readTarget(course({ progress: { done: 1, total: 3, lastLessonId: 3 } }))).toEqual({ lessonId: 3, started: true });
+  });
 });
 
 describe('readerBar', () => {

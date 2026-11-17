@@ -3,19 +3,18 @@ import { Search } from 'lucide-react';
 import { Dialog as D, HoverCard } from 'radix-ui';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { CourseList, CourseRow } from '@/components/course-row';
-import { Facet } from '@/components/facet';
+import { Facet, facetItems } from '@/components/facet';
 import { FilterBar, FilterButton } from '@/components/filter-button';
 import { Peek } from '@/components/peek';
 import { CourseCard } from '@/components/shelf';
 import { api } from '@/lib/api';
-import { LIBRARY_COMPLETIONS, LIBRARY_TYPES, libraryParams, readLibraryFilter } from '@/lib/library-filter';
+import { COMPLETION_OPTIONS, COURSE_TYPE_OPTIONS } from '@/lib/course-filter';
+import { libraryParams, readLibraryFilter } from '@/lib/library-filter';
 import { setParam, useSearch } from '@/lib/router';
 import { useNarrow } from '@/lib/use-narrow';
-import { COMPLETION_LABEL, TYPE_LABEL, type CourseSummary } from '@/lib/courses';
+import type { CourseSummary } from '@/lib/courses';
 
 const canHover = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
-const typeOptions = LIBRARY_TYPES.map((v) => ({ value: v, label: TYPE_LABEL[v] }));
-const completionOptions = LIBRARY_COMPLETIONS.map((v) => ({ value: v, label: COMPLETION_LABEL[v] }));
 
 export function LibraryView() {
   const narrow = useNarrow();
@@ -44,16 +43,16 @@ export function LibraryView() {
             <input placeholder="搜索课程名或讲师…" aria-label="搜索课程" value={text} onChange={(e) => setParam('q', e.target.value)} />
           </div>
           <div className="facets">
-            <Facet label="类型" value={type} onPick={(v) => setParam('type', v)} items={[['', '全部'], ...typeOptions.map((o): [string, string] => [o.value, o.label])]} />
-            <Facet label="状态" value={completion} onPick={(v) => setParam('completion', v)} items={[['', '全部'], ...completionOptions.map((o): [string, string] => [o.value, o.label])]} />
+            <Facet label="类型" value={type} onPick={(v) => setParam('type', v)} items={facetItems(COURSE_TYPE_OPTIONS)} />
+            <Facet label="状态" value={completion} onPick={(v) => setParam('completion', v)} items={facetItems(COMPLETION_OPTIONS)} />
           </div>
           <div className="result-bar"><span className="count">{courses ? <><b>{courses.length}</b>门课程</> : '正在整理书架…'}</span></div>
         </>
       )}
       {narrow ? (
         <FilterBar count={courses?.length ?? null} unit="门课程">
-          <FilterButton label="类型" value={type} options={typeOptions} onChange={(v) => setParam('type', v)} />
-          <FilterButton label="状态" value={completion} options={completionOptions} onChange={(v) => setParam('completion', v)} />
+          <FilterButton label="类型" value={type} options={COURSE_TYPE_OPTIONS} onChange={(v) => setParam('type', v)} />
+          <FilterButton label="状态" value={completion} options={COMPLETION_OPTIONS} onChange={(v) => setParam('completion', v)} />
         </FilterBar>
       ) : null}
       {err ? <ErrorBox message={err} /> : null}

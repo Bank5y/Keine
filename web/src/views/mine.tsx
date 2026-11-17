@@ -1,27 +1,24 @@
 import { useEffect, useState } from 'react';
 import { BookmarkMinus, Ellipsis, FileUp, Trash2, Upload } from 'lucide-react';
-import { DropdownMenu as M } from 'radix-ui';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/confirm';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { CourseList, CourseRow } from '@/components/course-row';
-import { Facet } from '@/components/facet';
+import { Facet, facetItems } from '@/components/facet';
 import { FilterBar, FilterButton } from '@/components/filter-button';
 import { ProgressBar } from '@/components/progress';
+import { Sheet } from '@/components/sheet';
 import { Shelf } from '@/components/shelf';
 import { UploadDialog } from '@/components/upload-dialog';
 import { api, ApiError } from '@/lib/api';
-import { COMPLETION_LABEL, RETENTION_LABEL, TYPE_LABEL, type CourseSummary } from '@/lib/courses';
-import { LIBRARY_COMPLETIONS, LIBRARY_TYPES } from '@/lib/library-filter';
+import { RETENTION_LABEL, type CourseSummary } from '@/lib/courses';
+import { COMPLETION_OPTIONS, COURSE_TYPE_OPTIONS } from '@/lib/course-filter';
 import { MINE_STATES, STUDY_LABEL, mineParams, readMineFilter } from '@/lib/mine-filter';
 import { setParam, useSearch } from '@/lib/router';
 import { useNarrow } from '@/lib/use-narrow';
 
 const stateOptions = MINE_STATES.map((v) => ({ value: v, label: STUDY_LABEL[v] }));
-const typeOptions = LIBRARY_TYPES.map((v) => ({ value: v, label: TYPE_LABEL[v] }));
-const completionOptions = LIBRARY_COMPLETIONS.map((v) => ({ value: v, label: COMPLETION_LABEL[v] }));
-const facetItems = (o: { value: string; label: string }[]): [string, string][] => [['', '全部'], ...o.map((x): [string, string] => [x.value, x.label])];
 
 // What a reader may do to a course from the list, as the shelf's tools
 // allow: leave a library course (or one that has left the library), delete
@@ -55,8 +52,8 @@ export function MineView() {
           <PageHead title="我的课程" actions={<Button size="sm" onClick={() => setUploading(true)}><FileUp />上传课程</Button>} />
           <FilterBar count={null} unit="门课程">
             <FilterButton label="学习" value={state} options={stateOptions} onChange={(v) => setParam('state', v)} />
-            <FilterButton label="类型" value={type} options={typeOptions} onChange={(v) => setParam('type', v)} />
-            <FilterButton label="状态" value={completion} options={completionOptions} onChange={(v) => setParam('completion', v)} />
+            <FilterButton label="类型" value={type} options={COURSE_TYPE_OPTIONS} onChange={(v) => setParam('type', v)} />
+            <FilterButton label="状态" value={completion} options={COMPLETION_OPTIONS} onChange={(v) => setParam('completion', v)} />
           </FilterBar>
         </>
       ) : (
@@ -69,8 +66,8 @@ export function MineView() {
           />
           <div className="facets">
             <Facet label="学习" value={state} onPick={(v) => setParam('state', v)} items={facetItems(stateOptions)} />
-            <Facet label="类型" value={type} onPick={(v) => setParam('type', v)} items={facetItems(typeOptions)} />
-            <Facet label="状态" value={completion} onPick={(v) => setParam('completion', v)} items={facetItems(completionOptions)} />
+            <Facet label="类型" value={type} onPick={(v) => setParam('type', v)} items={facetItems(COURSE_TYPE_OPTIONS)} />
+            <Facet label="状态" value={completion} onPick={(v) => setParam('completion', v)} items={facetItems(COMPLETION_OPTIONS)} />
           </div>
         </>
       )}
@@ -115,18 +112,21 @@ export function MineView() {
 // the course, each asking first through the page's confirmations. A course
 // with nothing to do has no ⋯.
 function RowMenu({ course, onRemove, onDelete }: { course: CourseSummary; onRemove: (c: CourseSummary) => void; onDelete: (c: CourseSummary) => void }) {
+  const [open, setOpen] = useState(false);
   const remove = canRemove(course);
   const del = canDelete(course);
   if (!remove && !del) return null;
+  // a row closes the menu first, so the confirmation it opens is not stacked on it
+  const pick = (then: (c: CourseSummary) => void) => () => { setOpen(false); then(course); };
   return (
-    <M.Root modal={false}>
-      <M.Trigger className="row-more" aria-label={`${course.title} 的操作`}><Ellipsis aria-hidden="true" /></M.Trigger>
-      <M.Portal>
-        <M.Content className="filter-menu" align="end" sideOffset={4} collisionPadding={16}>
-          {remove ? <M.Item className="filter-item" onSelect={() => onRemove(course)}><span>取消订阅</span><BookmarkMinus aria-hidden="true" /></M.Item> : null}
-          {del ? <M.Item className="filter-item danger" onSelect={() => onDelete(course)}><span>删除课程</span><Trash2 aria-hidden="true" /></M.Item> : null}
-        </M.Content>
-      </M.Portal>
-    </M.Root>
+    <>
+      <button type="button" className="row-more" aria-label={`${course.title} 的操作`} aria-expanded={open} onClick={() => setOpen(true)}>
+        <Ellipsis aria-hidden="true" />
+      </button>
+      <Sheet open={open} onOpenChange={setOpen} title={course.title}>
+        {remove ? <button type="button" className="sheet-row" onClick={pick(onRemove)}><BookmarkMinus aria-hidden="true" />取消订阅</button> : null}
+        {del ? <button type="button" className="sheet-row danger" onClick={pick(onDelete)}><Trash2 aria-hidden="true" />删除课程</button> : null}
+      </Sheet>
+    </>
   );
 }

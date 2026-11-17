@@ -67,13 +67,14 @@ export function App() {
   if (user === null) view = <LoginView />;
   else if (user) view = routeView(path, user);
 
-  // signed out, a phone keeps the plain masthead: there is nothing to search or navigate yet
-  const chrome = narrow && user ? chromeFor(path) : null;
+  // signed out, a phone keeps the plain masthead: there is nothing to search or navigate yet;
+  // signed in, chrome carries the user for the bars
+  const chrome = narrow && user ? { ...chromeFor(path), user } : null;
   return (
-    <div className={cn('shell', (chrome?.bottom === 'nav' || chrome?.bottom === 'course') && 'with-bar', chrome?.top === 'own' && 'own-top')}>
-      {chrome && user ? (chrome.top === 'main' ? <TopBar path={path} /> : null) : <Masthead user={user} path={path} />}
+    <div className={cn('shell', chrome && chrome.bottom !== 'none' && 'with-bar', chrome?.top === 'own' && 'own-top')}>
+      {chrome ? (chrome.top === 'main' ? <TopBar path={path} /> : null) : <Masthead user={user} path={path} />}
       <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
-      {chrome?.bottom === 'nav' && user ? <BottomNav user={user} path={path} /> : null}
+      {chrome?.bottom === 'nav' ? <BottomNav user={chrome.user} path={path} /> : null}
       <Toaster position="top-center" toastOptions={{ style: { background: 'var(--text)', color: 'var(--bg)', border: 0, borderRadius: 'var(--radius)' } }} />
     </div>
   );

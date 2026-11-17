@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, NotebookPen, Pencil, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
-import { Facet } from '@/components/facet';
+import { Facet, facetItems } from '@/components/facet';
 import { FilterBar, FilterButton } from '@/components/filter-button';
 import { api, ApiError } from '@/lib/api';
 import { COLOR_LABEL, HIGHLIGHT_COLORS, STATE_LABEL, annotationURL, lookName, type AnnotationStyle, type HighlightColor, type NoteEntry, type Notebook, type NoteSort } from '@/lib/annotations';
@@ -130,7 +130,7 @@ export function NotesView() {
             </label>
             <div className="facets">
               <Facet label="样式" value={style} onPick={(v) => pickStyle(v as AnnotationStyle | '')}
-                items={[['', '全部'], ...styleOptions.map((o): [string, string] => [o.value, o.label])]} />
+                items={facetItems(styleOptions)} />
               <div className="facet">
                 <span className="facet-label">颜色</span>
                 <div className="facet-items">
