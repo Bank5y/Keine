@@ -156,10 +156,11 @@
 }
 
 /* A phone keeps the 40px side gutter (the phone boards use it) but less
-   space above a page. Unlayered like :root above: an override inside
-   @layer components would lose to it. */
+   space above a page: the boards start a page 23px under the top bar, and
+   24px puts the title's text where theirs is. Unlayered like :root above:
+   an override inside @layer components would lose to it. */
 @media (max-width: 760px) {
-  :root { --main-top: 28px; }
+  :root { --main-top: 24px; }
 }
 
 @layer base {
