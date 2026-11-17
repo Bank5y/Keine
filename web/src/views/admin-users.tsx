@@ -46,10 +46,9 @@ export function AdminUsers({ me }: { me: User }) {
             <span className={cn('st', u.disabled ? 'off' : (u.role === 'admin' ? 'admin' : 'ok'))}>{u.disabled ? '已禁用' : (u.role === 'admin' ? '管理员' : '正常')}</span>
             <span className="meta">注册于 {fmtDate(u.createdAt)}</span>
             <span className="acts">
+              {/* every row has both buttons, so the columns line up; the server refuses disabling yourself */}
+              <Button size="sm" variant="ghost" disabled={u.id === me.id} onClick={() => (u.disabled ? toggle(u) : setToggling(u))}>{u.disabled ? '启用' : '禁用'}</Button>
               <Button size="sm" variant="ghost" onClick={() => setResetting(u)}>重置密码</Button>
-              {u.id === me.id ? null : (
-                <Button size="sm" variant={u.disabled ? 'ghost' : 'destructive'} onClick={() => (u.disabled ? toggle(u) : setToggling(u))}>{u.disabled ? '启用' : '禁用'}</Button>
-              )}
             </span>
           </div>
         ))}

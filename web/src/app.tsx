@@ -41,8 +41,9 @@ export function App() {
     if (user && (path === '/login' || path === '/')) navigate('/library', { replace: true });
   }, [user, path]);
 
-  // switching lessons keeps the reader mounted, so only the text reloads
-  const viewKey = path.replace(/^(\/courses\/[^/]+\/lessons)\/[^/]+$/, '$1');
+  // switching lessons keeps the reader mounted, so only the text reloads;
+  // switching admin tabs keeps the admin page, so only its tab changes
+  const viewKey = path.replace(/^(\/courses\/[^/]+\/lessons)\/[^/]+$/, '$1').replace(/^\/admin(\/.*)?$/, '/admin');
   let view: ReactNode = null;
   if (user === null) view = <LoginView />;
   else if (user) view = routeView(path, user);

@@ -28,7 +28,10 @@ function useFinePointer() {
 const middle = (el: Element) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; };
 const above = (els: Element[], y: number) => els.filter((el) => middle(el) < y).length;
 
-export function useReorderDrag(chapters: DraftChapter[], onMove: (op: Op) => void, disabled: boolean) {
+// folded: whether a chapter's lessons are folded away. Its hidden lessons
+// stay in the page at no height, so they take no part in placing a drop: a
+// lesson dropped on a folded chapter goes to its end.
+export function useReorderDrag(chapters: DraftChapter[], onMove: (op: Op) => void, disabled: boolean, folded: (chapter: string) => boolean = () => false) {
   const fine = useFinePointer();
   const enabled = fine && !disabled;
   const root = useRef<HTMLDivElement>(null);
@@ -50,8 +53,10 @@ export function useReorderDrag(chapters: DraftChapter[], onMove: (op: Op) => voi
     }
     let ci = blocks.findIndex((el) => el.getBoundingClientRect().bottom >= y);
     if (ci < 0) ci = blocks.length - 1;
-    const at = above([...blocks[ci].querySelectorAll('[data-drag-lesson]')], y);
-    const op = chapters[ci] ? lessonDrop(chapters, d.key, chapters[ci].key, at) : null;
+    const ch = chapters[ci];
+    if (!ch) return null;
+    const at = folded(ch.key) ? ch.lessons.length : above([...blocks[ci].querySelectorAll('[data-drag-lesson]')], y);
+    const op = lessonDrop(chapters, d.key, ch.key, at);
     return op && { spot: { kind: 'lesson', ci, at }, op };
   }
 
@@ -89,7 +94,7 @@ export function useReorderDrag(chapters: DraftChapter[], onMove: (op: Op) => voi
   } : {});
 
   // Classes marking the drop line: before or after a row, or into an empty
-  // chapter; and the row being dragged.
+  // or folded chapter; and the row being dragged.
   const chapterMark = (ci: number) => {
     if (spot?.kind !== 'chapter') return '';
     if (spot.at === ci) return 'drop-before';
@@ -101,9 +106,15 @@ export function useReorderDrag(chapters: DraftChapter[], onMove: (op: Op) => voi
     const n = chapters[ci].lessons.length;
     return spot.at === n && li === n - 1 ? 'drop-after' : '';
   };
-  const emptyMark = (ci: number) => (spot?.kind === 'lesson' && spot.ci === ci && !chapters[ci].lessons.length ? 'drop-into' : '');
+  const into = (ci: number) => spot?.kind === 'lesson' && spot.ci === ci;
+  const emptyMark = (ci: number) => (into(ci) && !chapters[ci].lessons.length ? 'drop-into' : '');
+  // a folded chapter takes a lesson at its end: its head row is marked
+  const foldedMark = (ci: number) => (into(ci) && folded(chapters[ci].key) ? 'drop-into' : '');
 
   return {
+    // fine: dragging is offered on this device at all (enabled may be off
+    // for a moment while busy)
+    fine,
     enabled,
     rootProps,
     chapterHandle: (key: string) => handle('chapter', key),
@@ -112,5 +123,6 @@ export function useReorderDrag(chapters: DraftChapter[], onMove: (op: Op) => voi
     chapterMark,
     lessonMark,
     emptyMark,
+    foldedMark,
   };
 }

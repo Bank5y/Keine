@@ -161,6 +161,26 @@ func TestDraftOperationsReshapeTheCourse(t *testing.T) {
 	}
 }
 
+// A recorded lesson move names the chapter the lesson came from, so the
+// editor can tell moving it to another chapter from reordering its own.
+func TestALessonMoveRecordsTheChapterItCameFrom(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, columnFiles(columnManifest()))
+	op := func(o map[string]any) { t.Helper(); alice.mustOK(addOp(alice, id, o)) }
+
+	op(map[string]any{"type": "moveLesson", "lesson": "l02", "chapter": "intent", "after": "", "from": "opening"})
+	op(map[string]any{"type": "moveLesson", "lesson": "l00", "chapter": "intent", "after": ""})
+
+	ops := draftOps(t, alice, id)
+	if got := ops[0].(map[string]any)["from"]; got != "intent" {
+		t.Fatalf("a move within a chapter records that chapter, not what the client sent: got %v", got)
+	}
+	if got := ops[1].(map[string]any)["from"]; got != "opening" {
+		t.Fatalf("a move to another chapter records the chapter it left: got %v", got)
+	}
+}
+
 func TestDraftChangesCourseInformation(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")

@@ -255,6 +255,7 @@ func (s *Service) AddDraftOp(ctx context.Context, viewer auth.User, id int64, op
 		// earlier ones that no longer do stay listed as conflicts.
 		m, conflicts := replayOps(base, ops)
 		op.Target = m.target(op)
+		op.From = m.from(op)
 		if err := m.apply(op); err != nil {
 			return err
 		}
