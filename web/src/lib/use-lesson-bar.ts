@@ -26,15 +26,22 @@ export function useLessonBar(on: boolean) {
     if (!on) return undefined;
     const onScroll = () => dispatch({ type: 'scroll', y: scrollY });
     // taps outside the page (a drawer, a dialog) are not on the text
+    const selecting = () => { const s = getSelection(); return !!s && !s.isCollapsed; };
+    const onPress = () => dispatch({ type: 'press', selecting: selecting() });
     const onClick = (e: MouseEvent) => {
       if (!(e.target instanceof Node) || !document.getElementById('view')?.contains(e.target)) return;
-      const s = getSelection();
-      dispatch({ type: 'tap', y: e.clientY, height: innerHeight, on: tapOn(e), selecting: !!s && !s.isCollapsed });
+      dispatch({ type: 'tap', y: e.clientY, height: innerHeight, on: tapOn(e), selecting: selecting() });
     };
     onScroll();
     addEventListener('scroll', onScroll, { passive: true });
+    // capture: the press is read before anything it lands on can clear the selection
+    document.addEventListener('pointerdown', onPress, true);
     document.addEventListener('click', onClick);
-    return () => { removeEventListener('scroll', onScroll); document.removeEventListener('click', onClick); };
+    return () => {
+      removeEventListener('scroll', onScroll);
+      document.removeEventListener('pointerdown', onPress, true);
+      document.removeEventListener('click', onClick);
+    };
   }, [on]);
   return !on || bar.shown;
 }
