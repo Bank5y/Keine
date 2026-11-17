@@ -8,15 +8,23 @@ export interface ReaderBar {
   read: { lessonId: number; label: '开始阅读' | '继续学习' } | null;
 }
 
-export function readerBar(c: CourseDetail): ReaderBar {
-  const subscribe = c.visibility === 'public' && !c.subscribed && !c.retention;
+// readTarget is the lesson reading a course opens: the one studied last, or
+// the first readable one (null when none can be opened); started says it
+// is the one studied last.
+export function readTarget(c: CourseDetail): { lessonId: number; started: boolean } | null {
   const lessons = c.chapters.flatMap((ch) => ch.lessons).filter(readable);
   const last = lessons.find((l) => l.id === c.progress.lastLessonId);
-  const target = last?.id ?? lessons[0]?.id;
+  const target = last ?? lessons[0];
+  return target ? { lessonId: target.id, started: last != null } : null;
+}
+
+export function readerBar(c: CourseDetail): ReaderBar {
+  const subscribe = c.visibility === 'public' && !c.subscribed && !c.retention;
+  const target = readTarget(c);
   // a course that is the reader's own (subscribed, private, retained) is
   // always 继续学习; 开始阅读 sits beside 订阅课程 only, for a first look
-  const label = subscribe && !last ? '开始阅读' : '继续学习';
-  return { subscribe, read: target == null ? null : { lessonId: target, label } };
+  const label = subscribe && !target?.started ? '开始阅读' : '继续学习';
+  return { subscribe, read: target && { lessonId: target.lessonId, label } };
 }
 
 // CourseAction is one thing the viewer may do with a course, beyond reading

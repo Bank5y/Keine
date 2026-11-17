@@ -12,8 +12,8 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
-import { readerBar } from '@/lib/course-actions';
-import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, readable, type CourseDetail } from '@/lib/courses';
+import { readTarget, readerBar } from '@/lib/course-actions';
+import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
 import { useNarrow } from '@/lib/use-narrow';
 import { useScrollFade } from '@/lib/use-scroll-fade';
@@ -90,16 +90,15 @@ function CourseBar({ c, onSubscribed }: { c: CourseDetail; onSubscribed: () => v
   );
 }
 
-// ContinueButton opens the lesson studied last, or the first readable lesson.
+// ContinueButton opens the lesson studied last, or the first readable lesson
+// (see readTarget). Unlike the narrow course bar, it says 开始阅读 until the
+// reader has studied a lesson, subscribed or not.
 function ContinueButton({ c }: { c: CourseDetail }) {
-  const lessons = c.chapters.flatMap((ch) => ch.lessons).filter(readable);
-  const last = lessons.find((l) => l.id === c.progress.lastLessonId);
-  const target = last?.id ?? lessons[0]?.id;
+  const target = readTarget(c);
   if (!target) return null;
-  const started = last != null;
   return (
-    <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target))}>
-      <BookOpen />{started ? '继续学习' : '开始阅读'}
+    <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target.lessonId))}>
+      <BookOpen />{target.started ? '继续学习' : '开始阅读'}
     </Button>
   );
 }
