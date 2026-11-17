@@ -469,10 +469,6 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .toc-tab.active { color: var(--text); }
 .toc-head .tab-ink { bottom: -1.5px; }
 .toc-tab sup { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
-.search-sm { position: relative; flex: 1; min-width: 160px; max-width: 280px; }
-.search-sm svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-3); }
-.search-sm input { width: 100%; height: 34px; padding: 0 10px 0 32px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); outline: none; font-size: 13px; }
-.search-sm input:focus { border-color: var(--text); }
 
 /* chapters are section heads; lessons hang indented beneath them */
 .chapter { margin-top: 10px; }
@@ -498,7 +494,6 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .entry .e-lead { flex: 1; min-width: 16px; border-bottom: 1px dotted var(--rule); align-self: center; transform: translateY(4px); }
 .entry .e-state { flex-shrink: 0; }
 @media (max-width: 560px) { .lessons { padding-left: 14px; margin-left: 0; } }
-mark { background: none; color: var(--brand); border-bottom: 1px solid var(--brand); }
 
 /* ---------- prose (rendered Markdown) ---------- */
 .prose { max-width: 720px; padding: 8px 0 24px; font-size: 15px; line-height: 1.9; color: var(--text); }
