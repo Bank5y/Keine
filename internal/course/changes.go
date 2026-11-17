@@ -60,15 +60,18 @@ func outlineChanges(before, after Manifest, modified map[string]bool) Changes {
 			oldLesson[l.Key] = place{i, j, l}
 		}
 	}
-	inAfter := map[string]bool{}
+	// chapter and lesson keys are apart: chapter "2" and lesson "2" are
+	// unrelated
+	chapterAfter := map[string]bool{}
+	lessonAfter := map[string]bool{}
 	var keptChapters []int
 	for _, ch := range after.Chapters {
-		inAfter[ch.Key] = true
+		chapterAfter[ch.Key] = true
 		if i, ok := oldChapter[ch.Key]; ok {
 			keptChapters = append(keptChapters, i)
 		}
 		for _, l := range ch.Lessons {
-			inAfter[l.Key] = true
+			lessonAfter[l.Key] = true
 		}
 	}
 
@@ -76,7 +79,7 @@ func outlineChanges(before, after Manifest, modified map[string]bool) Changes {
 	removedFrom := map[int][]LessonChange{}
 	for i, ch := range before.Chapters {
 		for _, l := range ch.Lessons {
-			if inAfter[l.Key] {
+			if lessonAfter[l.Key] {
 				continue
 			}
 			if !l.Upcoming() {
@@ -158,7 +161,7 @@ func outlineChanges(before, after Manifest, modified map[string]bool) Changes {
 		}
 	}
 	for i, ch := range before.Chapters {
-		if !inAfter[ch.Key] {
+		if !chapterAfter[ch.Key] {
 			c.Chapters = append(c.Chapters, ChapterChange{Key: ch.Key, Title: ch.Title, Changes: []string{ChangeRemoved},
 				Lessons: append([]LessonChange{}, removedFrom[i]...)})
 		}

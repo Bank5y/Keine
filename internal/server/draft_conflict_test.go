@@ -40,6 +40,17 @@ func conflicts(t *testing.T, body map[string]any) []string {
 	return out
 }
 
+// conflictIDs are the IDs of a draft's or a commit's conflicts, by which
+// skipping them is confirmed.
+func conflictIDs(body map[string]any) []string {
+	var out []string
+	list, _ := body["conflicts"].([]any)
+	for _, c := range list {
+		out = append(out, c.(map[string]any)["id"].(string))
+	}
+	return out
+}
+
 // conflictingDraft gives alice a draft of her course of which the first two
 // operations no longer apply once the course is updated without its
 // opening chapter.
@@ -107,7 +118,7 @@ func TestCommittingADraftWithConflictsLeavesTheCourseUntilConfirmed(t *testing.T
 		t.Fatalf("the draft stays, got %d operations", n)
 	}
 
-	r = alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": []int{0, 1}})).json()
+	r = alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": conflictIDs(r)})).json()
 
 	if r["outcome"] != "updated" {
 		t.Fatalf("confirmed conflicts are skipped: %v", r)
@@ -123,8 +134,9 @@ func TestOnlyTheConfirmedConflictsAreSkipped(t *testing.T) {
 	alice := a.user("alice")
 	id := conflictingDraft(t, alice)
 	before := courseOutline(t, alice, id)
+	first := conflictIDs(getDraft(t, alice, id))[:1]
 
-	r := alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": []int{0}})).json()
+	r := alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": first})).json()
 
 	if r["outcome"] != "conflicts" || fmt.Sprint(conflicts(t, r)) != bothConflicts {
 		t.Fatalf("a conflict not confirmed stops the commit: %v", r)
@@ -151,12 +163,38 @@ func TestADraftCommittedAsAnUpdateRequestAlsoConfirmsItsConflicts(t *testing.T) 
 		t.Fatalf("no request was filed, got %d", n)
 	}
 
-	r = alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": []int{0}})).json()
+	r = alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": conflictIDs(r)})).json()
 
 	if r["outcome"] != "requested" {
 		t.Fatalf("confirmed, the draft becomes an update request: %v", r)
 	}
 	if n := len(myUpdateRequests(t, alice, id)); n != 1 {
 		t.Fatalf("one request was filed, got %d", n)
+	}
+}
+
+func TestAConflictTakingTheSamePlaceIsNotSkippedUnseen(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "renameLesson", "lesson": "l00", "title": "前言"}))
+	admin.mustOK(addOp(admin, id, map[string]any{"type": "deleteLesson", "lesson": "l00"}))
+	admin.mustOK(commitDraft(admin, id))
+	seen := conflictIDs(alice.mustOK(commitDraft(alice, id)).json())
+	// alice undoes the conflicting step and makes another, which the next
+	// update makes a conflict in the same place
+	alice.mustOK(alice.do("POST", draftPath(id)+"/undo", nil))
+	alice.mustOK(addOp(alice, id, map[string]any{"type": "renameLesson", "lesson": "l01", "title": "01｜输入"}))
+	admin.mustOK(addOp(admin, id, map[string]any{"type": "deleteLesson", "lesson": "l01"}))
+	admin.mustOK(commitDraft(admin, id))
+
+	r := alice.mustOK(alice.do("POST", draftPath(id)+"/commit", map[string]any{"skip": seen})).json()
+
+	if r["outcome"] != "conflicts" || fmt.Sprint(conflicts(t, r)) != "[0:renameLesson:01｜用户输入规范化]" {
+		t.Fatalf("the new conflict is shown, not skipped: %v", r)
+	}
+	if n := len(myUpdateRequests(t, alice, id)); n != 0 {
+		t.Fatalf("no request was filed, got %d", n)
 	}
 }

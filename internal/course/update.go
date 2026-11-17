@@ -52,7 +52,7 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 		if err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 FOR UPDATE", sm.ID).Scan(&prevDir); err != nil {
 			return err
 		}
-		return s.replaceContent(ctx, tx, sm, viewer, pp.manifest, prevDir, next)
+		return s.replaceContent(ctx, tx, sm.ID, viewer, pp.manifest, prevDir, next, folderFiles(sm.ID, next))
 	})
 	if err != nil {
 		_ = s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(sm.ID, next))
@@ -65,26 +65,31 @@ func (s *Service) Update(ctx context.Context, viewer auth.User, id int64, zr *zi
 // replaceContent is a course update (the course row already locked): the
 // course switches from its files in prevDir to manifest m with files in
 // next, lessons keep their progress by key, annotations are carried over,
-// and a public course's subscribers are told what changed.
-func (s *Service) replaceContent(ctx context.Context, tx pgx.Tx, sm Summary, actor auth.User, m Manifest, prevDir, next string) error {
-	before, _, err := currentManifest(ctx, tx, sm.ID)
+// and a public course's subscribers are told what changed. The new texts
+// are read through files: next, or where next's files were copied from.
+func (s *Service) replaceContent(ctx context.Context, tx pgx.Tx, courseID int64, actor auth.User, m Manifest, prevDir, next string, files draftFiles) error {
+	before, _, err := currentManifest(ctx, tx, courseID)
 	if err != nil {
 		return err
 	}
-	diff, err := s.diffContent(ctx, sm.ID, before, prevDir, m, next)
+	var visibility string // as of the lock, not as the caller last saw it
+	if err := tx.QueryRow(ctx, "SELECT visibility FROM courses WHERE id = $1", courseID).Scan(&visibility); err != nil {
+		return err
+	}
+	diff, err := s.diffContent(ctx, courseID, before, prevDir, m, files)
 	if err != nil {
 		return err
 	}
-	if err := switchContent(ctx, tx, sm.ID, m, next); err != nil {
+	if err := switchContent(ctx, tx, courseID, m, next); err != nil {
 		return err
 	}
-	if err := carryAnnotations(ctx, tx, sm.ID, diff); err != nil {
+	if err := carryAnnotations(ctx, tx, courseID, diff); err != nil {
 		return err
 	}
-	if sm.Visibility != Public {
+	if visibility != Public {
 		return nil // only the uploader reads a private course as it is
 	}
-	return notifyUpdated(ctx, tx, sm.ID, actor.ID, diff.summary())
+	return notifyUpdated(ctx, tx, courseID, actor.ID, diff.summary())
 }
 
 // switchContent makes a course follow manifest m, with its files in the

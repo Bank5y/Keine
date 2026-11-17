@@ -62,9 +62,10 @@ func (s *Server) commitDraft(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// skip: the indexes of the conflicts the user confirmed to skip
+	// skip: the IDs of the operations whose conflicts the user confirmed
+	// to skip
 	var body struct {
-		Skip []int `json:"skip"`
+		Skip []string `json:"skip"`
 	}
 	if !readJSON(w, r, &body) {
 		return

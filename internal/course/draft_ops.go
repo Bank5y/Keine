@@ -46,6 +46,10 @@ const (
 // Chapters and lessons are named by key, so an operation still finds its
 // target once others have moved things around.
 type Op struct {
+	// ID tells the operation apart from every other, set by the system;
+	// a conflict is confirmed by it. Operations recorded before IDs existed
+	// are given "i{index}" as they are read.
+	ID      string      `json:"id,omitempty"`
 	Type    string      `json:"type"`
 	Chapter string      `json:"chapter,omitempty"`
 	Lesson  string      `json:"lesson,omitempty"`
@@ -64,9 +68,11 @@ type Op struct {
 
 // Conflict is an operation of a draft that no longer applies to the
 // course's latest version, for example because someone else's update
-// deleted the lesson it renames (ADR-0006). Index is its place among the
-// draft's operations; Message tells the user why.
+// deleted the lesson it renames (ADR-0006). ID is the operation's, by which
+// the user confirms skipping it; Index is its place among the draft's
+// operations, to show; Message tells the user why.
 type Conflict struct {
+	ID      string `json:"id"`
 	Index   int    `json:"index"`
 	Op      Op     `json:"op"`
 	Message string `json:"message"`
@@ -102,6 +108,7 @@ func reject(format string, args ...any) error {
 func prepareOp(op Op) (Op, error) {
 	op.Title = strings.TrimSpace(op.Title)
 	op.Target = ""
+	op.ID = newKey("o")
 	switch op.Type {
 	case OpAddChapter:
 		op.Chapter = newKey("c")
@@ -135,7 +142,7 @@ func replayOps(m Manifest, ops []Op) (Manifest, []Conflict) {
 	var conflicts []Conflict
 	for i, op := range ops {
 		if err := m.apply(op); err != nil {
-			conflicts = append(conflicts, Conflict{Index: i, Op: op, Message: rejectMessage(err)})
+			conflicts = append(conflicts, Conflict{ID: op.ID, Index: i, Op: op, Message: rejectMessage(err)})
 		}
 	}
 	return m, conflicts
@@ -149,12 +156,25 @@ func rejectMessage(err error) string {
 	return "这一步无法应用到课程的最新版本"
 }
 
-// unconfirmed lists the conflicts whose index is not in skip.
-func unconfirmed(conflicts []Conflict, skip []int) []Conflict {
+// unconfirmed lists the conflicts whose operation is not in skip, which
+// names operations by ID: a conflict the user has not seen is never
+// skipped, though another took its place among the operations.
+func unconfirmed(conflicts []Conflict, skip []string) []Conflict {
 	var out []Conflict
 	for _, c := range conflicts {
-		if !slices.Contains(skip, c.Index) {
+		if !slices.Contains(skip, c.ID) {
 			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// applied are the operations that are not conflicts.
+func applied(ops []Op, conflicts []Conflict) []Op {
+	out := make([]Op, 0, len(ops))
+	for i, op := range ops {
+		if !slices.ContainsFunc(conflicts, func(c Conflict) bool { return c.Index == i }) {
+			out = append(out, op)
 		}
 	}
 	return out

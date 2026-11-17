@@ -2,10 +2,6 @@ package course
 
 import (
 	"context"
-	"maps"
-	"regexp"
-	"slices"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -34,41 +30,21 @@ func (s *Service) SweepDrafts(ctx context.Context) error {
 	return s.dropOrphanDraftFiles(ctx)
 }
 
-var draftAreaKey = regexp.MustCompile(`^courses/(\d+)/d(\d+)/`)
-
-// dropOrphanDraftFiles removes the temporary areas left without a draft,
-// such as those of a deleted user, whose drafts the database drops on its
-// own. Files are listed before drafts are read: a draft gets its row before
-// its first file, so an area listed without a row is truly left over.
+// dropOrphanDraftFiles removes the temporary areas of deleted drafts that
+// are still there: a draft's deletion, however it happens (a deleted user's
+// drafts go with them), records its area in draft_area_drops, and a row
+// stays until removing the area worked.
 func (s *Service) dropOrphanDraftFiles(ctx context.Context) error {
-	keys, err := s.files.List(ctx, "courses/")
+	rows, err := s.db.Query(ctx, "SELECT ARRAY[draft_id, course_id] FROM draft_area_drops ORDER BY draft_id")
 	if err != nil {
 		return err
 	}
-	areas := map[int64]int64{} // draft -> course
-	for _, k := range keys {
-		if m := draftAreaKey.FindStringSubmatch(k); m != nil {
-			course, _ := strconv.ParseInt(m[1], 10, 64)
-			draft, _ := strconv.ParseInt(m[2], 10, 64)
-			areas[draft] = course
-		}
-	}
-	if len(areas) == 0 {
-		return nil
-	}
-	rows, err := s.db.Query(ctx, "SELECT id FROM course_drafts WHERE id = ANY($1)", slices.Collect(maps.Keys(areas)))
+	left, err := pgx.CollectRows(rows, pgx.RowTo[[2]int64])
 	if err != nil {
 		return err
 	}
-	live, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-	if err != nil {
-		return err
-	}
-	for _, d := range live {
-		delete(areas, d)
-	}
-	for draft, course := range areas {
-		s.dropDraftFiles(ctx, course, draft, "")
+	for _, d := range left {
+		s.dropDraftFiles(ctx, d[1], d[0], "")
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Empty, ErrorBox } from '@/components/common';
+import { ConflictList } from '@/components/conflict-list';
 import { RejectDialog } from '@/components/reject-dialog';
 import { api, ApiError } from '@/lib/api';
 import { CHANGE_LABEL, TYPE_LABEL, type ChangeKind, type Changes, type Review } from '@/lib/courses';
@@ -44,13 +45,20 @@ export function AdminReviews() {
               <Link href={`/courses/${r.course.id}`} className="hover:text-brand">{r.course.title}</Link>
               {r.changes ? <ChangeCounts c={r.changes} /> : null}
               {r.stale ? <span className="stale">课程已更新, 请基于新内容重新审核</span> : null}
+              {r.kind === 'update' && !r.changes ? <span className="stale">无法读取这份申请的变化</span> : null}
             </span>
             <span className="meta">{TYPE_LABEL[r.course.type]} · {r.course.lessonCount} 讲</span>
             <span className="meta">{r.requester.username} · {fmtTime(r.createdAt)}</span>
             <span className="acts">
-              <Button size="sm" variant="default" onClick={() => decide(r, 'approve')}>批准</Button>
+              <Button size="sm" variant="default" disabled={!!r.conflicts?.length} onClick={() => decide(r, 'approve')}>批准</Button>
               <Button size="sm" onClick={() => setRejecting(r)}>驳回</Button>
             </span>
+            {r.conflicts?.length ? (
+              <div className="request-note conflict-note" role="alert">
+                <b>课程在申请提交后被更新过, 下面 {r.conflicts.length} 处修改已无法应用, 这份申请无法批准, 请驳回让申请人重新提交:</b>
+                <ConflictList conflicts={r.conflicts} />
+              </div>
+            ) : null}
             {r.changes ? <ChangeList c={r.changes} /> : null}
           </div>
         ))}

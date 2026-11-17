@@ -42,9 +42,10 @@ export interface Draft { ops: unknown[]; mode: 'direct' | 'request'; course: Dra
 // A recorded operation also carries `target`: the title, when it was
 // recorded, of the chapter or lesson it names.
 export type RecordedOp = Op & { target?: string };
-// Conflict is an operation of the draft that cannot apply any more; index is
-// its place among the draft's operations, message says why.
-export interface Conflict { index: number; op: RecordedOp; message: string }
+// Conflict is an operation of the draft that cannot apply any more; id is
+// the operation's, by which skipping it is confirmed; index is its place
+// among the draft's operations, message says why.
+export interface Conflict { id: string; index: number; op: RecordedOp; message: string }
 // Committing either updates the course, or — when some operations conflict
 // and were not confirmed to be skipped — changes nothing and lists them.
 export type CommitResult =
@@ -57,8 +58,9 @@ export const getDraft = (id: number) => api<Draft>('GET', base(id));
 export const addOp = (id: number, op: Op) => api<Draft>('POST', `${base(id)}/ops`, op);
 export const undoOp = (id: number) => api<Draft>('POST', `${base(id)}/undo`);
 export const discardDraft = (id: number) => api('DELETE', base(id));
-// skip: the indexes of the conflicts the user confirmed to skip.
-export const commitDraft = (id: number, skip: number[] = []) => api<CommitResult>('POST', `${base(id)}/commit`, { skip });
+// skip: the ids of the conflicts the user confirmed to skip — only those
+// seen, so one that appeared since is listed rather than skipped.
+export const commitDraft = (id: number, skip: string[] = []) => api<CommitResult>('POST', `${base(id)}/commit`, { skip });
 
 // describeOp says what a recorded operation did, for the conflict list.
 export function describeOp(op: RecordedOp): string {

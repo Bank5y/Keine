@@ -93,13 +93,30 @@ func loadDraft(ctx context.Context, q querier, courseID, userID int64, lock bool
 		return d, err
 	}
 	d.Ops = []Op{}
-	return d, json.Unmarshal(raw, &d.Ops)
+	if err := json.Unmarshal(raw, &d.Ops); err != nil {
+		return d, err
+	}
+	nameOps(d.Ops)
+	return d, nil
+}
+
+// nameOps gives the operations recorded before they had IDs one: their
+// place, which stays theirs since only the last operation is ever undone.
+func nameOps(ops []Op) {
+	for i := range ops {
+		if ops[i].ID == "" {
+			ops[i].ID = fmt.Sprintf("i%d", i)
+		}
+	}
 }
 
 // uploads are the uploads the draft's operations use.
-func (d draftRow) uploads() map[string]bool {
+func (d draftRow) uploads() map[string]bool { return opUploads(d.Ops) }
+
+// opUploads are the uploads that operations use.
+func opUploads(ops []Op) map[string]bool {
 	out := map[string]bool{}
-	for _, op := range d.Ops {
+	for _, op := range ops {
 		if op.Content != nil && op.Content.Upload != "" {
 			out[op.Content.Upload] = true
 		}
@@ -107,18 +124,31 @@ func (d draftRow) uploads() map[string]bool {
 	return out
 }
 
-// draftFiles finds the files of a draft's course: those of its uploads in
-// the temporary area, the others in the course's current folder.
+// draftFiles finds the files of a course version by name: those of the
+// uploads its operations gave lessons in the uploads' area (a draft's
+// temporary area, or an update request's folder), the others in a folder
+// of the course. With no uploads it is just that folder.
 type draftFiles struct {
 	courseID int64
-	dir      string // the course's current folder
-	draftID  int64
+	dir      string // the course folder the other files are in
+	area     string // key prefix the uploads are under
 	uploads  map[string]bool
+}
+
+// folderFiles are the files of one folder of a course.
+func folderFiles(courseID int64, dir string) draftFiles {
+	return draftFiles{courseID: courseID, dir: dir}
+}
+
+// ofDraft are the files of a draft's course: its uploads in the draft's
+// temporary area, the others in the course's folder dir.
+func ofDraft(courseID int64, dir string, d draftRow) draftFiles {
+	return draftFiles{courseID: courseID, dir: dir, area: draftPrefix(courseID, d.ID), uploads: d.uploads()}
 }
 
 func (f draftFiles) key(name string) string {
 	if up, _, ok := strings.Cut(name, "/"); ok && f.uploads[up] {
-		return draftPrefix(f.courseID, f.draftID) + name
+		return f.area + name
 	}
 	return filesPrefix(f.courseID, f.dir) + name
 }
@@ -170,18 +200,25 @@ func (s *Service) PutDraftFile(ctx context.Context, viewer auth.User, id int64, 
 }
 
 // PutDraftZip stores the files of a single lesson's zip in an upload. A
-// zip of one folder counts from inside that folder.
-func (s *Service) PutDraftZip(ctx context.Context, viewer auth.User, id int64, upload string, zr *zip.Reader) error {
+// zip of one folder counts from inside that folder. Its files may hold at
+// most maxSize bytes together once unpacked (no limit when 0); archive/zip
+// fails reading an entry past its declared size, so the declared sizes are
+// what is checked.
+func (s *Service) PutDraftZip(ctx context.Context, viewer auth.User, id int64, upload string, zr *zip.Reader, maxSize int64) error {
 	prefix, err := s.uploadPrefix(ctx, viewer, id, upload)
 	if err != nil {
 		return err
 	}
 	files := map[string]*zip.File{}
 	tops := map[string]bool{}
+	var total uint64
 	for _, f := range zr.File {
 		name := strings.ReplaceAll(f.Name, "\\", "/")
 		if f.FileInfo().IsDir() || strings.HasPrefix(name, "__MACOSX/") {
 			continue
+		}
+		if total += f.UncompressedSize64; maxSize > 0 && (total > uint64(maxSize) || total < f.UncompressedSize64) {
+			return reject("zip 解压后超过了大小上限")
 		}
 		files[name] = f
 		top, _, nested := strings.Cut(name, "/")
@@ -343,7 +380,7 @@ func (s *Service) draftCourse(ctx context.Context, viewer auth.User, id int64) (
 		return Manifest{}, draftFiles{}, err
 	}
 	m, _ := replayOps(cur, d.Ops)
-	return m, draftFiles{courseID: id, dir: dir, draftID: d.ID, uploads: d.uploads()}, nil
+	return m, ofDraft(id, dir, d), nil
 }
 
 // DraftLesson previews a lesson of the viewer's draft, named by key.
@@ -389,7 +426,8 @@ func (s *Service) DraftFile(ctx context.Context, viewer auth.User, id int64, nam
 }
 
 // dropDraftFiles removes a draft's temporary area, or one upload of it.
-// Leftovers only cost space, so a failure is logged.
+// Leftovers only cost space, so a failure is logged; a deleted draft's
+// area is retried by the sweep (draft_area_drops) until it is gone.
 func (s *Service) dropDraftFiles(ctx context.Context, courseID, draftID int64, upload string) {
 	if draftID == 0 {
 		return
@@ -398,8 +436,15 @@ func (s *Service) dropDraftFiles(ctx context.Context, courseID, draftID int64, u
 	if upload != "" {
 		prefix += upload + "/"
 	}
-	if err := s.files.DeletePrefix(context.WithoutCancel(ctx), prefix); err != nil {
+	ctx = context.WithoutCancel(ctx)
+	if err := s.files.DeletePrefix(ctx, prefix); err != nil {
 		slog.Warn("draft files not removed", "course", courseID, "draft", draftID, "upload", upload, "err", err)
+		return
+	}
+	if upload == "" { // the whole area is gone: nothing left for the sweep
+		if _, err := s.db.Exec(ctx, "DELETE FROM draft_area_drops WHERE draft_id = $1", draftID); err != nil {
+			slog.Warn("draft area drop not cleared", "draft", draftID, "err", err)
+		}
 	}
 }
 

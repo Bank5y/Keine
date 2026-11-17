@@ -78,7 +78,12 @@ func (s *Server) putDraftZip(r *http.Request, id int64, upload string, body io.R
 	if err != nil {
 		return &course.OpRejected{Message: "不是有效的 zip 文件"}
 	}
-	return s.courses.PutDraftZip(r.Context(), currentUser(r), id, upload, zr)
+	// unpacked, a lesson's zip may hold no more than a file sent as is
+	limit := s.opts.MaxUploadBytes
+	if limit <= 0 {
+		limit = defaultMaxUpload
+	}
+	return s.courses.PutDraftZip(r.Context(), currentUser(r), id, upload, zr, limit)
 }
 
 // draftFilesURL is where a file of the viewer's draft is served.

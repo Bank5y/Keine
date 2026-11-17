@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Confirm } from '@/components/confirm';
+import { ConflictList } from '@/components/conflict-list';
 import { Empty, ErrorBox, PageHead } from '@/components/common';
 import { Skeleton } from '@/components/skeleton';
 import { UploadDialog } from '@/components/upload-dialog';
@@ -13,8 +14,8 @@ import { useReorderDrag } from '@/components/reorder-drag';
 import { ApiError } from '@/lib/api';
 import { COMPLETION_LABEL, pad2, type Completion } from '@/lib/courses';
 import {
-  addOp, chapterDown, chapterUp, commitDraft, describeOp, discardDraft, getDraft, hasUpcoming, lessonDown, lessonTo, lessonUp, undoOp,
-  type Conflict, type Draft, type DraftChapter, type InfoChange, type Op,
+  addOp, chapterDown, chapterUp, commitDraft, discardDraft, getDraft, hasUpcoming, lessonDown, lessonTo, lessonUp, undoOp,
+  type Draft, type DraftChapter, type InfoChange, type Op,
 } from '@/lib/drafts';
 import { Link, navigate } from '@/lib/router';
 import { cn } from '@/lib/utils';
@@ -180,7 +181,7 @@ export function CourseEditView({ id }: { id: number }) {
       <Confirm open={dialog === 'commit'} title="提交编辑稿" confirm={conflicts.length ? '跳过这些修改并提交' : '提交'} onClose={() => setDialog('')}
         onConfirm={async () => {
           try {
-            const r = await commitDraft(id, conflicts.map((x) => x.index));
+            const r = await commitDraft(id, conflicts.map((x) => x.id));
             if (r.outcome === 'conflicts') {
               // the course changed again since the editor last looked
               setDraft({ ...draft, conflicts: r.conflicts });
@@ -213,22 +214,6 @@ export function CourseEditView({ id }: { id: number }) {
 
 function BackLink({ id }: { id: number }) {
   return <Link className="back" href={`/courses/${id}`}><ArrowLeft />返回课程</Link>;
-}
-
-// ConflictList lists the draft's operations that no longer apply, each with
-// its step number and the reason. Spans, so it may sit inside a <p>.
-function ConflictList({ conflicts }: { conflicts: Conflict[] }) {
-  return (
-    <span className="conflict-list">
-      {conflicts.map((x) => (
-        <span className="conflict" key={x.index}>
-          <span className="c-step">第 {x.index + 1} 步</span>
-          <span className="c-what">{describeOp(x.op)}</span>
-          <span className="c-why">{x.message}</span>
-        </span>
-      ))}
-    </span>
-  );
 }
 
 function Tool({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {

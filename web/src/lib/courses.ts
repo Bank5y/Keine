@@ -1,3 +1,4 @@
+import type { Conflict } from '@/lib/drafts';
 export type CourseType = 'column' | 'video' | 'paper';
 export type Completion = 'finished' | 'ongoing' | 'incomplete';
 export type PublishState = 'unpublished' | 'pending' | 'rejected';
@@ -57,8 +58,12 @@ export interface Review {
   course: CourseSummary;
   requester: { id: number; username: string };
   createdAt: string;
+  // changes: missing for an update request whose files could not be read
   changes?: Changes;
   stale: boolean;
+  // conflicts: the steps of a request made in the editor that no longer
+  // apply to the course's latest version; it cannot be approved then.
+  conflicts?: Conflict[];
 }
 
 // What a course update changes (internal/course/changes.go). Counts are of
