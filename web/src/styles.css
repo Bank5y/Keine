@@ -801,6 +801,33 @@ a.nb-quote:hover .nq-text { color: var(--brand); }
 }
 @media (min-width: 861px) { .docs-bar > :first-child { display: none; } }
 @media (min-width: 1181px) { .docs-bar { display: none; } }
+
+/* ---------- narrow lesson (#70): its own top bar, one drawer for this lesson and the course ---------- */
+/* the bar sits over the page and slides up out of the way while reading;
+   the page keeps the top clear for it (the shell marks the page 'own-top') */
+.lesson-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 20; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: saturate(1.2) blur(8px);
+  border-bottom: 1px solid var(--rule); transition: transform .2s ease;
+}
+.lesson-bar.away { transform: translateY(-100%); }
+.lesson-bar-title { flex: 1; min-width: 0; text-align: center; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lesson-bar-btn {
+  width: 40px; height: 40px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: none; color: var(--text); -webkit-tap-highlight-color: transparent;
+}
+.lesson-bar-btn svg { width: 22px; height: 22px; }
+.shell.own-top .main { padding-top: calc(56px + 32px); }
+@media (max-width: 760px) { .docs-bar { display: none; } }
+.drawer-head { position: relative; display: flex; align-items: center; gap: 12px; padding-bottom: 10px; margin-bottom: 18px; border-bottom: 1.5px solid var(--text); }
+.drawer-head .toc-tabs { min-width: 0; gap: 20px; }
+.drawer-head .toc-tab { font-size: 18px; }
+.drawer-head .tab-ink { bottom: -1.5px; }
+.drawer-close { display: inline-flex; padding: 4px; margin-right: -4px; border: 0; background: none; color: var(--text-2); }
+.drawer-close svg { width: 20px; height: 20px; }
+.on-page-lesson { font-family: var(--serif); font-size: 15px; margin-bottom: 18px; }
+.lesson-sheet .op-item { padding-top: 7px; padding-bottom: 7px; font-size: 14px; }
+.lesson-sheet .op-item.active { background: var(--brand-soft); font-weight: 600; }
 /* a column's notes take a rail between the text and the on-page toc once
    there is room for it (NOTE_RAIL_MEDIA in annotator.tsx) */
 @media (min-width: 1440px) {

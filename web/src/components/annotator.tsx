@@ -4,6 +4,7 @@ import { Copy, NotebookPen, Pencil, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
+import { claimTap } from '@/lib/use-lesson-bar';
 import { cn } from '@/lib/utils';
 
 // one CSS highlight per look; underlines paint above highlights so an
@@ -198,6 +199,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         const rect = (placed.get(a.id) ?? []).flatMap((r) => Array.from(r.getClientRects())).find((c) => e.clientX >= c.left && e.clientX <= c.right && e.clientY >= c.top && e.clientY <= c.bottom);
         if (rect) { hits.push(a.id); at ??= rect; }
       }
+      if (hits.length) claimTap(e);
       setEditing(null);
       setOpen(hits.length && at ? { spot: { x: e.clientX + scrollX, top: at.top + scrollY, bottom: at.bottom + scrollY }, ids: hits } : null);
       setActive(hits.find((id) => anns.find((a) => a.id === id)?.note) ?? null);

@@ -35,17 +35,20 @@ function routeView(path: string, user: User): ReactNode {
   return <LibraryView />;
 }
 
-// The bars that frame a page on a narrow screen. Every page has the main
-// top bar and the bottom nav for now; a page that needs its own (the course
-// page's actions in place of the nav, the lesson's own top bar) gets a case
-// here and a value for its bar.
+// The bars that frame a page on a narrow screen. Pages have the main top bar
+// and the bottom nav; a page that needs its own (the course page's actions in
+// place of the nav, the lesson's own top bar) gets a case here and a value
+// for its bar. 'own': the page draws that bar itself; 'none': no bar.
 // bottom 'course': the course page draws its own bar of course actions in
 // place of the nav; the shell only keeps the page clear of it.
-interface Chrome { top: 'main'; bottom: 'nav' | 'course' }
-const chromeFor = (path: string): Chrome => {
+interface Chrome { top: 'main' | 'own'; bottom: 'nav' | 'course' | 'none' }
+function chromeFor(path: string): Chrome {
+  // a lesson is read full screen: its own top bar, which gives way while
+  // reading, and nothing below
+  if (match('/courses/:id/lessons/:lesson', path)) return { top: 'own', bottom: 'none' };
   if (match('/courses/:id', path)) return { top: 'main', bottom: 'course' };
   return { top: 'main', bottom: 'nav' };
-};
+}
 
 export function App() {
   const user = useUser();
@@ -67,8 +70,8 @@ export function App() {
   // signed out, a phone keeps the plain masthead: there is nothing to search or navigate yet
   const chrome = narrow && user ? chromeFor(path) : null;
   return (
-    <div className={cn('shell', chrome?.bottom && 'with-bar')}>
-      {chrome && user ? <TopBar path={path} /> : <Masthead user={user} path={path} />}
+    <div className={cn('shell', (chrome?.bottom === 'nav' || chrome?.bottom === 'course') && 'with-bar', chrome?.top === 'own' && 'own-top')}>
+      {chrome && user ? (chrome.top === 'main' ? <TopBar path={path} /> : null) : <Masthead user={user} path={path} />}
       <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
       {chrome?.bottom === 'nav' && user ? <BottomNav user={user} path={path} /> : null}
       <Toaster position="top-center" toastOptions={{ style: { background: 'var(--text)', color: 'var(--bg)', border: 0, borderRadius: 'var(--radius)' } }} />
