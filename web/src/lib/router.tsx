@@ -23,6 +23,11 @@ export function usePath() {
   return useSyncExternalStore(subscribe, () => location.pathname);
 }
 
+// useSearch reads the whole query string of the address ('?a=1&b=2' or '').
+export function useSearch() {
+  return useSyncExternalStore(subscribe, () => location.search);
+}
+
 // useParam reads one query parameter of the address ('' when absent).
 export function useParam(name: string) {
   return useSyncExternalStore(subscribe, () => new URLSearchParams(location.search).get(name) ?? '');

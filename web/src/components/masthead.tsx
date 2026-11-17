@@ -3,6 +3,7 @@ import { LogOut, Moon, Search, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from '@/components/notification-bell';
 import { NavLink } from '@/components/bottom-nav';
+import { libraryHref } from '@/lib/library-filter';
 import { activeItem, navItems } from '@/lib/nav';
 import { Link, navigate, setParam, useParam } from '@/lib/router';
 import { logout, type User } from '@/lib/session';
@@ -74,7 +75,7 @@ function TopSearch({ onLibrary }: { onLibrary: boolean }) {
     if (onLibrary) return;
     const q = draft.trim();
     setDraft('');
-    navigate(q ? `/library?q=${encodeURIComponent(q)}` : '/library');
+    navigate(libraryHref({ q }));
   }
 
   return (
