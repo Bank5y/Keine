@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 
 // Confirm asks before an action that is hard to undo.
-export function Confirm({ open, title, children, confirm, onConfirm, onClose }: {
-  open: boolean; title: string; children: ReactNode; confirm: string; onConfirm: () => Promise<void> | void; onClose: () => void;
+// disabled: the action cannot be taken; the text says why.
+export function Confirm({ open, title, children, confirm, onConfirm, onClose, disabled }: {
+  open: boolean; title: string; children: ReactNode; confirm: string; onConfirm: () => Promise<void> | void; onClose: () => void; disabled?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const run = async () => { setBusy(true); try { await onConfirm(); } finally { setBusy(false); } };
@@ -13,7 +14,7 @@ export function Confirm({ open, title, children, confirm, onConfirm, onClose }: 
       <p>{children}</p>
       <div className="head-actions">
         <Button onClick={onClose} disabled={busy}>取消</Button>
-        <Button variant="default" onClick={run} disabled={busy}>{confirm}</Button>
+        <Button variant="default" onClick={run} disabled={busy || disabled}>{confirm}</Button>
       </div>
     </Dialog>
   );

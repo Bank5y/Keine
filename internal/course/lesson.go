@@ -14,6 +14,9 @@ import (
 var (
 	ErrLessonNotFound = errors.New("lesson not found")
 	ErrFileNotFound   = errors.New("course file not found")
+	// ErrLessonUpcoming means the lesson is an upcoming lesson: it has no
+	// content to read or study yet.
+	ErrLessonUpcoming = errors.New("lesson is upcoming")
 )
 
 // LessonText is one lesson as the reader shows it.
@@ -62,6 +65,9 @@ func (s *Service) lesson(ctx context.Context, viewer auth.User, sm Summary, ret 
 		Scan(&l.ID, &l.Key, &l.Title, &l.ChapterID, &file, &l.VideoFile, &l.VideoURL, &l.State, &l.Position)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return LessonText{}, ErrLessonNotFound
+	}
+	if err == nil && file == nil && l.VideoFile == "" && l.VideoURL == "" {
+		return LessonText{}, ErrLessonUpcoming
 	}
 	if err != nil || file == nil {
 		return l, err

@@ -157,6 +157,58 @@ func TestDeletingACourseNobodyRetainsStillTellsItsPeople(t *testing.T) {
 	}
 }
 
+// rearrangedVersion is the column course with every lesson's text kept but
+// its outline reworked: the opening chapter is renamed and emptied, its
+// lesson moves to the end of the other chapter, and l02 moves ahead of
+// l01, which is renamed.
+func rearrangedVersion() map[string]string {
+	m := columnManifest()
+	m["chapters"] = []any{
+		map[string]any{"id": "opening", "title": "序言", "lessons": []any{}},
+		map[string]any{"id": "intent", "title": "意图识别", "lessons": []any{
+			map[string]any{"id": "l02", "title": "02｜三层意图识别", "file": "02_意图识别.md"},
+			map[string]any{"id": "l01", "title": "01｜输入", "file": "01_用户输入.md"},
+			map[string]any{"id": "l00", "title": "开篇词", "file": "00_开篇词.md"},
+		}},
+	}
+	return columnFiles(m)
+}
+
+func TestUpdateNoticesCountRenamedAndMovedLessons(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	carol := a.user("carol")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	subscribe(t, carol, id)
+
+	admin.mustOK(updateCourse(t, admin, id, rearrangedVersion()))
+
+	p := onlyNotification(t, carol, "course_updated")
+	if p["added"] != float64(0) || p["removed"] != float64(0) || p["modified"] != float64(0) ||
+		p["renamed"] != float64(1) || p["moved"] != float64(2) {
+		t.Fatalf("a renamed lesson and two moved ones (to another chapter, and out of order): %v", p)
+	}
+}
+
+func TestReorderingChaptersMovesNoLesson(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	carol := a.user("carol")
+	admin := a.admin()
+	id := publishedCourse(t, a, alice)
+	subscribe(t, carol, id)
+	admin.mustOK(addOp(admin, id, map[string]any{"type": "moveChapter", "chapter": "opening", "after": "intent"}))
+	admin.mustOK(addOp(admin, id, map[string]any{"type": "deleteLesson", "lesson": "l01"}))
+
+	admin.mustOK(commitDraft(admin, id))
+
+	p := onlyNotification(t, carol, "course_updated")
+	if p["removed"] != float64(1) || p["renamed"] != float64(0) || p["moved"] != float64(0) {
+		t.Fatalf("lessons keep their place within their chapter: %v", p)
+	}
+}
+
 func TestSubscribersAreToldOfAnAdminsDirectUpdate(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")

@@ -34,10 +34,18 @@ const (
 type Service struct {
 	db    *pgxpool.Pool
 	files storage.Store
+	// now is the service's time; drafts expire by it.
+	now func() time.Time
 }
 
 func NewService(db *pgxpool.Pool, files storage.Store) *Service {
-	return &Service{db: db, files: files}
+	return &Service{db: db, files: files, now: time.Now}
+}
+
+// WithClock makes the service tell time by now instead of the system clock.
+func (s *Service) WithClock(now func() time.Time) *Service {
+	s.now = now
+	return s
 }
 
 // coursePrefix holds every file of a course, across versions.
@@ -226,10 +234,13 @@ type Progress struct {
 }
 
 type ChapterDetail struct {
-	ID      int64          `json:"id"`
-	Key     string         `json:"key"`
-	Title   string         `json:"title"`
-	Done    int            `json:"done"`
+	ID    int64  `json:"id"`
+	Key   string `json:"key"`
+	Title string `json:"title"`
+	Done  int    `json:"done"`
+	// Total is how many of its lessons count in progress: all but the
+	// upcoming ones.
+	Total   int            `json:"total"`
 	Lessons []LessonDetail `json:"lessons"`
 }
 
@@ -241,6 +252,9 @@ type LessonDetail struct {
 	Duration string `json:"duration"`
 	HasText  bool   `json:"hasText"`
 	State    string `json:"state"`
+	// Upcoming marks an upcoming lesson: in the outline, with neither text
+	// nor video yet. It cannot be opened and does not count in progress.
+	Upcoming bool `json:"upcoming,omitempty"`
 	// Unavailable marks a lesson the viewer did not retain of a course that
 	// left the library: it shows in the contents but cannot be opened.
 	Unavailable bool `json:"unavailable,omitempty"`
@@ -251,13 +265,16 @@ type LessonDetail struct {
 func summaryColumns(viewerParam string) string {
 	return `
 	c.id, c.title, c.type, c.completion, c.author_name, c.cover IS NOT NULL, c.visibility, c.publish_state,
-	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id),
+	c.uploader_id, (SELECT count(*) FROM lessons l WHERE l.course_id = c.id AND NOT ` + upcoming + `),
 	(SELECT count(*) FROM lesson_progress p JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
-	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done),
+	 WHERE p.course_id = c.id AND p.user_id = ` + viewerParam + ` AND p.done AND NOT ` + upcoming + `),
 	c.created_at, c.updated_at, c.files_dir,
 	EXISTS (SELECT 1 FROM course_readers r WHERE r.course_id = c.id AND r.user_id = ` + viewerParam + ` AND r.subscribed_at IS NOT NULL),
 	c.deleted_at IS NOT NULL`
 }
+
+// upcoming is the SQL telling whether lesson l is an upcoming lesson.
+const upcoming = `(l.file IS NULL AND l.video_file IS NULL AND l.video_url IS NULL)`
 
 // summaryFields are the scan targets matching summaryColumns.
 func summaryFields(s *Summary) []any {
@@ -385,8 +402,8 @@ func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int6
 	rows, err := s.db.Query(ctx, `
 		SELECT ch.id, ch.key, ch.title, l.id, l.key, l.title,
 		       CASE WHEN l.video_file IS NOT NULL THEN 'file' WHEN l.video_url IS NOT NULL THEN 'url' ELSE '' END,
-		       l.duration, l.file IS NOT NULL, `+lessonState+`
-		FROM chapters ch JOIN lessons l ON l.chapter_id = ch.id
+		       l.duration, l.file IS NOT NULL, `+upcoming+`, `+lessonState+`
+		FROM chapters ch LEFT JOIN lessons l ON l.chapter_id = ch.id
 		LEFT JOIN lesson_progress p ON p.user_id = $2 AND p.course_id = l.course_id AND p.lesson_key = l.key
 		WHERE ch.course_id = $1
 		ORDER BY ch.position, l.position`, courseID, viewer.ID)
@@ -396,17 +413,28 @@ func (s *Service) structure(ctx context.Context, viewer auth.User, courseID int6
 	defer rows.Close()
 	var out []ChapterDetail
 	for rows.Next() {
-		var ch ChapterDetail
-		var l LessonDetail
-		if err := rows.Scan(&ch.ID, &ch.Key, &ch.Title, &l.ID, &l.Key, &l.Title, &l.Video, &l.Duration, &l.HasText, &l.State); err != nil {
+		ch := ChapterDetail{Lessons: []LessonDetail{}}
+		var id *int64
+		var key, title, video, duration *string
+		var hasText, isUpcoming *bool
+		var state string
+		if err := rows.Scan(&ch.ID, &ch.Key, &ch.Title, &id, &key, &title, &video, &duration, &hasText, &isUpcoming, &state); err != nil {
 			return nil, err
 		}
 		if len(out) == 0 || out[len(out)-1].ID != ch.ID {
 			out = append(out, ch)
 		}
+		if id == nil {
+			continue // an empty chapter
+		}
+		l := LessonDetail{ID: *id, Key: *key, Title: *title, Video: *video, Duration: *duration, HasText: *hasText,
+			Upcoming: *isUpcoming, State: state}
 		last := &out[len(out)-1]
 		last.Lessons = append(last.Lessons, l)
-		if l.State == StateDone {
+		if !l.Upcoming {
+			last.Total++
+		}
+		if l.State == StateDone && !l.Upcoming {
 			last.Done++
 		}
 	}
@@ -519,6 +547,7 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 	const reason = "课程已删除"
 	var kept bool
 	var gone leaving
+	var drafts []int64
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		if kept, err = freeze(ctx, tx, id, RetentionDeleted); err != nil {
 			return err
@@ -541,6 +570,9 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 		if !kept {
 			return purge(ctx, tx, id)
 		}
+		if drafts, err = dropDrafts(ctx, tx, id); err != nil {
+			return err
+		}
 		// Only the freeze is read from now on, so the course keeps just its files.
 		_, err = tx.Exec(ctx, `
 			UPDATE courses SET visibility = 'private', publish_state = 'unpublished', deleted_at = now(), updated_at = now(),
@@ -556,6 +588,9 @@ func (s *Service) Delete(ctx context.Context, viewer auth.User, id int64) error 
 		return nil
 	}
 	s.dropUnused(ctx, id, sm.FilesDir) // newer than the freeze, if updated since unpublishing
+	for _, d := range drafts {
+		s.dropDraftFiles(ctx, id, d, "")
+	}
 	for _, r := range gone.settled {
 		if r.filesDir != "" {
 			s.dropFiles(ctx, id, r.filesDir)

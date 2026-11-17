@@ -10,22 +10,6 @@ import (
 	"github.com/Bank5y/keine/internal/notify"
 )
 
-// lessonFiles maps each of a course's current lessons to its text file
-// ("" for a lesson without text).
-func lessonFiles(ctx context.Context, tx pgx.Tx, courseID int64) (map[string]string, error) {
-	rows, err := tx.Query(ctx, "SELECT key, coalesce(file, '') FROM lessons WHERE course_id = $1", courseID)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]string{}
-	var key, file string
-	_, err = pgx.ForEachRow(rows, []any{&key, &file}, func() error {
-		out[key] = file
-		return nil
-	})
-	return out, err
-}
-
 func (s *Service) readFile(ctx context.Context, key string) ([]byte, error) {
 	rc, err := s.files.Get(ctx, key)
 	if err != nil {

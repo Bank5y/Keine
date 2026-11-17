@@ -37,6 +37,9 @@ type S3 struct {
 	client *minio.Client
 	bucket string
 	prefix string
+	// copyPartSize is the part size of a multipart copy; 0 lets the
+	// client choose. Tests lower it to exercise multipart copies.
+	copyPartSize uint64
 }
 
 func NewS3(ctx context.Context, cfg S3Config) (*S3, error) {
@@ -155,4 +158,20 @@ func mapS3Error(err error) error {
 		return ErrNotFound
 	}
 	return err
+}
+
+// Copy uses a server-side copy, so no data passes through the application.
+// A single CopyObject is capped at 5 GiB, so larger objects (long videos)
+// are copied part by part (UploadPartCopy), still on the server.
+func (s *S3) Copy(ctx context.Context, src, dst string) error {
+	if err := CheckKey(src); err != nil {
+		return err
+	}
+	if err := CheckKey(dst); err != nil {
+		return err
+	}
+	_, err := s.client.ComposeObject(ctx,
+		minio.CopyDestOptions{Bucket: s.bucket, Object: s.prefix + dst, PartSize: s.copyPartSize},
+		minio.CopySrcOptions{Bucket: s.bucket, Object: s.prefix + src})
+	return mapS3Error(err)
 }

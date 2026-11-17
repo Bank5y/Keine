@@ -2,6 +2,8 @@ package course
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -9,6 +11,7 @@ import (
 	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/notify"
+	"github.com/Bank5y/keine/internal/storage"
 )
 
 // AnnotationState is where an annotation stands after course updates (see
@@ -33,58 +36,87 @@ type lessonChange struct {
 
 // contentDiff is what replacing a course's lessons changes.
 type contentDiff struct {
-	added    int
-	removed  []string // lesson keys
+	removed  []string // keys of the lessons whose content is gone
 	modified []lessonChange
+	changes  Changes
 }
 
 // summary is the diff as subscribers are told it.
 func (d contentDiff) summary() notify.UpdatedPayload {
-	return notify.UpdatedPayload{Added: d.added, Removed: len(d.removed), Modified: len(d.modified)}
+	c := d.changes
+	return notify.UpdatedPayload{Added: c.Added, Removed: c.Removed, Modified: c.Modified, Renamed: c.Renamed, Moved: c.Moved}
 }
 
-// diffContent compares a course's lessons (before, with their files in
-// oldDir) with manifest m (files in newDir): a kept lesson is modified when
-// its text changed.
-func (s *Service) diffContent(ctx context.Context, courseID int64, before map[string]string, oldDir string, m Manifest, newDir string) (contentDiff, error) {
+// diffContent compares a course (before, with its files in oldDir) with
+// manifest m (files found through files): a kept lesson is modified when
+// its text changed, and the outline changes are listed chapter by chapter
+// (see Changes). Upcoming lessons have no content: one that gets content
+// is added, one whose content is taken away is removed. A kept lesson
+// whose text is the very file it had is unchanged without reading it, and
+// a text missing from storage reads as empty.
+func (s *Service) diffContent(ctx context.Context, courseID int64, before Manifest, oldDir string, m Manifest, files draftFiles) (contentDiff, error) {
 	var d contentDiff
+	prev := map[string]Lesson{}
+	for _, ch := range before.Chapters {
+		for _, l := range ch.Lessons {
+			prev[l.Key] = l
+		}
+	}
+	oldFiles := folderFiles(courseID, oldDir)
 	incoming := map[string]bool{}
+	modified := map[string]bool{}
 	for _, ch := range m.Chapters {
 		for _, l := range ch.Lessons {
 			incoming[l.Key] = true
-			oldFile, kept := before[l.Key]
-			if !kept {
-				d.added++
+			p, kept := prev[l.Key]
+			hadContent := kept && !p.Upcoming()
+			switch {
+			case l.Upcoming():
+				if hadContent {
+					d.removed = append(d.removed, l.Key)
+				}
+				continue
+			case !hadContent:
+				continue
+			case p.File != "" && l.File != "" && files.key(l.File) == oldFiles.key(p.File):
 				continue
 			}
-			old, err := s.lessonMarkdown(ctx, courseID, oldDir, oldFile)
+			old, err := s.lessonMarkdown(ctx, oldFiles, p.File)
 			if err != nil {
 				return d, err
 			}
-			next, err := s.lessonMarkdown(ctx, courseID, newDir, l.File)
+			next, err := s.lessonMarkdown(ctx, files, l.File)
 			if err != nil {
 				return d, err
 			}
-			if old != next || (oldFile == "") != (l.File == "") {
+			if old != next || (p.File == "") != (l.File == "") {
 				d.modified = append(d.modified, lessonChange{key: l.Key, old: old, new: next})
+				modified[l.Key] = true
 			}
 		}
 	}
-	for k := range before {
-		if !incoming[k] {
+	for k, p := range prev {
+		if !incoming[k] && !p.Upcoming() {
 			d.removed = append(d.removed, k)
 		}
 	}
+	d.changes = outlineChanges(before, m, modified)
 	return d, nil
 }
 
-// lessonMarkdown reads a lesson's text from a folder of course files; a
-// lesson without a text file has "".
-func (s *Service) lessonMarkdown(ctx context.Context, courseID int64, dir, file string) (string, error) {
+// lessonMarkdown reads a lesson's text; a lesson without a text file has
+// "". So does one whose file is missing from storage: that is logged, and
+// the update or review goes on, since nobody could restore the file from
+// the editor or a review.
+func (s *Service) lessonMarkdown(ctx context.Context, files draftFiles, file string) (string, error) {
 	if file == "" {
 		return "", nil
 	}
-	b, err := s.readFile(ctx, filesPrefix(courseID, dir)+file)
+	b, err := s.readFile(ctx, files.key(file))
+	if errors.Is(err, storage.ErrNotFound) {
+		slog.Warn("lesson text missing", "course", files.courseID, "file", files.key(file))
+		return "", nil
+	}
 	return string(b), err
 }
 

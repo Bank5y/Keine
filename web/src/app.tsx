@@ -6,6 +6,7 @@ import { useUser, type User } from '@/lib/session';
 import { AccountView } from '@/views/account';
 import { AdminView } from '@/views/admin';
 import { CourseView } from '@/views/course';
+import { CourseEditView } from '@/views/course-edit';
 import { LessonView } from '@/views/lesson';
 import { LibraryView } from '@/views/library';
 import { LoginView } from '@/views/login';
@@ -19,6 +20,8 @@ function routeView(path: string, user: User): ReactNode {
   if (mg) return <MigrateView courseId={Number(mg.id)} lessonId={Number(mg.lesson)} />;
   const l = match('/courses/:id/lessons/:lesson', path);
   if (l) return <LessonView courseId={Number(l.id)} lessonId={Number(l.lesson)} />;
+  const e = match('/courses/:id/edit', path);
+  if (e) return <CourseEditView id={Number(e.id)} />;
   const m = match('/courses/:id', path);
   if (m) return <CourseView id={Number(m.id)} />;
   if (path.startsWith('/mine')) return <MineView />;

@@ -162,13 +162,21 @@ func (s *Server) myCourses(w http.ResponseWriter, r *http.Request) {
 // writeCourseError answers the course errors shared by several endpoints and
 // reports whether err was nil.
 func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
+	var conflicts *course.RequestConflicts
 	switch {
 	case err == nil:
 		return true
+	case errors.As(err, &conflicts):
+		writeError(w, http.StatusConflict, "request_conflicts",
+			fmt.Sprintf("课程在申请提交后被更新过, 申请里有 %d 处修改已无法应用到最新版本; 请驳回, 让申请人重新提交", len(conflicts.Conflicts)))
+	case errors.Is(err, course.ErrCourseBusy):
+		writeError(w, http.StatusConflict, "course_busy", "课程刚刚有了变化, 请稍后重试")
 	case errors.Is(err, course.ErrNotFound):
 		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
 	case errors.Is(err, course.ErrLessonNotFound):
 		writeError(w, http.StatusNotFound, "lesson_not_found", "这一讲不存在")
+	case errors.Is(err, course.ErrLessonUpcoming):
+		writeError(w, http.StatusConflict, "lesson_upcoming", "这一讲还没有内容, 待更新")
 	case errors.Is(err, course.ErrFileNotFound):
 		writeError(w, http.StatusNotFound, "file_not_found", "文件不存在")
 	case errors.Is(err, course.ErrBadProgress):

@@ -3,6 +3,7 @@ package course
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -85,11 +86,15 @@ type Review struct {
 	Course    Summary   `json:"course"`
 	Requester Requester `json:"requester"`
 	CreatedAt time.Time `json:"createdAt"`
-	// Changes compares an update request's lessons with the course's.
+	// Changes compares an update request with the course as it is now.
 	Changes *Changes `json:"changes,omitempty"`
 	// Stale marks an update request submitted before the course last
 	// changed: it should be reviewed against the new content.
 	Stale bool `json:"stale"`
+	// Conflicts are the operations of a request made from a draft that no
+	// longer apply to the course's latest version; such a request cannot
+	// be approved.
+	Conflicts []Conflict `json:"conflicts,omitempty"`
 }
 
 type Requester struct {
@@ -100,7 +105,7 @@ type Requester struct {
 // Reviews lists the pending requests, oldest first.
 func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error) {
 	rows, err := s.db.Query(ctx, `
-		SELECT r.id, r.kind, r.created_at, u.id, u.username, coalesce(r.base_dir, ''), r.manifest, `+summaryColumns("$1")+`
+		SELECT r.id, r.kind, r.created_at, u.id, u.username, coalesce(r.base_dir, ''), coalesce(r.files_dir, ''), r.manifest, r.ops, `+summaryColumns("$1")+`
 		FROM review_requests r JOIN users u ON u.id = r.requester_id JOIN courses c ON c.id = r.course_id
 		WHERE r.state = 'pending' ORDER BY r.created_at, r.id`, admin.ID)
 	if err != nil {
@@ -108,13 +113,14 @@ func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error
 	}
 	type row struct {
 		Review
-		base     string
-		manifest []byte
+		req updateRequest
+		ops []byte
 	}
 	list, err := pgx.CollectRows(rows, func(cr pgx.CollectableRow) (row, error) {
 		var r row
-		err := cr.Scan(append([]any{&r.ID, &r.Kind, &r.CreatedAt, &r.Requester.ID, &r.Requester.Username, &r.base, &r.manifest}, summaryFields(&r.Course)...)...)
+		err := cr.Scan(append([]any{&r.ID, &r.Kind, &r.CreatedAt, &r.Requester.ID, &r.Requester.Username, &r.req.base, &r.req.dir, &r.req.manifest, &r.ops}, summaryFields(&r.Course)...)...)
 		r.Course.IsUploader = r.Course.UploaderID == admin.ID
+		r.req.courseID = r.Course.ID
 		return r, err
 	})
 	if err != nil {
@@ -123,10 +129,10 @@ func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error
 	out := make([]Review, 0, len(list))
 	for _, r := range list {
 		if r.Kind == reviewUpdate {
-			r.Stale = r.base != r.Course.FilesDir
-			m, _ := ParseManifest(r.manifest)
-			if r.Changes, err = s.changes(ctx, r.Course.ID, m); err != nil {
-				return nil, err
+			r.Stale = r.req.base != r.Course.FilesDir
+			// one request that cannot be compared must not hide the others
+			if err := s.reviewChanges(ctx, &r.Review, r.req, r.ops); err != nil {
+				slog.Warn("update request changes not shown", "review", r.ID, "course", r.Course.ID, "err", err)
 			}
 		}
 		out = append(out, r.Review)
@@ -134,37 +140,135 @@ func (s *Service) Reviews(ctx context.Context, admin auth.User) ([]Review, error
 	return out, nil
 }
 
+// reviewChanges compares an update request with the course as it is now.
+func (s *Service) reviewChanges(ctx context.Context, r *Review, req updateRequest, ops []byte) error {
+	if err := req.scanOps(ops); err != nil {
+		return err
+	}
+	cur, curDir, err := currentManifest(ctx, s.db, req.courseID)
+	if err != nil {
+		return err
+	}
+	if req.ops == nil {
+		req.manifest = lenientManifest(req.manifest)
+	}
+	p, err := req.propose(cur, curDir)
+	if err != nil {
+		return err
+	}
+	r.Conflicts = p.conflicts
+	d, err := s.diffContent(ctx, req.courseID, cur, curDir, p.m, p.files)
+	if err != nil {
+		return err
+	}
+	r.Changes = &d.changes
+	return nil
+}
+
+// lenientManifest is a stored manifest as it parses, problems or not, to
+// show what it would change.
+func lenientManifest(raw []byte) []byte {
+	m, _ := ParseManifest(raw)
+	if b, err := m.encode(); err == nil {
+		return b
+	}
+	return raw
+}
+
 // reviewRow is a pending request locked for deciding it.
 type reviewRow struct {
 	kind        string
-	courseID    int64
 	requesterID int64
-	filesDir    string // an update request's package
-	manifest    []byte
+	updateRequest
 }
 
-func pendingReview(ctx context.Context, tx pgx.Tx, id int64) (reviewRow, error) {
+func pendingReview(ctx context.Context, q querier, id int64, lock bool) (reviewRow, error) {
+	sql := `SELECT kind, course_id, requester_id, coalesce(files_dir, ''), coalesce(base_dir, ''), manifest, ops
+		FROM review_requests WHERE id = $1 AND state = $2`
+	if lock {
+		sql += " FOR UPDATE"
+	}
 	var r reviewRow
-	err := tx.QueryRow(ctx, `
-		SELECT kind, course_id, requester_id, coalesce(files_dir, ''), manifest
-		FROM review_requests WHERE id = $1 AND state = $2 FOR UPDATE`, id, reviewPending).
-		Scan(&r.kind, &r.courseID, &r.requesterID, &r.filesDir, &r.manifest)
+	var ops []byte
+	err := q.QueryRow(ctx, sql, id, reviewPending).
+		Scan(&r.kind, &r.courseID, &r.requesterID, &r.dir, &r.base, &r.manifest, &ops)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, ErrReviewNotFound
 	}
-	return r, err
+	if err != nil {
+		return r, err
+	}
+	return r, r.scanOps(ops)
 }
 
 // Approve grants a pending request: a publish request puts the course into
 // the library; an update request replaces the course's content and credits
 // a requester who is not the uploader as a contributor.
+//
+// A request made from a draft replays its operations on the course's
+// latest version (ADR-0006); one that no longer applies as a whole is
+// *RequestConflicts. Filed against an older version, its files are first
+// copied into a new folder, with no lock held; if the course changed
+// meanwhile the approval starts over.
 func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) error {
+	for attempt := 1; ; attempt++ {
+		err := s.approve(ctx, admin, reviewID)
+		if !errors.Is(err, ErrCourseBusy) || attempt == busyAttempts {
+			return err
+		}
+	}
+}
+
+// copiedRequest is a draft request's files copied into a new folder for
+// the course's version in folder base, making course m.
+type copiedRequest struct {
+	courseID  int64
+	dir, base string
+	m         Manifest
+}
+
+// copyRequest copies the files of a draft request that cannot become the
+// course's content in place; a zero copiedRequest when none is needed.
+func (s *Service) copyRequest(ctx context.Context, reviewID int64) (copiedRequest, error) {
+	r, err := pendingReview(ctx, s.db, reviewID, false)
+	if err != nil || r.kind != reviewUpdate || r.ops == nil {
+		return copiedRequest{}, err
+	}
+	cur, curDir, err := currentManifest(ctx, s.db, r.courseID)
+	if err != nil {
+		return copiedRequest{}, err
+	}
+	p, err := r.propose(cur, curDir)
+	if err != nil {
+		return copiedRequest{}, err
+	}
+	if len(p.conflicts) > 0 {
+		return copiedRequest{}, &RequestConflicts{p.conflicts}
+	}
+	if p.inPlace {
+		return copiedRequest{}, nil
+	}
+	c := copiedRequest{courseID: r.courseID, dir: newFilesDir(), base: curDir, m: p.m}
+	if err := s.copyFiles(ctx, p.files, c.dir, p.m); err != nil {
+		s.dropFiles(ctx, r.courseID, c.dir)
+		return copiedRequest{}, err
+	}
+	return c, nil
+}
+
+func (s *Service) approve(ctx context.Context, admin auth.User, reviewID int64) error {
+	copied, err := s.copyRequest(ctx, reviewID)
+	if err != nil {
+		return err
+	}
 	var drop struct {
 		courseID int64
-		dir      string
+		prev     string // the course's folder before
+		request  string // the request's folder, when the course did not switch to it
 	}
-	err := s.tx(ctx, func(tx pgx.Tx) error {
-		r, err := pendingReview(ctx, tx, reviewID)
+	used := false // whether the course switched to copied.dir
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		r, err := pendingReview(ctx, tx, reviewID, true)
 		if err != nil {
 			return err
 		}
@@ -173,28 +277,38 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 		}
 		if r.kind == reviewPublish {
 			drop.courseID = r.courseID
-			if drop.dir, err = publish(ctx, tx, r.courseID); err != nil {
+			if drop.prev, err = publish(ctx, tx, r.courseID); err != nil {
 				return err
 			}
 			return notifyApproved(ctx, tx, r.requesterID, notify.PublishApproved, r.courseID)
 		}
 		var uploader int64
-		if err := tx.QueryRow(ctx, "SELECT uploader_id, files_dir FROM courses WHERE id = $1 FOR UPDATE", r.courseID).Scan(&uploader, &drop.dir); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT uploader_id, files_dir FROM courses WHERE id = $1 FOR UPDATE", r.courseID).Scan(&uploader, &drop.prev); err != nil {
 			return err
 		}
-		m, problems := ParseManifest(r.manifest)
-		if len(problems) > 0 {
-			return &InvalidPackage{problems}
-		}
-		before, err := lessonFiles(ctx, tx, r.courseID)
+		before, _, err := currentManifest(ctx, tx, r.courseID)
 		if err != nil {
 			return err
 		}
-		diff, err := s.diffContent(ctx, r.courseID, before, drop.dir, m, r.filesDir)
+		p, err := r.propose(before, drop.prev)
 		if err != nil {
 			return err
 		}
-		if err := switchContent(ctx, tx, r.courseID, m, r.filesDir); err != nil {
+		if len(p.conflicts) > 0 {
+			return &RequestConflicts{p.conflicts}
+		}
+		next := r.dir
+		if !p.inPlace {
+			if copied.dir == "" || copied.base != drop.prev || !sameFiles(copied.m, p.m) {
+				return ErrCourseBusy // the copy was made for another version
+			}
+			next, used, drop.request = copied.dir, true, r.dir
+		}
+		diff, err := s.diffContent(ctx, r.courseID, before, drop.prev, p.m, p.files)
+		if err != nil {
+			return err
+		}
+		if err := switchContent(ctx, tx, r.courseID, p.m, next); err != nil {
 			return err
 		}
 		if err := carryAnnotations(ctx, tx, r.courseID, diff); err != nil {
@@ -213,10 +327,19 @@ func (s *Service) Approve(ctx context.Context, admin auth.User, reviewID int64) 
 		_, err = tx.Exec(ctx, "INSERT INTO course_contributors (course_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", r.courseID, r.requesterID)
 		return err
 	})
-	if err == nil && drop.courseID != 0 {
-		s.dropUnused(ctx, drop.courseID, drop.dir)
+	if copied.dir != "" && (err != nil || !used) {
+		s.dropFiles(ctx, copied.courseID, copied.dir)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if drop.courseID != 0 {
+		s.dropUnused(ctx, drop.courseID, drop.prev)
+	}
+	if drop.request != "" {
+		s.dropFiles(ctx, drop.courseID, drop.request)
+	}
+	return nil
 }
 
 // Reject turns a pending request down; the reason is shown to the requester.
@@ -228,7 +351,7 @@ func (s *Service) Reject(ctx context.Context, admin auth.User, reviewID int64, r
 	var r reviewRow
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		var err error
-		if r, err = pendingReview(ctx, tx, reviewID); err != nil {
+		if r, err = pendingReview(ctx, tx, reviewID, true); err != nil {
 			return err
 		}
 		if err := decide(ctx, tx, reviewID, reviewRejected, reason, &admin); err != nil {
@@ -242,8 +365,8 @@ func (s *Service) Reject(ctx context.Context, admin auth.User, reviewID int64, r
 		}
 		return notifyRejected(ctx, tx, r.requesterID, notify.UpdateRejected, r.courseID, reason)
 	})
-	if err == nil && r.filesDir != "" {
-		s.dropFiles(ctx, r.courseID, r.filesDir)
+	if err == nil && r.dir != "" {
+		s.dropFiles(ctx, r.courseID, r.dir)
 	}
 	return err
 }

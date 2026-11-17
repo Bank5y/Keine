@@ -35,9 +35,14 @@ func (s *Service) lessonKey(ctx context.Context, viewer auth.User, courseID, les
 		return l.Key, nil
 	}
 	var key string
-	err = s.db.QueryRow(ctx, "SELECT key FROM lessons WHERE id = $1 AND course_id = $2", lessonID, courseID).Scan(&key)
-	if errors.Is(err, pgx.ErrNoRows) {
+	var isUpcoming bool
+	err = s.db.QueryRow(ctx, "SELECT l.key, "+upcoming+" FROM lessons l WHERE l.id = $1 AND l.course_id = $2", lessonID, courseID).
+		Scan(&key, &isUpcoming)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
 		return "", ErrLessonNotFound
+	case err == nil && isUpcoming:
+		return "", ErrLessonUpcoming
 	}
 	return key, err
 }

@@ -5,6 +5,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { ErrorBox } from '@/components/common';
 import { ApiError, upload, type Problem } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { videosInZip } from '@/lib/videos';
+import { useVideoNotice } from '@/components/video-notice';
 
 const PROMPT_URL = '/api/manifest/prompt';
 
@@ -17,7 +19,9 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
   const [progress, setProgress] = useState<number | null>(null);
   const [err, setErr] = useState<{ message: string; problems: Problem[] } | null>(null);
   const [over, setOver] = useState(false);
+  const [checking, setChecking] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const { confirmVideos, notice } = useVideoNotice();
 
   useEffect(() => { if (open) { setFile(null); setProgress(null); setErr(null); } }, [open]);
 
@@ -27,6 +31,10 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
   async function send() {
     if (!file) return;
     setErr(null);
+    setChecking(true);
+    const videos = await videosInZip(file);
+    setChecking(false);
+    if (!(await confirmVideos(videos))) return;
     setProgress(0);
     try {
       if (courseId && request) {
@@ -49,7 +57,7 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
     }
   }
 
-  const busy = progress !== null;
+  const busy = progress !== null || checking;
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v && !busy) onClose(); }} title={request ? '提交更新申请' : (courseId ? '更新课程' : '上传课程')} wide>
       {request ? (
@@ -86,7 +94,7 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
         <div>{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : '.zip 文件'}</div>
         <input ref={input} type="file" accept=".zip,application/zip" hidden onChange={(e) => pick(e.target.files?.[0])} />
       </div>
-      {busy ? (
+      {progress !== null ? (
         <>
           <div className="bar"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
           <div className="text-xs text-ink-3">{progress < 1 ? `上传中 ${Math.round(progress * 100)}%` : '上传完成, 正在校验和导入…'}</div>
@@ -96,6 +104,7 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
         <Button onClick={onClose} disabled={busy}>取消</Button>
         <Button variant="default" onClick={send} disabled={!file || busy}>{request ? '提交' : (courseId ? '更新' : '上传')}</Button>
       </div>
+      {notice}
     </Dialog>
   );
 }

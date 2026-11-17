@@ -3,6 +3,7 @@ package course
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -35,24 +36,74 @@ func (s *Service) SubmitUpdate(ctx context.Context, viewer auth.User, id int64, 
 	if err != nil {
 		return 0, err
 	}
-	dir := fmt.Sprintf("r%d", time.Now().UnixNano())
+	dir := newRequestDir()
 	if err := s.storeFiles(ctx, pp, filesPrefix(id, dir)); err != nil {
 		s.dropFiles(ctx, id, dir)
 		return 0, err
 	}
-	var reqID int64
+	var f filedRequest
 	err = s.tx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest)
-			VALUES ('update', $1, $2, $3, $4, $5) RETURNING id`, id, viewer.ID, dir, sm.FilesDir, pp.raw).Scan(&reqID); err != nil {
-			return err
-		}
-		return tellAdmins(ctx, tx, notify.UpdateRequested, id, reqID, viewer)
+		var err error
+		f, err = fileUpdateRequest(ctx, tx, id, viewer, dir, sm.FilesDir, pp.raw, nil)
+		return err
 	})
 	if err != nil {
 		s.dropFiles(ctx, id, dir)
+		return 0, err
 	}
-	return reqID, err
+	s.dropReplaced(ctx, id, f)
+	return f.id, nil
+}
+
+// newRequestDir names a fresh folder for an update request's files.
+func newRequestDir() string { return fmt.Sprintf("r%d", time.Now().UnixNano()) }
+
+// filedRequest is an update request just recorded, with the folders of the
+// requester's earlier pending requests it replaced, to remove once the
+// transaction commits.
+type filedRequest struct {
+	id       int64
+	replaced []string
+}
+
+// fileUpdateRequest records an update request whose course (manifest) and
+// files (in folder dir) are ready, made against the course version in
+// folder base, and tells the admins. A request made from a draft also has
+// the draft's operations (JSON), to replay on the latest version; nil for
+// a whole package. The requester's earlier pending
+// request for the course is withdrawn: admins only review the latest one.
+func fileUpdateRequest(ctx context.Context, tx pgx.Tx, courseID int64, requester auth.User, dir, base string, manifest, ops []byte) (filedRequest, error) {
+	var f filedRequest
+	rows, err := tx.Query(ctx, `
+		UPDATE review_requests SET state = 'withdrawn', decided_at = now()
+		WHERE course_id = $1 AND requester_id = $2 AND kind = 'update' AND state = 'pending'
+		RETURNING coalesce(files_dir, '')`, courseID, requester.ID)
+	if err != nil {
+		return f, err
+	}
+	if f.replaced, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+		return f, err
+	}
+	if len(f.replaced) > 0 {
+		if err := closeRequestNotices(ctx, tx, courseID); err != nil {
+			return f, err
+		}
+	}
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO review_requests (kind, course_id, requester_id, files_dir, base_dir, manifest, ops)
+		VALUES ('update', $1, $2, $3, $4, $5, $6) RETURNING id`, courseID, requester.ID, dir, base, manifest, ops).Scan(&f.id); err != nil {
+		return f, err
+	}
+	return f, tellAdmins(ctx, tx, notify.UpdateRequested, courseID, f.id, requester)
+}
+
+// dropReplaced removes the folders of requests a new one replaced.
+func (s *Service) dropReplaced(ctx context.Context, courseID int64, f filedRequest) {
+	for _, dir := range f.replaced {
+		if dir != "" {
+			s.dropFiles(ctx, courseID, dir)
+		}
+	}
 }
 
 // UpdateRequest is one of the viewer's update requests for a course.
@@ -102,45 +153,68 @@ func (s *Service) WithdrawUpdate(ctx context.Context, viewer auth.User, courseID
 	return err
 }
 
-// Changes compares a manifest's lessons with a course's current ones.
-type Changes struct {
-	Added   []string `json:"added"`
-	Removed []string `json:"removed"`
-	Kept    int      `json:"kept"`
+// updateRequest is a pending update request as stored.
+type updateRequest struct {
+	courseID int64
+	dir      string // the folder of its files
+	base     string // the course's folder when it was filed
+	manifest []byte // the course it makes of that version
+	ops      []Op   // a draft request's operations; nil for a whole package
 }
 
-func (s *Service) changes(ctx context.Context, courseID int64, m Manifest) (*Changes, error) {
-	rows, err := s.db.Query(ctx, `
-		SELECT l.key, l.title FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id
-		WHERE l.course_id = $1 ORDER BY ch.position, l.position`, courseID)
-	if err != nil {
-		return nil, err
+func (r *updateRequest) scanOps(raw []byte) error {
+	if raw == nil {
+		return nil
 	}
-	type lesson struct{ Key, Title string }
-	current, err := pgx.CollectRows(rows, pgx.RowToStructByPos[lesson])
-	if err != nil {
-		return nil, err
+	r.ops = []Op{}
+	if err := json.Unmarshal(raw, &r.ops); err != nil {
+		return err
 	}
-	incoming := map[string]bool{}
-	c := &Changes{Added: []string{}, Removed: []string{}}
-	have := map[string]bool{}
-	for _, l := range current {
-		have[l.Key] = true
-	}
-	for _, ch := range m.Chapters {
-		for _, l := range ch.Lessons {
-			incoming[l.Key] = true
-			if have[l.Key] {
-				c.Kept++
-			} else {
-				c.Added = append(c.Added, l.Title)
-			}
+	nameOps(r.ops)
+	return nil
+}
+
+// proposal is what an update request makes of a course's latest version.
+type proposal struct {
+	m     Manifest
+	files draftFiles // where m's files are
+	// conflicts are a draft request's operations that no longer apply.
+	conflicts []Conflict
+	// inPlace: the request's folder holds just the files m uses, so the
+	// course can switch to it; otherwise they must be copied into a new
+	// folder first.
+	inPlace bool
+}
+
+// propose applies update request r to the course's latest version cur,
+// with its files in curDir. A whole package replaces the course as it is;
+// a draft request replays its operations on cur (ADR-0006), with the
+// files of the lessons it gave content in the request's folder and the
+// others where the course has them now.
+func (r updateRequest) propose(cur Manifest, curDir string) (proposal, error) {
+	snapshot, problems := ParseManifest(r.manifest)
+	if r.ops == nil {
+		if len(problems) > 0 {
+			return proposal{}, &InvalidPackage{problems}
 		}
+		return proposal{m: snapshot, files: folderFiles(r.courseID, r.dir), inPlace: true}, nil
 	}
-	for _, l := range current {
-		if !incoming[l.Key] {
-			c.Removed = append(c.Removed, l.Title)
-		}
-	}
-	return c, nil
+	m, conflicts := replayOps(cur, r.ops)
+	return proposal{
+		m:         m,
+		files:     draftFiles{courseID: r.courseID, dir: curDir, area: filesPrefix(r.courseID, r.dir), uploads: opUploads(r.ops)},
+		conflicts: conflicts,
+		// filed against this very version, it makes what was filed
+		inPlace: r.base == curDir && len(problems) == 0 && sameFiles(m, snapshot),
+	}, nil
+}
+
+// RequestConflicts means an update request made from a draft no longer
+// applies to the course's latest version as a whole: someone else's update
+// came first. Approving it would drop these of its operations unseen by
+// the requester, so it can only be turned down.
+type RequestConflicts struct{ Conflicts []Conflict }
+
+func (e *RequestConflicts) Error() string {
+	return fmt.Sprintf("%d operations of the request no longer apply", len(e.Conflicts))
 }

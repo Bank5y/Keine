@@ -75,3 +75,51 @@ func TestManifestPromptRequiresSignIn(t *testing.T) {
 
 	expectError(t, a.client().do("GET", "/api/manifest/prompt", nil), http.StatusUnauthorized, "unauthenticated")
 }
+
+// The template also shows an ongoing course's outline: an upcoming lesson
+// and an empty chapter, which the importer accepts.
+func TestManifestPromptShowsAnOutlineThatImports(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	body := string(alice.mustOK(alice.do("GET", "/api/manifest/prompt", nil)).body)
+	if !strings.Contains(body, "待更新的讲") {
+		t.Fatal("the template explains upcoming lessons")
+	}
+
+	var outline string
+	for _, b := range regexp.MustCompile("(?s)```json\n(.*?)\n```").FindAllStringSubmatch(body, -1) {
+		if strings.Contains(b[1], `"ongoing"`) {
+			outline = b[1]
+		}
+	}
+	if outline == "" {
+		t.Fatal("template has no ```json example of an ongoing course")
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(outline), &m); err != nil {
+		t.Fatalf("outline example is not JSON: %v", err)
+	}
+	files := map[string]string{"course.json": outline}
+	for _, ch := range m["chapters"].([]any) {
+		for _, l := range ch.(map[string]any)["lessons"].([]any) {
+			if f, ok := l.(map[string]any)["file"].(string); ok {
+				files[f] = "# text"
+			}
+		}
+	}
+
+	id := uploadCourse(t, alice, files)
+
+	d := courseJSON(t, alice, id)
+	empty, upcoming := false, false
+	for _, ch := range d["chapters"].([]any) {
+		lessons := ch.(map[string]any)["lessons"].([]any)
+		empty = empty || len(lessons) == 0
+		for _, l := range lessons {
+			upcoming = upcoming || l.(map[string]any)["upcoming"] == true
+		}
+	}
+	if !empty || !upcoming {
+		t.Fatalf("the outline example shows an empty chapter and an upcoming lesson: %v", d["chapters"])
+	}
+}

@@ -60,9 +60,13 @@ func TestUploaderUpdatesAPublishedCourseThroughReview(t *testing.T) {
 		t.Fatalf("expected one update review, got %v", reviews)
 	}
 	ch := reviews[0]["changes"].(map[string]any)
-	if fmt.Sprint(ch["added"]) != "[03｜Plan]" || fmt.Sprint(ch["removed"]) != "[开篇词]" || ch["kept"] != float64(2) {
+	if ch["added"] != float64(1) || ch["removed"] != float64(1) || ch["modified"] != float64(2) || ch["renamed"] != float64(1) || ch["kept"] != float64(2) {
 		t.Fatalf("unexpected changes: %v", ch)
 	}
+	expectChanges(t, reviews[0],
+		"意图识别: 01｜用户输入规范化 (修订)[modified,renamed], 02｜三层意图识别[modified]",
+		"计划[added]: 03｜Plan[added]",
+		"开篇[removed]: 开篇词[removed]")
 
 	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/reviews/%d/approve", int(reviews[0]["id"].(float64))), nil))
 

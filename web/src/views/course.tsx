@@ -12,7 +12,7 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
-import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, type ChapterItem, type CourseDetail } from '@/lib/courses';
+import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, readable, type ChapterItem, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { cn } from '@/lib/utils';
@@ -83,9 +83,9 @@ export function CourseView({ id }: { id: number }) {
 
 // ContinueButton opens the lesson studied last, or the first readable lesson.
 function ContinueButton({ c }: { c: CourseDetail }) {
-  const readable = c.chapters.flatMap((ch) => ch.lessons).filter((l) => !l.unavailable);
-  const last = readable.find((l) => l.id === c.progress.lastLessonId);
-  const target = last?.id ?? readable[0]?.id;
+  const lessons = c.chapters.flatMap((ch) => ch.lessons).filter(readable);
+  const last = lessons.find((l) => l.id === c.progress.lastLessonId);
+  const target = last?.id ?? lessons[0]?.id;
   if (!target) return null;
   const started = last != null;
   return (
@@ -138,8 +138,8 @@ function filterToc(chapters: ChapterItem[], q: string) {
   if (!q) return chapters;
   const ql = q.toLowerCase();
   return chapters
-    .map((ch) => (ch.title.toLowerCase().includes(ql) ? ch : { ...ch, lessons: ch.lessons.filter((l) => l.title.toLowerCase().includes(ql)) }))
-    .filter((ch) => ch.lessons.length);
+    .map((ch) => (ch.title.toLowerCase().includes(ql) ? { ...ch, match: true } : { ...ch, match: false, lessons: ch.lessons.filter((l) => l.title.toLowerCase().includes(ql)) }))
+    .filter((ch) => ch.match || ch.lessons.length);
 }
 
 // progressChapter is the chapter of the lesson studied last, or the first.
@@ -180,11 +180,19 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
             <ChevronRight className="chev" />
             <span className="c-no">第 {pad2(chapterNo.get(ch.id)!)} 章</span>
             <span className="c-title"><Highlight text={ch.title} q={q} /></span>
-            <span className={cn('c-meta', ch.done === ch.lessons.length && 'complete')}>{ch.done} / {ch.lessons.length}</span>
+            {ch.total ? <span className={cn('c-meta', ch.done === ch.total && 'complete')}>{ch.done} / {ch.total}</span> : <span className="c-meta upcoming-mark">待更新</span>}
           </button>
           <Fold open={isOpen(ch.id)}>
             <div className="lessons">
-              {ch.lessons.map((l) => l.unavailable ? (
+              {!ch.lessons.length ? <span className="entry upcoming empty-chapter" aria-disabled="true"><span className="e-title">这一章还没有讲</span><span className="e-lead" /><span className="e-state upcoming-mark">待更新</span></span> : null}
+              {ch.lessons.map((l) => l.upcoming ? (
+                <span className="entry upcoming" key={l.id} aria-disabled="true">
+                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
+                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  <span className="e-lead" />
+                  <span className="e-state upcoming-mark">待更新</span>
+                </span>
+              ) : l.unavailable ? (
                 <span className="entry unavailable" key={l.id} aria-disabled="true">
                   <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
                   {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}

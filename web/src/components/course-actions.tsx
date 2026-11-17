@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { PenLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -9,19 +10,19 @@ import { RejectDialog } from '@/components/reject-dialog';
 import { UploadDialog } from '@/components/upload-dialog';
 import { api, ApiError } from '@/lib/api';
 import { COMPLETION_LABEL, type Completion, type CourseDetail, type Review, type UpdateRequest } from '@/lib/courses';
-import { navigate } from '@/lib/router';
+import { Link, navigate } from '@/lib/router';
 import { useUser } from '@/lib/session';
 
 const fail = (ex: unknown) => toast.error(ex instanceof ApiError ? ex.message : '操作失败');
 
 // CourseActions offers what the viewer may do with a course in its current
-// state: the uploader asks for it to be published (or withdraws, or asks
+// state: those who may change it open the course editor; the uploader asks for it to be published (or withdraws, or asks
 // again after a rejection); an admin reviews, publishes, unpublishes, edits
 // and deletes.
 export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
   const user = useUser();
   const admin = user?.role === 'admin';
-  const [dialog, setDialog] = useState<'' | 'unpublish' | 'delete' | 'edit' | 'reject' | 'update' | 'request'>('');
+  const [dialog, setDialog] = useState<'' | 'unpublish' | 'delete' | 'edit' | 'reject' | 'request'>('');
   const [requests, setRequests] = useState<UpdateRequest[]>([]);
   const [review, setReview] = useState<Review | null>(null);
 
@@ -40,6 +41,10 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
   };
   const isPrivate = c.visibility === 'private';
   const canRequest = !isPrivate && !admin && (c.isUploader || c.completion !== 'finished');
+  // the course editor: directly for a private course's uploader and for an
+  // admin on a public course; as an update request for the others who may
+  // ask for one
+  const canEdit = (isPrivate && c.isUploader) || (admin && !isPrivate) || canRequest;
   const pending = requests.find((r) => r.state === 'pending');
   const latest = requests[0];
 
@@ -53,8 +58,8 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
           {c.publishState === 'rejected' ? '再次申请公开' : '申请公开'}
         </Button>
       ) : null}
-      {isPrivate && c.isUploader ? (
-        <Button variant="ghost" onClick={() => setDialog('update')}>更新课程</Button>
+      {canEdit ? (
+        <Button variant="ghost" asChild><Link href={`/courses/${c.id}/edit`}><PenLine />编辑课程</Link></Button>
       ) : null}
       {isPrivate && c.isUploader && c.publishState === 'pending' ? (
         <Button variant="ghost" onClick={() => act('DELETE', `/api/courses/${c.id}/publish-request`, '已撤回公开申请')}>撤回公开申请</Button>
@@ -79,7 +84,6 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
       ) : latest && latest.state === 'rejected' ? (
         <div className="reject-note"><b>更新申请被驳回</b><p>{latest.reason}</p></div>
       ) : null}
-      {admin && !isPrivate ? <Button variant="ghost" onClick={() => setDialog('update')}>更新课程</Button> : null}
       {admin && isPrivate && !review ? (
         <Button onClick={() => act('POST', `/api/admin/courses/${c.id}/publish`, '已公开到课程库')}>直接公开</Button>
       ) : null}
@@ -101,7 +105,6 @@ export function CourseActions({ c, onChange }: { c: CourseDetail; onChange: () =
       </Confirm>
       <RejectDialog open={dialog === 'reject'} title="驳回公开申请" onClose={() => setDialog('')}
         onReject={(reason) => act('POST', `/api/admin/reviews/${review?.id}/reject`, '已驳回', { reason })} />
-      <UploadDialog courseId={c.id} open={dialog === 'update'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); onChange(); }} />
       <UploadDialog courseId={c.id} request open={dialog === 'request'} onClose={() => setDialog('')} onUploaded={() => { setDialog(''); void loadRequests(); }} />
       <EditDialog c={c} open={dialog === 'edit'} onClose={() => setDialog('')} onSaved={() => { setDialog(''); onChange(); }} />
     </div>

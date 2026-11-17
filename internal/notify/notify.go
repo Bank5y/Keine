@@ -52,6 +52,9 @@ const (
 	// UpdateRequested tells every admin someone submitted an update request;
 	// it is marked read once the request is decided or withdrawn.
 	UpdateRequested Kind = "update_requested"
+	// DraftExpiring tells a user their course draft has gone untouched so
+	// long that it is deleted in a few days unless they work on it.
+	DraftExpiring Kind = "draft_expiring"
 )
 
 // sticky kinds stay in the inbox after they are read, until dismissed.
@@ -74,19 +77,28 @@ type PendingPayload struct {
 	LessonID    int64 `json:"lessonId"`
 }
 
-// UpdatedPayload counts the lessons an update added, removed and modified
-// (kept lessons whose text changed).
+// UpdatedPayload counts the lessons an update added, removed, modified
+// (kept lessons whose text changed), renamed and moved (to another chapter,
+// or out of their order).
 type UpdatedPayload struct {
 	CoursePayload
 	Added    int `json:"added"`
 	Removed  int `json:"removed"`
 	Modified int `json:"modified"`
+	Renamed  int `json:"renamed"`
+	Moved    int `json:"moved"`
 }
 
 // DeletedPayload is a deleted course with the lessons the subscriber keeps.
 type DeletedPayload struct {
 	CoursePayload
 	RetainedCount int `json:"retainedCount"`
+}
+
+// ExpiringPayload is a course draft and when it will be deleted.
+type ExpiringPayload struct {
+	CoursePayload
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // CoursePayload names the course a notification is about, as it was then.

@@ -49,6 +49,8 @@ type Chapter struct {
 	Lessons []Lesson
 }
 
+// Lesson is a lesson of the manifest. One with neither text nor video is an
+// upcoming lesson: listed in the outline, not readable yet.
 type Lesson struct {
 	Key       string
 	Title     string
@@ -56,6 +58,21 @@ type Lesson struct {
 	VideoFile string // package-relative video, or ""
 	VideoURL  string // external video link, or ""
 	Duration  string
+}
+
+// Upcoming tells whether the lesson is an upcoming lesson.
+func (l Lesson) Upcoming() bool { return l.File == "" && l.VideoFile == "" && l.VideoURL == "" }
+
+// hasUpcoming tells whether any lesson of the manifest is upcoming.
+func (m Manifest) hasUpcoming() bool {
+	for _, ch := range m.Chapters {
+		for _, l := range ch.Lessons {
+			if l.Upcoming() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Problem is one thing wrong with a course package. Path points into the
@@ -179,6 +196,9 @@ func (v *validator) manifest(root any) Manifest {
 		m.Cover = v.filePath(c, "cover")
 	}
 	m.Chapters = v.chapters(obj["chapters"], m.Type)
+	if m.Completion == Finished && m.hasUpcoming() {
+		v.add("completion", "课程里还有待更新的讲 (既没有 file 也没有 video 的讲), 不能标为已完结; 请改为 %q (连载中) 或 %q (缺失)", Ongoing, Incomplete)
+	}
 	return m
 }
 
@@ -198,9 +218,11 @@ func (v *validator) chapters(x any, typ string) []Chapter {
 			continue
 		}
 		ch := Chapter{Key: v.key(obj, at, chapterKeys, "章"), Title: v.str(obj, "title", at, true)}
-		lessons, ok := obj["lessons"].([]any)
-		if !ok || len(lessons) == 0 {
-			v.add(at+".lessons", "每章至少需要一讲")
+		var lessons []any
+		if lx, present := obj["lessons"]; present && lx != nil {
+			if lessons, ok = lx.([]any); !ok {
+				v.add(at+".lessons", "必须是数组")
+			}
 		}
 		for j, lx := range lessons {
 			ch.Lessons = append(ch.Lessons, v.lesson(lx, fmt.Sprintf("%s.lessons[%d]", at, j), typ, lessonKeys))
@@ -250,6 +272,9 @@ func (v *validator) lesson(x any, at, typ string, seen map[string]bool) Lesson {
 			}
 		}
 	}
+	if _, hasVideo := obj["video"]; l.File == "" && !hasVideo {
+		return l // an upcoming lesson: only its title so far
+	}
 	switch typ {
 	case TypeColumn:
 		if l.File == "" {
@@ -288,6 +313,53 @@ func cleanPath(p string) (string, bool) {
 func isWebURL(s string) bool {
 	u, err := url.Parse(s)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// encode writes the manifest as the course.json that describes it, so a
+// course made by a draft is stored and read back like an uploaded one.
+func (m Manifest) encode() ([]byte, error) {
+	type video struct {
+		File string `json:"file,omitempty"`
+		URL  string `json:"url,omitempty"`
+	}
+	type lesson struct {
+		ID       string `json:"id"`
+		Title    string `json:"title"`
+		File     string `json:"file,omitempty"`
+		Video    *video `json:"video,omitempty"`
+		Duration string `json:"duration,omitempty"`
+	}
+	type chapter struct {
+		ID      string   `json:"id"`
+		Title   string   `json:"title"`
+		Lessons []lesson `json:"lessons"`
+	}
+	type author struct {
+		Name  string `json:"name,omitempty"`
+		Intro string `json:"intro,omitempty"`
+	}
+	out := struct {
+		Version    int       `json:"version"`
+		Title      string    `json:"title"`
+		Type       string    `json:"type"`
+		Completion string    `json:"completion"`
+		Intro      string    `json:"intro,omitempty"`
+		Author     author    `json:"author"`
+		Cover      string    `json:"cover,omitempty"`
+		Chapters   []chapter `json:"chapters"`
+	}{ManifestVersion, m.Title, m.Type, m.Completion, m.Intro, author{m.AuthorName, m.AuthorIntro}, m.Cover, []chapter{}}
+	for _, ch := range m.Chapters {
+		c := chapter{ID: ch.Key, Title: ch.Title, Lessons: []lesson{}}
+		for _, l := range ch.Lessons {
+			e := lesson{ID: l.Key, Title: l.Title, File: l.File, Duration: l.Duration}
+			if l.VideoFile != "" || l.VideoURL != "" {
+				e.Video = &video{File: l.VideoFile, URL: l.VideoURL}
+			}
+			c.Lessons = append(c.Lessons, e)
+		}
+		out.Chapters = append(out.Chapters, c)
+	}
+	return json.Marshal(out)
 }
 
 func contains(list []string, s string) bool {

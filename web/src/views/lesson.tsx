@@ -12,7 +12,7 @@ import { LessonVideoView } from '@/components/video';
 import { ImageZoom } from '@/components/zoom';
 import { api } from '@/lib/api';
 import { migrateURL } from '@/lib/annotations';
-import { lessonURL, pad2, type CourseDetail, type LessonItem, type LessonState, type LessonText } from '@/lib/courses';
+import { lessonURL, pad2, readable, type CourseDetail, type LessonItem, type LessonState, type LessonText } from '@/lib/courses';
 import { useReadingProgress } from '@/lib/use-reading-progress';
 import { Link, navigate } from '@/lib/router';
 import { useHeadings, type Heading } from '@/lib/use-headings';
@@ -28,7 +28,7 @@ const withoutTitle = (md: string) => md.replace(/^\s*#\s[^\n]*\n?/, '');
 
 // neighbours finds the readable lessons before and after one, across chapters.
 function neighbours(c: CourseDetail | null, lessonId: number) {
-  const flat: LessonItem[] = c ? c.chapters.flatMap((ch) => ch.lessons).filter((l) => !l.unavailable) : [];
+  const flat: LessonItem[] = c ? c.chapters.flatMap((ch) => ch.lessons).filter(readable) : [];
   const i = flat.findIndex((l) => l.id === lessonId);
   return { prev: i > 0 ? flat[i - 1] : null, next: i >= 0 && i < flat.length - 1 ? flat[i + 1] : null };
 }
@@ -248,11 +248,21 @@ function CourseToc({ c, current, docked }: { c: CourseDetail; current: number; d
           <div className="side-ch" key={ch.id}>
             <button type="button" className={cn('side-ch-head', open && 'open')} data-chapter={ch.id} aria-expanded={open} onClick={() => folds.toggle(ch.id)}>
               <ChevronRight className="chev" /><span className="no">{pad2(i + 1)}</span><span className="t">{ch.title}</span>
-              <span className={cn('meta', ch.done === ch.lessons.length && 'complete')}>{ch.done}/{ch.lessons.length}</span>
+              {ch.total ? <span className={cn('meta', ch.done === ch.total && 'complete')}>{ch.done}/{ch.total}</span> : <span className="meta upcoming-mark">待更新</span>}
             </button>
             <Fold open={open}>
+              {!ch.lessons.length ? <span className="side-l upcoming empty-chapter" aria-disabled="true"><span className="t">这一章还没有讲</span><span className="upcoming-mark">待更新</span></span> : null}
               {ch.lessons.map((l) => {
                 n++;
+                if (l.upcoming) {
+                  return (
+                    <span key={l.id} className="side-l upcoming" aria-disabled="true">
+                      <span className="no">{pad2(n)}</span>
+                      <span className="t">{l.title}</span>
+                      <span className="upcoming-mark">待更新</span>
+                    </span>
+                  );
+                }
                 if (l.unavailable) {
                   return (
                     <span key={l.id} className="side-l unavailable" aria-disabled="true">

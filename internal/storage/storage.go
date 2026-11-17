@@ -25,6 +25,11 @@ type Store interface {
 	Delete(ctx context.Context, key string) error
 	// DeletePrefix removes every object whose key starts with prefix.
 	DeletePrefix(ctx context.Context, prefix string) error
+	// Copy makes dst an object with src's contents without streaming the
+	// data through the application (ADR-0005). An existing dst is replaced;
+	// a missing src is ErrNotFound. Later changes to either key do not
+	// affect the other.
+	Copy(ctx context.Context, src, dst string) error
 	// List returns the keys under prefix, sorted.
 	List(ctx context.Context, prefix string) ([]string, error)
 }
