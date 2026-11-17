@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import type { Problem } from '@/lib/api';
 
-export function PageHead({ kicker, title, sub, actions }: { kicker: string; title: string; sub?: ReactNode; actions?: ReactNode }) {
+export function PageHead({ kicker, title, sub, actions }: { kicker?: string; title: string; sub?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="page-head">
       <div>
-        <div className="kicker">{kicker}</div>
+        {kicker ? <div className="kicker">{kicker}</div> : null}
         <h1>{title}</h1>
         {sub ? <div className="sub">{sub}</div> : null}
       </div>

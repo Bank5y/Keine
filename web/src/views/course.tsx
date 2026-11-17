@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, ChevronRight, PlayCircle, Search } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, BookOpen, ChevronRight, PlayCircle, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
-import { CourseActions } from '@/components/course-actions';
+import { CourseActions, CourseTools } from '@/components/course-actions';
 import { Fold, useChapterFolds } from '@/components/fold';
-import { SubscribeButton } from '@/components/peek';
-import { Highlight } from '@/components/highlight';
+import { SubscribeButton, subscribe } from '@/components/peek';
 import { TabPane, Tabs, useAddressTab, useTabFade } from '@/components/tabs';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Cover } from '@/components/shelf';
 import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
-import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, readable, type ChapterItem, type CourseDetail } from '@/lib/courses';
+import { readTarget, readerBar } from '@/lib/course-actions';
+import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, type CourseDetail } from '@/lib/courses';
 import { Link, navigate } from '@/lib/router';
+import { useNarrow } from '@/lib/use-narrow';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { useStuck } from '@/lib/use-stuck';
 import { cn } from '@/lib/utils';
@@ -34,9 +36,11 @@ export function CourseView({ id }: { id: number }) {
   // address so coming back from a lesson returns to it
   const [tab, setTab] = useAddressTab(TABS, 'toc');
   const [shown, fading] = useTabFade(tab);
-  const [q, setQ] = useState('');
   const colophonBody = useRef<HTMLDivElement>(null);
   useScrollFade(colophonBody);
+  // a phone gets the course's actions as a bar at the bottom and tools
+  // beside the tabs; the colophon keeps only the title, tags and progress
+  const narrow = useNarrow();
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
   return (
@@ -44,8 +48,8 @@ export function CourseView({ id }: { id: number }) {
       <div className="course">
         <aside className="colophon">
           <BackLink library={!!course && course.visibility === 'public' && !course.subscribed} />
-          {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
-          <div className="colophon-body side-scroll side-fade" ref={colophonBody}>{course ? <Colophon c={course} onChange={reload} /> : <Skeleton className="aspect-[3/4] w-full" />}</div>
+          {course && !narrow ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
+          <div className="colophon-body side-scroll side-fade" ref={colophonBody}>{course ? <Colophon c={course} onChange={reload} narrow={narrow} /> : <Skeleton className={narrow ? 'h-24 w-full' : 'aspect-[3/4] w-full'} />}</div>
         </aside>
         <section>
           <div className="toc-head">
@@ -53,41 +57,56 @@ export function CourseView({ id }: { id: number }) {
               ['intro', '课程介绍'],
               ['toc', <>目录{course ? <sup>{course.lessonCount}</sup> : null}</>],
             ]} />
-            {tab === 'toc' ? (
-              <label className="search-sm">
-                <Search />
-                <input placeholder="查找讲或章" aria-label="查找讲或章" value={q} onChange={(e) => setQ(e.target.value)} />
-              </label>
-            ) : null}
+            {course && narrow ? <CourseTools c={course} onChange={reload} /> : null}
           </div>
           {course?.retention ? (
             <div className="retention-note" role="status">
               该课程{RETENTION_LABEL[course.retention]}，你保留的 {course.retainedCount ?? 0} 讲仍可阅读
             </div>
           ) : null}
-          {!course ? <Lines /> : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} q={q.trim()} /> : <Intro c={course} />}</TabPane>}
+          {!course ? <Lines /> : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} /> : <Intro c={course} />}</TabPane>}
         </section>
       </div>
+      {course && narrow ? <CourseBar c={course} onSubscribed={() => void reload()} /> : null}
     </div>
   );
 }
 
-// ContinueButton opens the lesson studied last, or the first readable lesson.
+// CourseBar is the narrow course page's bottom bar, in place of the nav:
+// subscribing and reading (see readerBar). It is drawn on the body: the
+// page's entrance animation moves it, which would hold a fixed bar to the
+// page instead of the window.
+function CourseBar({ c, onSubscribed }: { c: CourseDetail; onSubscribed: () => void }) {
+  const { subscribe: canSubscribe, read } = readerBar(c);
+  return createPortal(
+    <div className="tabbar course-bar">
+      {canSubscribe ? (
+        <Button variant="outline" size="block" onClick={() => void subscribe(c).then((ok) => { if (ok) onSubscribed(); })}><Plus />订阅课程</Button>
+      ) : null}
+      {read ? <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, read.lessonId))}><BookOpen />{read.label}</Button> : null}
+    </div>
+,
+    document.body,
+  );
+}
+
+// ContinueButton opens the lesson studied last, or the first readable lesson
+// (see readTarget). Unlike the narrow course bar, it says 开始阅读 until the
+// reader has studied a lesson, subscribed or not.
 function ContinueButton({ c }: { c: CourseDetail }) {
-  const lessons = c.chapters.flatMap((ch) => ch.lessons).filter(readable);
-  const last = lessons.find((l) => l.id === c.progress.lastLessonId);
-  const target = last?.id ?? lessons[0]?.id;
+  const target = readTarget(c);
   if (!target) return null;
-  const started = last != null;
   return (
-    <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target))}>
-      <BookOpen />{started ? '继续学习' : '开始阅读'}
+    <Button variant="default" size="block" onClick={() => navigate(lessonURL(c.id, target.lessonId))}>
+      <BookOpen />{target.started ? '继续学习' : '开始阅读'}
     </Button>
   );
 }
 
 // BackLink stays in view: in the sticky column on a wide screen, and as a
-// bar under the masthead on a narrow one (which shows its edge once stuck).
+// bar under the masthead on a middling one (which shows its edge once
+// stuck). A phone lets it scroll away: the top bar and the course bar
+// already frame the page.
 function BackLink({ library }: { library?: boolean }) {
   const ref = useRef<HTMLAnchorElement>(null);
   useStuck(ref);
@@ -98,10 +117,10 @@ function Lines() {
   return <div className="mt-4 space-y-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-4" />)}</div>;
 }
 
-function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
+function Colophon({ c, onChange, narrow }: { c: CourseDetail; onChange: () => void; narrow: boolean }) {
   return (
     <>
-      <div className="book-cover"><Cover course={c} /></div>
+      {narrow ? null : <div className="book-cover"><Cover course={c} /></div>}
       <div>
         <h1>{c.title}</h1>
         <div className="tags">
@@ -110,31 +129,23 @@ function Colophon({ c, onChange }: { c: CourseDetail; onChange: () => void }) {
           {c.retention ? <span className="tag retained">{RETENTION_LABEL[c.retention]}</span>
             : c.visibility === 'private' ? <span className={cn('tag private', c.publishState)}>{PUBLISH_LABEL[c.publishState]}</span> : null}
         </div>
-        <dl className="spec">
+        {narrow ? null : <dl className="spec">
           <dt>讲数</dt><dd className="num">{c.lessonCount}</dd>
           <dt>章数</dt><dd className="num">{c.chapters.length}</dd>
           {c.authorName ? <><dt>讲师</dt><dd>{c.authorName}</dd></> : null}
           {c.contributors.length ? <><dt>贡献者</dt><dd>{c.contributors.join('、')}</dd></> : null}
-        </dl>
+        </dl>}
         <div className="course-progress">
           <div className="cp-head"><span>学习进度</span><b>{c.progress.done} / {c.progress.total}</b></div>
           <ProgressBar done={c.progress.done} total={c.progress.total} />
         </div>
-        <div className="stack"><ContinueButton c={c} /></div>
-        {c.retention ? null : <CourseActions c={c} onChange={onChange} />}
+        {narrow ? null : <>
+          <div className="stack"><ContinueButton c={c} /></div>
+          {c.retention ? null : <CourseActions c={c} onChange={onChange} />}
+        </>}
       </div>
     </>
   );
-}
-
-// filterToc keeps lessons whose title matches; a matching chapter keeps all
-// of its lessons.
-function filterToc(chapters: ChapterItem[], q: string) {
-  if (!q) return chapters;
-  const ql = q.toLowerCase();
-  return chapters
-    .map((ch) => (ch.title.toLowerCase().includes(ql) ? { ...ch, match: true } : { ...ch, match: false, lessons: ch.lessons.filter((l) => l.title.toLowerCase().includes(ql)) }))
-    .filter((ch) => ch.match || ch.lessons.length);
 }
 
 // progressChapter is the chapter of the lesson studied last, or the first.
@@ -143,19 +154,10 @@ function progressChapter(c: CourseDetail) {
   return (c.chapters.find((ch) => ch.lessons.some((l) => l.id === last)) ?? c.chapters[0])?.id;
 }
 
-// Toc opens the chapter the reader has got to. A search opens every chapter
-// with a match; clearing it brings back the chapters opened before.
-function Toc({ c, q }: { c: CourseDetail; q: string }) {
+// Toc opens the chapter the reader has got to; the reader opens or closes
+// the others.
+function Toc({ c }: { c: CourseDetail }) {
   const folds = useChapterFolds(() => { const ch = progressChapter(c); return ch == null ? [] : [ch]; });
-  const [closed, setClosed] = useState<{ q: string; ids: Set<number> }>({ q: '', ids: new Set() });
-  const searchClosed = closed.q === q ? closed.ids : new Set<number>();
-  const isOpen = (id: number) => (q ? !searchClosed.has(id) : folds.isOpen(id));
-  const toggle = (id: number) => {
-    if (!q) return folds.toggle(id);
-    const ids = new Set(searchClosed);
-    if (!ids.delete(id)) ids.add(id);
-    setClosed({ q, ids });
-  };
 
   // lesson numbers run through the whole course
   const numbers = useMemo(() => {
@@ -165,25 +167,23 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
     return m;
   }, [c]);
   const chapterNo = useMemo(() => new Map(c.chapters.map((ch, i) => [ch.id, i + 1])), [c]);
-  const shown = filterToc(c.chapters, q);
-  if (!shown.length) return <Empty title="没有匹配的讲" />;
   return (
     <div>
-      {shown.map((ch) => (
+      {c.chapters.map((ch) => (
         <div className="chapter" key={ch.id}>
-          <button type="button" className={cn('chapter-head', isOpen(ch.id) && 'open')} aria-expanded={isOpen(ch.id)} onClick={() => toggle(ch.id)}>
+          <button type="button" className={cn('chapter-head', folds.isOpen(ch.id) && 'open')} aria-expanded={folds.isOpen(ch.id)} onClick={() => folds.toggle(ch.id)}>
             <ChevronRight className="chev" />
             <span className="c-no">第 {pad2(chapterNo.get(ch.id)!)} 章</span>
-            <span className="c-title"><Highlight text={ch.title} q={q} /></span>
+            <span className="c-title">{ch.title}</span>
             {ch.total ? <span className={cn('c-meta', ch.done === ch.total && 'complete')}>{ch.done} / {ch.total}</span> : <span className="c-meta upcoming-mark">待更新</span>}
           </button>
-          <Fold open={isOpen(ch.id)}>
+          <Fold open={folds.isOpen(ch.id)}>
             <div className="lessons">
               {!ch.lessons.length ? <span className="entry upcoming empty-chapter" aria-disabled="true"><span className="e-title">这一章还没有讲</span><span className="e-lead" /><span className="e-state upcoming-mark">待更新</span></span> : null}
               {ch.lessons.map((l) => l.upcoming ? (
                 <span className="entry upcoming" key={l.id} aria-disabled="true">
                   <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
-                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  <span className="e-title" title={l.title}>{l.title}</span>
                   <span className="e-lead" />
                   <span className="e-state upcoming-mark">待更新</span>
                 </span>
@@ -191,7 +191,7 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
                 <span className="entry unavailable" key={l.id} aria-disabled="true">
                   <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
                   {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
-                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  <span className="e-title" title={l.title}>{l.title}</span>
                   <span className="e-lead" />
                   <span className="e-state gone-mark">已下架</span>
                 </span>
@@ -199,7 +199,7 @@ function Toc({ c, q }: { c: CourseDetail; q: string }) {
                 <Link className="entry" key={l.id} href={lessonURL(c.id, l.id)}>
                   <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
                   {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
-                  <span className="e-title" title={l.title}><Highlight text={l.title} q={q} /></span>
+                  <span className="e-title" title={l.title}>{l.title}</span>
                   {l.duration ? <span className="e-dur">{l.duration}</span> : null}
                   <span className="e-lead" />
                   <span className="e-state"><StateMark state={l.state} /></span>

@@ -6,6 +6,9 @@
 #   scripts/demo/run.sh        build the working tree, start, fill with sample data
 #   scripts/demo/run.sh stop   stop it and delete its database and files
 #
+# Several at once (one per worktree): give each its own DEMO_PORT, DEMO_PG_PORT,
+# DEMO_PG_NAME and DEMO_DIR, and pass the same variables to stop.
+#
 # Sample data (scripts/demo/seed.py): six public courses, one private course
 # with a pending publish request; bob subscribed to "Agent 系统设计 40 讲" with
 # progress and annotations; bob's update request from a draft; alice's draft
@@ -19,7 +22,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 PORT=${DEMO_PORT:-18080}
 PG_PORT=${DEMO_PG_PORT:-55432}
-PG=keine-demo-pg
+PG=${DEMO_PG_NAME:-keine-demo-pg}
 STATE=${DEMO_DIR:-${TMPDIR:-/tmp}/keine-demo}
 export KEINE_ADMIN_USERNAME=admin KEINE_ADMIN_PASSWORD=admin-password
 export DEMO_URL=http://127.0.0.1:$PORT
