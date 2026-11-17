@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronLeft, ChevronRight, ListTree, PanelLeft } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronLeft, ChevronRight, List, ListTree, PanelLeft } from 'lucide-react';
 import { Annotator } from '@/components/annotator';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/common';
@@ -8,6 +9,7 @@ import { FOLD_MS, Fold, useChapterFolds } from '@/components/fold';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
+import { Tabs } from '@/components/tabs';
 import { LessonVideoView } from '@/components/video';
 import { ImageZoom } from '@/components/zoom';
 import { api } from '@/lib/api';
@@ -17,6 +19,8 @@ import { useReadingProgress } from '@/lib/use-reading-progress';
 import { Link, navigate } from '@/lib/router';
 import { useHeadings, type Heading } from '@/lib/use-headings';
 import { useScrollFade } from '@/lib/use-scroll-fade';
+import { useLessonBar } from '@/lib/use-lesson-bar';
+import { useNarrow } from '@/lib/use-narrow';
 import { cn } from '@/lib/utils';
 import { SubscribeButton } from '@/components/peek';
 import { useCourse } from '@/views/course';
@@ -47,7 +51,11 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const [slow, setSlow] = useState(false);
   const [err, setErr] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);
-  const [drawer, setDrawer] = useState<'' | 'toc' | 'headings'>('');
+  // on a narrow screen one drawer holds both, on tabs ('sheet')
+  const [drawer, setDrawer] = useState<'' | 'toc' | 'headings' | 'sheet'>('');
+  const [sheetTab, setSheetTab] = useState<'headings' | 'toc'>('headings');
+  const narrow = useNarrow();
+  const barShown = useLessonBar(narrow);
   const doc = useRef<HTMLElement>(null);
   // the rendered Markdown of the shown lesson, once the renderer has loaded
   const [prose, setProse] = useState<HTMLElement | null>(null);
@@ -114,10 +122,15 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
       <CourseToc c={course} current={lessonId} />
     </>
   ) : <Skeleton className="h-40" />;
-  const onThisPage = <HeadingToc headings={headings} active={active} onPick={(id) => { setDrawer(''); jump(id, 'smooth'); }} />;
+  const pickHeading = (id: string) => { setDrawer(''); jump(id, 'smooth'); };
+  const onThisPage = <HeadingToc headings={headings} active={active} onPick={pickHeading} />;
 
   return (
     <div className={cn('page enter docs', noted && 'with-notes')} onClick={onClick}>
+      {narrow ? createPortal(
+        <LessonTopBar courseId={courseId} title={shown?.title ?? ''} shown={barShown} onList={() => { setSheetTab('headings'); setDrawer('sheet'); }} />,
+        document.body,
+      ) : null}
       <aside className="docs-side docs-left" aria-label="课程目录">
         <Link className="back" href={`/courses/${courseId}?tab=toc`}><ArrowLeft />返回课程</Link>
         {course ? <SubscribeButton c={course} onSubscribed={() => void reload()} className="side-subscribe" /> : null}
@@ -163,8 +176,27 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
 
       <Drawer open={drawer === 'toc'} onOpenChange={(v) => setDrawer(v ? 'toc' : '')} side="left" title="课程目录">{toc}</Drawer>
       <Drawer open={drawer === 'headings'} onOpenChange={(v) => setDrawer(v ? 'headings' : '')} side="right" title="本讲目录">{onThisPage}</Drawer>
+      <Drawer open={drawer === 'sheet'} onOpenChange={(v) => setDrawer(v ? 'sheet' : '')} side="right" title="本讲与目录" className="lesson-sheet"
+        head={<Tabs className="toc-tabs" tabClassName="toc-tab" value={sheetTab} onChange={setSheetTab} items={[['headings', '本讲'], ['toc', '目录']]} />}>
+        {sheetTab === 'headings'
+          ? (headings.length ? <HeadingToc headings={headings} active={active} onPick={pickHeading} title={shown?.title} /> : <p className="text-ink-3">这一讲没有小标题。</p>)
+          : toc}
+      </Drawer>
       <ImageZoom src={zoom} onClose={() => setZoom(null)} />
     </div>
+  );
+}
+
+// LessonTopBar is the lesson's own top bar on a narrow screen: back to the
+// course's contents, the lesson's title, and the drawer of this lesson's
+// headings and the course's contents. It slides away while reading.
+function LessonTopBar({ courseId, title, shown, onList }: { courseId: number; title: string; shown: boolean; onList: () => void }) {
+  return (
+    <header className={cn('lesson-bar', !shown && 'away')} inert={!shown}>
+      <Link className="lesson-bar-btn" href={`/courses/${courseId}?tab=toc`} aria-label="返回课程"><ArrowLeft /></Link>
+      <span className="lesson-bar-title">{title}</span>
+      <button type="button" className="lesson-bar-btn" aria-label="本讲与目录" onClick={onList}><List /></button>
+    </header>
   );
 }
 
@@ -301,10 +333,10 @@ function CourseToc({ c, current, docked }: { c: CourseDetail; current: number; d
 
 const noBox = { current: null };
 
-function HeadingToc({ headings, active, onPick }: { headings: Heading[]; active: string; onPick: (id: string) => void }) {
+function HeadingToc({ headings, active, onPick, title }: { headings: Heading[]; active: string; onPick: (id: string) => void; title?: string }) {
   return (
     <div className="on-page">
-      <div className="on-page-title">本讲目录</div>
+      {title ? <div className="on-page-lesson">{title}</div> : <div className="on-page-title">本讲目录</div>}
       {headings.map((h) => (
         <a key={h.id} href={'#' + h.id} className={cn('op-item', h.level === 3 && 'sub', h.id === active && 'active')}
           onClick={(e) => { e.preventDefault(); history.replaceState(null, '', '#' + h.id); onPick(h.id); }}>
