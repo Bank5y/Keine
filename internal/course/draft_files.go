@@ -201,24 +201,21 @@ func (s *Service) PutDraftFile(ctx context.Context, viewer auth.User, id int64, 
 
 // PutDraftZip stores the files of a single lesson's zip in an upload. A
 // zip of one folder counts from inside that folder. Its files may hold at
-// most maxSize bytes together once unpacked (no limit when 0); archive/zip
-// fails reading an entry past its declared size, so the declared sizes are
-// what is checked.
+// most maxSize bytes together once unpacked (see UnpacksWithin).
 func (s *Service) PutDraftZip(ctx context.Context, viewer auth.User, id int64, upload string, zr *zip.Reader, maxSize int64) error {
 	prefix, err := s.uploadPrefix(ctx, viewer, id, upload)
 	if err != nil {
 		return err
 	}
+	if !UnpacksWithin(zr, maxSize) {
+		return reject("zip 解压后超过了大小上限")
+	}
 	files := map[string]*zip.File{}
 	tops := map[string]bool{}
-	var total uint64
 	for _, f := range zr.File {
 		name := strings.ReplaceAll(f.Name, "\\", "/")
 		if f.FileInfo().IsDir() || strings.HasPrefix(name, "__MACOSX/") {
 			continue
-		}
-		if total += f.UncompressedSize64; maxSize > 0 && (total > uint64(maxSize) || total < f.UncompressedSize64) {
-			return reject("zip 解压后超过了大小上限")
 		}
 		files[name] = f
 		top, _, nested := strings.Cut(name, "/")
