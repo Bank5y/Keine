@@ -69,6 +69,10 @@ func (s *Server) withPackage(w http.ResponseWriter, r *http.Request, use func(*z
 	if err != nil {
 		return &course.InvalidPackage{Problems: []course.Problem{{Path: "", Message: "课程包不是有效的 zip 文件"}}}
 	}
+	// a small zip may unpack to far more than it weighs
+	if !course.UnpacksWithin(zr, limit) {
+		return errUpload{http.StatusRequestEntityTooLarge, "package_too_large", "课程包解压后超过了大小上限"}
+	}
 	return use(zr)
 }
 

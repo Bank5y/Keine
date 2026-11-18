@@ -192,12 +192,16 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     document.addEventListener('selectionchange', onChange);
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('pointerup', onUp);
+    // a phone takes a long press over for its own selection and cancels the
+    // pointer: no pointerup follows, so the cancel ends the press instead
+    document.addEventListener('pointercancel', onUp);
     return () => {
       clearTimeout(t);
       taps.stop();
       document.removeEventListener('selectionchange', onChange);
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
     };
   }, [map, root]);
 
@@ -396,7 +400,8 @@ function NoteRail({ rail, root, anns, placed, active, onPick, onEdit, onDelete }
         style={{ top: tops.get(a.id) ?? 0, visibility: tops.has(a.id) ? undefined : 'hidden' }}
         onClick={() => onPick(a.id)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) onPick(a.id); }}>
         <div className={cn('note-quote', `look-${lookName(a)}`)}>{a.quote}</div>
-        <p className="note-text">{a.note}</p>
+        {/* a card that folds back starts again from its first line */}
+        <p className="note-text" ref={(el) => { if (el && a.id !== active) el.scrollTop = 0; }}>{a.note}</p>
         <div className="note-actions">
           <button type="button" className="ann-btn" aria-label="编辑笔记" title="编辑笔记" onClick={(e) => { e.stopPropagation(); onEdit(a); }}><Pencil /></button>
           <button type="button" className="ann-btn danger" aria-label="删除笔记" title="删除笔记" onClick={(e) => { e.stopPropagation(); onDelete(a); }}><Trash2 /></button>

@@ -37,6 +37,11 @@ func withAdmin(name, pass string) appOption {
 	return func(o *server.Options) { o.AdminUsername, o.AdminPassword = name, pass }
 }
 
+// withUploadLimit caps uploads at n bytes, packed or unpacked.
+func withUploadLimit(n int64) appOption {
+	return func(o *server.Options) { o.MaxUploadBytes = n }
+}
+
 func newApp(t *testing.T, opts ...appOption) *app {
 	t.Helper()
 	return startApp(t, testutil.NewDatabase(t), newFileStore(t), opts...)

@@ -657,8 +657,9 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .note-card .note-quote.look-green { border-left-color: var(--mark-green-solid); }
 .note-card .note-quote.look-blue { border-left-color: var(--mark-blue-solid); }
 .note-card .note-quote.look-pink { border-left-color: var(--mark-pink-solid); }
-.note-card .note-text { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
-.note-card.active .note-text { display: block; }
+/* folded a card shows 4 lines; open, up to 12, the rest scrolling inside it */
+.note-card .note-text { font-size: 13px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.note-card.active .note-text { display: block; max-height: 12lh; overflow-y: auto; overscroll-behavior: contain; }
 .note-card .note-actions { position: absolute; top: 3px; right: 4px; margin: 0; border-radius: 4px; background: var(--surface); opacity: 0; transition: opacity .12s; }
 .note-card:hover .note-actions, .note-card.active .note-actions, .note-card:focus-within .note-actions { opacity: 1; }
 .note-card .ann-btn { height: 24px; padding: 0 6px; color: var(--text-3); }

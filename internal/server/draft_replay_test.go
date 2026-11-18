@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/Bank5y/keine/internal/server"
 )
 
 func approve(admin *client, review map[string]any) resp {
@@ -139,7 +137,7 @@ func TestUndoingTheOnlyOperationKeepsUploadsInProgress(t *testing.T) {
 }
 
 func TestALessonZipMayNotUnpackPastTheUploadLimit(t *testing.T) {
-	a := newApp(t, func(o *server.Options) { o.MaxUploadBytes = 1 << 10 })
+	a := newApp(t, withUploadLimit(1<<10))
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, map[string]string{"course.json": manifestJSON(map[string]any{
 		"version": 1, "title": "小课", "type": "column",

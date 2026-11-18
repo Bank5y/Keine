@@ -13,6 +13,23 @@ import (
 
 const maxManifestSize = 4 << 20
 
+// UnpacksWithin tells whether a zip's files hold at most limit bytes
+// together once unpacked (any size when limit is 0). archive/zip fails
+// reading an entry past its declared size, so the declared sizes are what
+// is counted; a sum that overflows is past every limit.
+func UnpacksWithin(r *zip.Reader, limit int64) bool {
+	if limit <= 0 {
+		return true
+	}
+	var total uint64
+	for _, f := range r.File {
+		if total += f.UncompressedSize64; total > uint64(limit) || total < f.UncompressedSize64 {
+			return false
+		}
+	}
+	return true
+}
+
 // pkg is an opened course package: the zip's files keyed by their path
 // relative to the package root (the folder holding course.json).
 type pkg struct {
