@@ -71,6 +71,20 @@ func TestPrivateCoursesCannotBeUnsubscribedOnlyDeleted(t *testing.T) {
 	}
 }
 
+func TestUploadersKeepTheirPublishedCourseInMyCourses(t *testing.T) {
+	a := newApp(t)
+	alice := a.user("alice")
+	id := publishedCourse(t, a, alice)
+
+	expectError(t, alice.do("DELETE", fmt.Sprintf("/api/courses/%d/subscribe", id), nil), http.StatusConflict, "invalid_state")
+	if !contains(myCourseIDs(t, alice), id) {
+		t.Fatal("the uploader's published course stays in my courses")
+	}
+	if d := courseJSON(t, alice, id); d["subscribed"] != true {
+		t.Fatalf("the uploader stays subscribed, got %v", d["subscribed"])
+	}
+}
+
 func TestMyCoursesFilterByStudyStateTypeAndCompletion(t *testing.T) {
 	a := newApp(t)
 	alice := a.user("alice")

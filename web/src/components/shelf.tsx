@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { BookmarkMinus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/progress';
-import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, coverURL, type CourseSummary } from '@/lib/courses';
+import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, canUnsubscribe, coverURL, type CourseSummary } from '@/lib/courses';
 import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
@@ -52,7 +52,7 @@ export function CourseCard({ course, href, onDelete, onRemove, showProgress }: {
             <Button variant="icon" size="icon" title="删除课程" aria-label={`删除 ${course.title}`} onClick={() => onDelete(course)}><Trash2 /></Button>
           </div>
         ) : null}
-        {onRemove && (!isPrivate || course.retention) ? (
+        {onRemove && canUnsubscribe(course) ? (
           <div className="book-tools">
             <Button variant="icon" size="icon" title="取消订阅" aria-label={`取消订阅 ${course.title}`} onClick={() => onRemove(course)}><BookmarkMinus /></Button>
           </div>
