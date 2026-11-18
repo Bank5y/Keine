@@ -192,12 +192,16 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     document.addEventListener('selectionchange', onChange);
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('pointerup', onUp);
+    // a phone takes a long press over for its own selection and cancels the
+    // pointer: no pointerup follows, so the cancel ends the press instead
+    document.addEventListener('pointercancel', onUp);
     return () => {
       clearTimeout(t);
       taps.stop();
       document.removeEventListener('selectionchange', onChange);
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
     };
   }, [map, root]);
 
