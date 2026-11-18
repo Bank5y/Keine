@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, NotebookPen, Pencil, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
+import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
 import { cn } from '@/lib/utils';
 
@@ -162,6 +163,9 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     if (!map || !root) return undefined;
     let down = false;
     let t = 0;
+    // a tap on the bar may clear the selection on a touch screen before the
+    // tap lands; the bar stays for it
+    let onBar = -Infinity;
     const read = () => {
       const s = getSelection();
       if (!s || s.isCollapsed || !s.rangeCount) { setPick(null); return; }
@@ -172,8 +176,8 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       setEditing(null);
       setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange() });
     };
-    const onChange = () => { clearTimeout(t); if (!down) t = window.setTimeout(read, 120); };
-    const onDown = (e: PointerEvent) => { if (!bar.current?.contains(e.target as Node)) down = true; };
+    const onChange = () => { clearTimeout(t); if (!down && performance.now() - onBar > 600) t = window.setTimeout(read, 120); };
+    const onDown = (e: PointerEvent) => { if (bar.current?.contains(e.target as Node)) onBar = performance.now(); else down = true; };
     const onUp = () => { if (down) { down = false; clearTimeout(t); t = window.setTimeout(read, 0); } };
     document.addEventListener('selectionchange', onChange);
     document.addEventListener('pointerdown', onDown);
@@ -278,7 +282,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     const isNew = 'quote' in editing;
     floating = (
       <Floating spot={editing.spot} ref={bar} label={isNew ? '写笔记' : '编辑笔记'} stacked>
-        {isNew ? <div className="ann-row"><Looks current={editing.look.style === 'underline' ? 'underline' : editing.look.color}onPick={(look) => setEditing({ ...editing, look })} /></div> : null}
+        {isNew ? <div className="ann-row"><span className="ann-looks"><Looks current={editing.look.style === 'underline' ? 'underline' : editing.look.color} onPick={(look) => setEditing({ ...editing, look })} /></span></div> : null}
         <NoteEditor draft={editing.draft} onDraft={(draft) => setEditing({ ...editing, draft })} canClear={!isNew}
           onSave={() => { if (isNew) void create(editing.look, editing.draft.trim() ? editing.draft : undefined); else void writeNote(editing.id, editing.draft); }}
           onCancel={() => setEditing(null)} />
@@ -287,10 +291,12 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   } else if (pick) {
     floating = (
       <Floating spot={pick.spot} ref={bar} label="标注">
-        <Looks onPick={(look) => create(look)} />
+        <span className="ann-looks"><Looks onPick={(look) => create(look)} /></span>
         <span className="ann-sep" />
-        <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
-        <button type="button" className="ann-btn" onClick={() => { void copy(pick.quote.quote); }}><Copy />复制</button>
+        <span className="ann-acts">
+          <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
+          <button type="button" className="ann-btn" onClick={() => { void copy(pick.quote.quote); }}><Copy />复制</button>
+        </span>
       </Floating>
     );
   } else if (open) {
@@ -303,11 +309,13 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
           <div key={a.id} className="ann-item" data-annotation={a.id}>
             <div className="ann-row">
               {opened.length > 1 ? <span className="ann-quote" title={a.quote}>{a.quote}</span> : null}
-              <Looks current={lookName(a)} onPick={(look) => restyle(a.id, look)} />
+              <span className="ann-looks"><Looks current={lookName(a)} onPick={(look) => restyle(a.id, look)} /></span>
               <span className="ann-sep" />
-              {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
-              <button type="button" className="ann-btn" onClick={() => { void copy(a.quote); }}><Copy />复制</button>
-              <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>
+              <span className="ann-acts">
+                {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
+                <button type="button" className="ann-btn" onClick={() => { void copy(a.quote); }}><Copy />复制</button>
+                <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>
+              </span>
             </div>
             {shown(a) ? (
               <div className="ann-note">
@@ -416,24 +424,37 @@ function Looks({ current, onPick }: { current?: string; onPick: (look: Look) => 
   );
 }
 
-// Floating sits above the spot, or below it when there is no room above.
+// Touch screens dock the bar to the bottom of the screen: there the
+// browser's own menu for a selection (copy, share, select all…) takes the
+// space above it, where a floating bar would go, and covers it.
+export const DOCK_MEDIA = '(pointer: coarse)';
+
+// Floating sits above the spot, or below it when there is no room above; on
+// a touch screen it docks to the bottom of the screen instead, above the
+// keyboard while one is up and above the page's bottom bar, if any.
 export function Floating({ spot, ref, label, stacked, children }: { spot: Spot; ref: RefObject<HTMLDivElement | null>; label: string; stacked?: boolean; children: ReactNode }) {
+  const docked = useMedia(DOCK_MEDIA);
+  const keyboard = useKeyboardInset(docked);
   const [below, setBelow] = useState(false);
   const [shift, setShift] = useState(0);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || docked) return;
     const h = el.offsetHeight, w = el.offsetWidth;
     setBelow(spot.top - scrollY - h - 10 < 64);
     const left = spot.x - scrollX - w / 2;
     setShift(left < 8 ? 8 - left : (left + w > innerWidth - 8 ? innerWidth - 8 - (left + w) : 0));
-  }, [spot, ref, children]);
+  }, [spot, ref, children, docked]);
+  const style: CSSProperties = docked
+    ? (keyboard ? { '--keyboard': `${keyboard}px` } as CSSProperties : {})
+    : { left: spot.x + shift, top: below ? spot.bottom + 8 : spot.top - 8, transform: below ? 'translateX(-50%)' : 'translate(-50%, -100%)' };
   return createPortal(
     // clicks keep the selection, except in the note's own field
-    <div ref={ref} role="toolbar" aria-label={label} className={cn('ann-bar', stacked && 'stacked')} onMouseDown={(e) => { if (!(e.target instanceof HTMLTextAreaElement)) e.preventDefault(); }}
-      style={{ left: spot.x + shift, top: below ? spot.bottom + 8 : spot.top - 8, transform: below ? 'translateX(-50%)' : 'translate(-50%, -100%)' }}>
+    <div ref={ref} role="toolbar" aria-label={label} className={cn('ann-bar', stacked && 'stacked', docked && 'docked', docked && keyboard > 0 && 'over-keyboard')}
+      onMouseDown={(e) => { if (!(e.target instanceof HTMLTextAreaElement)) e.preventDefault(); }} style={style}>
       {children}
     </div>,
-    document.body,
+    // in the shell, a docked bar reads the height of the page's bottom bar
+    (docked && document.querySelector('.shell')) || document.body,
   );
 }

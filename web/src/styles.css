@@ -587,6 +587,41 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .ann-btn:disabled { opacity: .45; pointer-events: none; }
 .ann-item { display: flex; flex-direction: column; gap: 4px; }
 .ann-bar.stacked .ann-item + .ann-item { border-top: 1px solid var(--line); padding-top: 4px; }
+.ann-looks, .ann-acts { display: contents; }
+
+/* touch screens: the bar docks to the bottom of the screen, clear of the
+   browser's own menu over a selection (see DOCK_MEDIA in annotator.tsx):
+   one row to annotate a selection; looks and actions on rows of their own
+   for an annotation, its note on top */
+.ann-bar.docked {
+  position: fixed; left: 0; right: 0; bottom: max(var(--bar-h, 0px), var(--keyboard, 0px)); top: auto;
+  flex-wrap: nowrap; justify-content: space-between; gap: 0; max-width: none; padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+  border: 0; border-top: 1px solid var(--line); border-radius: 0; font-size: 14px;
+  box-shadow: 0 -4px 14px color-mix(in srgb, var(--text) 8%, transparent); animation: rise .16s ease-out both;
+}
+.shell.with-bar .ann-bar.docked, .ann-bar.docked.over-keyboard { padding-bottom: 6px; }
+.ann-bar.docked .ann-label { display: none; }
+.ann-bar.docked .ann-btn { height: 40px; padding: 0 8px; }
+.ann-bar.docked .ann-swatch { width: 24px; height: 24px; margin: 0 6px; }
+.ann-bar.docked .ann-looks, .ann-bar.docked .ann-acts { display: flex; align-items: center; }
+.ann-bar.docked .ann-btn.danger { color: var(--danger); }
+.ann-bar.docked:has(.ann-item, .ann-editor) { flex-direction: column; align-items: stretch; padding-left: 0; padding-right: 0; }
+.ann-bar.docked .ann-row { flex-wrap: wrap; padding: 0 12px; }
+.ann-bar.docked .ann-row .ann-sep { display: none; }
+.ann-bar.docked .ann-row .ann-looks, .ann-bar.docked .ann-row .ann-acts { flex-basis: 100%; min-height: 52px; }
+.ann-bar.docked .ann-row .ann-acts { flex-basis: calc(100% + 24px); }
+.ann-bar.docked .ann-row .ann-acts { gap: 8px; margin: 0 -12px; padding: 0 12px; border-top: 1px solid var(--line); }
+.ann-bar.docked .ann-item + .ann-item { padding-top: 0; border-top: 1px solid var(--line); }
+.ann-bar.docked .ann-quote { flex: 1; min-width: 0; max-width: none; }
+.ann-bar.docked .ann-row .ann-quote { flex-basis: 100%; padding: 10px 0 0; }
+.ann-bar.docked .ann-note { order: -1; width: auto; padding: 12px 12px 4px; border-top: 0; border-bottom: 1px solid var(--line); }
+.ann-bar.docked .ann-note .note-text { max-height: 30vh; }
+.ann-bar.docked .ann-note .note-actions { justify-content: flex-start; gap: 8px; }
+.ann-bar.docked .ann-editor { width: auto; padding: 8px 12px 0; }
+.ann-bar.docked .ann-editor .hint { visibility: hidden; }
+.ann-bar.docked .ann-editor .note-actions { margin-top: 8px; gap: 8px; }
+.ann-bar.docked .ann-editor .note-input { min-height: 96px; max-height: 30vh; }
+
 /* the annotation in focus: its card picked, or its note being written */
 ::highlight(ann-active) { background-color: var(--mark-active); }
 
