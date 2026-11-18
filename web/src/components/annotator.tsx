@@ -61,6 +61,18 @@ export function useTextMap(root: HTMLElement | null) {
   return useMemo(() => (root ? new TextMap(root) : null), [root, version]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+// A tap on a bar may clear the selection on a touch screen before the tap
+// lands, and a bar that follows the selection would go before its button
+// is pressed. barTaps listens for touches on the bar: recent() tells whether
+// one began within TAP_GRACE ms, so the bar stays for it; stop() ends it.
+const TAP_GRACE = 600;
+export function barTaps(bar: RefObject<HTMLElement | null>) {
+  let at = -Infinity;
+  const onDown = (e: PointerEvent) => { if (e.pointerType !== 'mouse' && bar.current?.contains(e.target as Node)) at = performance.now(); };
+  document.addEventListener('pointerdown', onDown, true);
+  return { recent: () => performance.now() - at < TAP_GRACE, stop: () => document.removeEventListener('pointerdown', onDown, true) };
+}
+
 // a spot on the page, in document coordinates, that a floating bar points at
 export interface Spot { x: number; top: number; bottom: number }
 export const spotOf = (r: DOMRect): Spot => ({ x: r.left + r.width / 2 + scrollX, top: r.top + scrollY, bottom: r.bottom + scrollY });
@@ -163,9 +175,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     if (!map || !root) return undefined;
     let down = false;
     let t = 0;
-    // a tap on the bar may clear the selection on a touch screen before the
-    // tap lands; the bar stays for it
-    let onBar = -Infinity;
+    const taps = barTaps(bar);
     const read = () => {
       const s = getSelection();
       if (!s || s.isCollapsed || !s.rangeCount) { setPick(null); return; }
@@ -176,14 +186,15 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       setEditing(null);
       setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange() });
     };
-    const onChange = () => { clearTimeout(t); if (!down && performance.now() - onBar > 600) t = window.setTimeout(read, 120); };
-    const onDown = (e: PointerEvent) => { if (bar.current?.contains(e.target as Node)) onBar = performance.now(); else down = true; };
+    const onChange = () => { clearTimeout(t); if (!down && !taps.recent()) t = window.setTimeout(read, 120); };
+    const onDown = (e: PointerEvent) => { if (!bar.current?.contains(e.target as Node)) down = true; };
     const onUp = () => { if (down) { down = false; clearTimeout(t); t = window.setTimeout(read, 0); } };
     document.addEventListener('selectionchange', onChange);
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('pointerup', onUp);
     return () => {
       clearTimeout(t);
+      taps.stop();
       document.removeEventListener('selectionchange', onChange);
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('pointerup', onUp);
@@ -282,7 +293,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     const isNew = 'quote' in editing;
     floating = (
       <Floating spot={editing.spot} ref={bar} label={isNew ? '写笔记' : '编辑笔记'} stacked>
-        {isNew ? <div className="ann-row"><span className="ann-looks"><Looks current={editing.look.style === 'underline' ? 'underline' : editing.look.color} onPick={(look) => setEditing({ ...editing, look })} /></span></div> : null}
+        {isNew ? <div className="ann-row"><Looks current={editing.look.style === 'underline' ? 'underline' : editing.look.color} onPick={(look) => setEditing({ ...editing, look })} /></div> : null}
         <NoteEditor draft={editing.draft} onDraft={(draft) => setEditing({ ...editing, draft })} canClear={!isNew}
           onSave={() => { if (isNew) void create(editing.look, editing.draft.trim() ? editing.draft : undefined); else void writeNote(editing.id, editing.draft); }}
           onCancel={() => setEditing(null)} />
@@ -291,7 +302,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   } else if (pick) {
     floating = (
       <Floating spot={pick.spot} ref={bar} label="标注">
-        <span className="ann-looks"><Looks onPick={(look) => create(look)} /></span>
+        <Looks onPick={(look) => create(look)} />
         <span className="ann-sep" />
         <span className="ann-acts">
           <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
@@ -309,7 +320,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
           <div key={a.id} className="ann-item" data-annotation={a.id}>
             <div className="ann-row">
               {opened.length > 1 ? <span className="ann-quote" title={a.quote}>{a.quote}</span> : null}
-              <span className="ann-looks"><Looks current={lookName(a)} onPick={(look) => restyle(a.id, look)} /></span>
+              <Looks current={lookName(a)} onPick={(look) => restyle(a.id, look)} />
               <span className="ann-sep" />
               <span className="ann-acts">
                 {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
@@ -413,21 +424,21 @@ function NoteEditor({ draft, onDraft, canClear, onSave, onCancel }: { draft: str
 
 function Looks({ current, onPick }: { current?: string; onPick: (look: Look) => void }) {
   return (
-    <>
+    <span className="ann-looks">
       <button type="button" className="ann-btn" aria-pressed={current === 'underline'} onClick={() => onPick({ style: 'underline' })}><Underline />横线</button>
       <span className="ann-label">荧光笔</span>
       {HIGHLIGHT_COLORS.map((c) => (
         <button key={c} type="button" className={cn('ann-swatch', `c-${c}`)} aria-pressed={current === c} aria-label={`荧光笔 ${COLOR_LABEL[c]}`} title={COLOR_LABEL[c]}
           onClick={() => onPick({ style: 'highlight', color: c })} />
       ))}
-    </>
+    </span>
   );
 }
 
 // Touch screens dock the bar to the bottom of the screen: there the
 // browser's own menu for a selection (copy, share, select all…) takes the
 // space above it, where a floating bar would go, and covers it.
-export const DOCK_MEDIA = '(pointer: coarse)';
+const DOCK_MEDIA = '(pointer: coarse)';
 
 // Floating sits above the spot, or below it when there is no room above; on
 // a touch screen it docks to the bottom of the screen instead, above the

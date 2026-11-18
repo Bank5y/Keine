@@ -51,8 +51,9 @@ func (s *Service) Subscribe(ctx context.Context, viewer auth.User, id int64) err
 
 // Unsubscribe takes a library course out of the viewer's courses. Learning
 // records stay, so subscribing again picks up where the viewer left off. The
-// uploader cannot unsubscribe from their own course, published or not; a
-// private course can only be deleted. Unsubscribing from a
+// uploader cannot unsubscribe from their own course, published or not (a
+// private course can only be deleted), unless it was deleted: then, like
+// any subscriber, they may give up its retained lessons. Unsubscribing from a
 // course that left the library gives up the retained lessons: the viewer
 // can no longer see it, nor subscribe again.
 func (s *Service) Unsubscribe(ctx context.Context, viewer auth.User, id int64) error {

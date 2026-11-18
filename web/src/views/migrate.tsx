@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ImgHTMLAttributes } from 'react';
 import { ArrowLeft, Archive, MapPin, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Floating, firstLine, spotOf, supported, useTextMap, type Spot } from '@/components/annotator';
+import { Floating, barTaps, firstLine, spotOf, supported, useTextMap, type Spot } from '@/components/annotator';
 import { Empty } from '@/components/common';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
@@ -268,6 +268,7 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
   useEffect(() => {
     if (!newMap || !newRoot) return undefined;
     let t = 0;
+    const taps = barTaps(bar);
     const read = () => {
       const s = getSelection();
       if (!s || s.isCollapsed || !s.rangeCount) { setPick(null); return; }
@@ -275,9 +276,9 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
       const quote = newRoot.contains(range.commonAncestorContainer) ? newMap.quote(range) : null;
       setPick(quote ? { spot: spotOf(range.getBoundingClientRect()), quote } : null);
     };
-    const onChange = () => { clearTimeout(t); t = window.setTimeout(read, 150); };
+    const onChange = () => { clearTimeout(t); if (!taps.recent()) t = window.setTimeout(read, 150); };
     document.addEventListener('selectionchange', onChange);
-    return () => { clearTimeout(t); document.removeEventListener('selectionchange', onChange); };
+    return () => { clearTimeout(t); taps.stop(); document.removeEventListener('selectionchange', onChange); };
   }, [newMap, newRoot]);
 
   const drop = useDropPlace(newRoot, newMap, (a) => setChosen(a.id));
