@@ -33,6 +33,12 @@ export const TYPE_LABEL: Record<CourseType, string> = { column: '专栏', video:
 export const COMPLETION_LABEL: Record<Completion, string> = { finished: '已完结', ongoing: '连载中', incomplete: '缺失' };
 export const PUBLISH_LABEL: Record<PublishState, string> = { unpublished: '未公开', pending: '审核中', rejected: '已驳回' };
 
+// canUnsubscribe: the reader may take the course out of their my courses: a
+// library course of someone else's, or one that left the library and that
+// they read retained lessons of. Their own courses stay; a private one can
+// only be deleted.
+export const canUnsubscribe = (c: CourseSummary) => !!c.retention || (c.visibility !== 'private' && !c.isUploader);
+
 export const coverURL = (id: number) => `/api/courses/${id}/cover`;
 
 export type LessonState = 'unstarted' | 'done';

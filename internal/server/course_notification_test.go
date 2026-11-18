@@ -69,7 +69,6 @@ func TestUploaderAndSubscribersAreToldOfUnpublishing(t *testing.T) {
 	dave := a.user("dave")
 	admin := a.admin()
 	id := publishedWith(t, a, alice, func(m map[string]any) { m["completion"] = "incomplete" })
-	alice.mustOK(alice.do("DELETE", fmt.Sprintf("/api/courses/%d/subscribe", id), nil)) // still the uploader
 	subscribe(t, carol, id)
 	lessonIDs(t, dave, id)
 	_, files := nextVersion()
@@ -140,17 +139,20 @@ func TestDeletingACourseNobodyRetainsStillTellsItsPeople(t *testing.T) {
 	carol := a.user("carol")
 	admin := a.admin()
 	id := publishedCourse(t, a, alice)
-	alice.mustOK(alice.do("DELETE", fmt.Sprintf("/api/courses/%d/subscribe", id), nil))
 	unpublish(t, a, id)
-	alice.mustOK(requestPublish(alice, id)) // her own private course again, unsubscribed
+	alice.mustOK(requestPublish(alice, id)) // her own private course again
 	other := publishedCourse(t, a, a.user("bob"))
 	subscribe(t, carol, other)
 
 	admin.mustOK(deleteCourse(admin, id))
 	admin.mustOK(deleteCourse(admin, other))
 
-	if p := onlyNotification(t, alice, "publish_rejected"); p["reason"] != "课程已删除" || int(p["courseId"].(float64)) != id {
-		t.Fatalf("the uploader learns why their publish request was turned down: %v", p)
+	// the uploader is always a subscriber, so she hears of it as one, once
+	if p := onlyNotification(t, alice, "course_deleted"); p["retainedCount"] != float64(0) || int(p["courseId"].(float64)) != id {
+		t.Fatalf("the uploader learns her course was deleted: %v", p)
+	}
+	if n := notificationsOfKind(t, alice, "publish_rejected"); len(n) != 0 {
+		t.Fatalf("the uploader already told of the deletion is not told twice: %v", n)
 	}
 	if p := onlyNotification(t, carol, "course_deleted"); p["retainedCount"] != float64(0) || int(p["courseId"].(float64)) != other {
 		t.Fatalf("a subscriber who retains nothing is told too: %v", p)

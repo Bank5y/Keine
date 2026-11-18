@@ -24,7 +24,7 @@ export function useLessonBar(on: boolean) {
   const [bar, dispatch] = useReducer(nextBar, initialBar);
   useEffect(() => {
     if (!on) return undefined;
-    const onScroll = () => dispatch({ type: 'scroll', y: scrollY });
+    const onScroll = () => dispatch({ type: 'scroll', y: scrollY, max: document.documentElement.scrollHeight - innerHeight });
     // taps outside the page (a drawer, a dialog) are not on the text
     const selecting = () => { const s = getSelection(); return !!s && !s.isCollapsed; };
     const onPress = () => dispatch({ type: 'press', selecting: selecting() });

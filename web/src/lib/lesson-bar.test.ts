@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { initialBar, nextBar, type BarEvent, type TapOn } from '@/lib/lesson-bar';
 
 const shownAfter = (...events: BarEvent[]) => events.reduce(nextBar, initialBar).shown;
-const scroll = (y: number): BarEvent => ({ type: 'scroll', y });
+// on a page that scrolls 2000px at most
+const scroll = (y: number, max = 2000): BarEvent => ({ type: 'scroll', y, max });
 // a tap on the page itself, at a height on a 390×844 phone screen
 const tap = (y: number, on: TapOn = 'page', selecting = false): BarEvent => ({ type: 'tap', y, height: 844, on, selecting });
 
@@ -11,8 +12,17 @@ describe('the lesson top bar', () => {
     expect(shownAfter(scroll(300), scroll(600))).toBe(false);
   });
 
-  it('comes back on scrolling up a little', () => {
-    expect(shownAfter(scroll(300), scroll(600), scroll(590))).toBe(true);
+  it('stays hidden on a small scroll up, and comes back on a deliberate one', () => {
+    expect(shownAfter(scroll(300), scroll(600), scroll(590))).toBe(false);
+    expect(shownAfter(scroll(300), scroll(600), scroll(536))).toBe(true);
+  });
+
+  it('stays hidden as the page bounces back from past its end', () => {
+    expect(shownAfter(scroll(1900), scroll(2000), scroll(2090), scroll(2000))).toBe(false);
+  });
+
+  it('counts a scroll up afresh after scrolling down again', () => {
+    expect(shownAfter(scroll(300), scroll(600), scroll(560), scroll(580), scroll(530))).toBe(false);
   });
 
   it('always shows at the top of the page', () => {

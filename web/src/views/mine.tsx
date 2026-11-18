@@ -12,7 +12,7 @@ import { Sheet } from '@/components/sheet';
 import { Shelf } from '@/components/shelf';
 import { UploadDialog } from '@/components/upload-dialog';
 import { api, ApiError } from '@/lib/api';
-import { RETENTION_LABEL, type CourseSummary } from '@/lib/courses';
+import { RETENTION_LABEL, canUnsubscribe, type CourseSummary } from '@/lib/courses';
 import { COMPLETION_OPTIONS, COURSE_TYPE_OPTIONS } from '@/lib/course-filter';
 import { MINE_STATES, STUDY_LABEL, mineParams, readMineFilter } from '@/lib/mine-filter';
 import { setParam, useSearch } from '@/lib/router';
@@ -21,9 +21,8 @@ import { useNarrow } from '@/lib/use-narrow';
 const stateOptions = MINE_STATES.map((v) => ({ value: v, label: STUDY_LABEL[v] }));
 
 // What a reader may do to a course from the list, as the shelf's tools
-// allow: leave a library course (or one that has left the library), delete
-// a private course of their own.
-const canRemove = (c: CourseSummary) => c.visibility !== 'private' || !!c.retention;
+// allow: unsubscribe (see canUnsubscribe), delete a private course of their
+// own.
 const canDelete = (c: CourseSummary) => c.visibility === 'private' && c.isUploader;
 
 export function MineView() {
@@ -113,7 +112,7 @@ export function MineView() {
 // with nothing to do has no ⋯.
 function RowMenu({ course, onRemove, onDelete }: { course: CourseSummary; onRemove: (c: CourseSummary) => void; onDelete: (c: CourseSummary) => void }) {
   const [open, setOpen] = useState(false);
-  const remove = canRemove(course);
+  const remove = canUnsubscribe(course);
   const del = canDelete(course);
   if (!remove && !del) return null;
   // a row closes the menu first, so the confirmation it opens is not stacked on it
