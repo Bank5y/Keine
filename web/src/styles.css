@@ -630,6 +630,19 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .analysis-wait { margin: 2px 0 12px; font-size: 13px; color: var(--text-3); }
 .analysis-wait.thinking { display: flex; align-items: center; gap: 6px; }
 .analysis-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); animation: pulse 1.2s ease-in-out infinite; }
+/* the run's lookups (#127): listed while it looks, one line once it answers */
+.analysis-progress { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 12px; padding: 0; list-style: none; font-size: 13px; color: var(--text-3); }
+.analysis-progress li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.analysis-progress li .analysis-dot { flex: none; background: var(--rule); animation: none; }
+.analysis-progress li.running { color: var(--text-2); }
+.analysis-progress li.running .analysis-dot { background: var(--brand); animation: pulse 1.2s ease-in-out infinite; }
+.analysis-failed { margin-left: 2px; padding: 0 5px; border-radius: 3px; background: var(--surface-2); font-size: 11px; color: var(--text-3); }
+.analysis-lookups { margin: -4px 0 10px; }
+.analysis-lookups .analysis-progress { margin: 6px 0 4px; }
+.analysis-lookups-toggle { display: inline-flex; align-items: center; gap: 4px; height: 24px; font-size: 12px; color: var(--text-3); }
+.analysis-lookups-toggle:hover { color: var(--text-2); }
+.analysis-lookups-toggle svg { width: 12px; height: 12px; transition: transform .12s; }
+.analysis-lookups-toggle.open svg { transform: rotate(180deg); }
 .analysis-skeleton { display: flex; flex-direction: column; gap: 10px; }
 .analysis-skeleton span { display: block; height: 10px; border-radius: 3px; background: var(--surface-2); animation: pulse 1.6s ease-in-out infinite; }
 .analysis-title { margin: 0 0 8px; font-family: var(--serif); font-size: 18px; font-weight: 700; line-height: 1.45; color: var(--text); }
@@ -658,7 +671,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .ann-btn.analyze:hover { color: var(--brand-hover); background: var(--brand-soft); }
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes pulse { 50% { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .analysis, .analysis-skeleton span, .analysis-dot { animation: none; } .analysis-title.caret::after, .analysis-intro.caret::after, .analysis-meaning.caret .prose > :last-child::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .analysis, .analysis-skeleton span, .analysis-dot, .analysis-progress li.running .analysis-dot { animation: none; } .analysis-title.caret::after, .analysis-intro.caret::after, .analysis-meaning.caret .prose > :last-child::after { animation: none; } }
 .ann-btn:disabled { opacity: .45; pointer-events: none; }
 .ann-item { display: flex; flex-direction: column; gap: 4px; }
 .ann-bar.stacked .ann-item + .ann-item { border-top: 1px solid var(--line); padding-top: 4px; }

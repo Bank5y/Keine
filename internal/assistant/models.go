@@ -496,7 +496,7 @@ func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
 			{Role: RoleSystem, Content: "This is a connection test. Do not call any tool."},
 			{Role: RoleUser, Content: "Reply with OK."},
 		},
-		Tools: []Tool{{
+		Tools: []ToolSpec{{
 			Name:        "connection_check",
 			Description: "Declared only to check that tools are accepted; never call it.",
 			Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
-import { RotateCcw, Sparkles, X } from 'lucide-react';
+import { ChevronDown, RotateCcw, Sparkles, X } from 'lucide-react';
 import type { Components, ExtraProps } from 'react-markdown';
 import { CodeBlock } from '@/components/code-block';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { analyze, hasContent, initial, step, type AnalysisState, type Part, type Parts } from '@/lib/analysis';
 import type { Quote } from '@/lib/annotations';
+import { progressLines, summary, type ToolActivity } from '@/lib/progress';
 import { cn } from '@/lib/utils';
 
 const WIDTH = 440;
@@ -110,13 +111,44 @@ function writing(state: AnalysisState): Part | null {
   return p.body ? 'body' : p.intro ? 'intro' : 'title';
 }
 
+// Progress lists the run's lookups, a running one with a pulsing dot and a
+// failed one marked.
+function Progress({ activities }: { activities: ToolActivity[] }) {
+  return (
+    <ul className="analysis-progress">
+      {progressLines(activities).map((l, i) => (
+        <li key={i} className={cn(l.running && 'running', l.failed && 'failed')}>
+          <span className="analysis-dot" aria-hidden />{l.text}{l.failed ? <span className="analysis-failed">失败</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Lookups fold into one line once the answer shows; it opens to the list.
+function Lookups({ activities }: { activities: ToolActivity[] }) {
+  const [open, setOpen] = useState(false);
+  const line = summary(activities);
+  if (!line) return null;
+  return (
+    <div className="analysis-lookups">
+      <button type="button" className={cn('analysis-lookups-toggle', open && 'open')} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        {line}<ChevronDown />
+      </button>
+      {open ? <Progress activities={activities} /> : null}
+    </div>
+  );
+}
+
 function Body({ state }: { state: AnalysisState }) {
   if (state.status === 'loading') {
+    const looking = state.activities.length > 0;
     return (
       <div className="analysis-body" aria-busy="true">
+        {looking ? <Progress activities={state.activities} /> : null}
         {state.thinking
           ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p>
-          : <p className="analysis-wait">正在结合本讲上下文分析…</p>}
+          : looking ? null : <p className="analysis-wait">正在结合本讲上下文分析…</p>}
         <div className="analysis-skeleton">
           <span style={{ width: 170, height: 16 }} />
           <span style={{ width: '100%' }} /><span style={{ width: '94%' }} /><span style={{ width: '78%' }} />
@@ -130,6 +162,7 @@ function Body({ state }: { state: AnalysisState }) {
   const at = writing(state);
   return (
     <div className="analysis-body" aria-live="polite" aria-busy={state.status === 'streaming'}>
+      <Lookups activities={state.activities} />
       {p.title ? <h3 className={cn('analysis-title', at === 'title' && 'caret')}>{p.title}</h3> : null}
       {p.intro ? <p className={cn('analysis-intro', at === 'intro' && 'caret')}>{p.intro}</p> : null}
       {p.body ? (

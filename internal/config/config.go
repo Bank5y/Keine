@@ -18,6 +18,9 @@ type Config struct {
 	MaxUploadMB   int64
 	// MasterKey encrypts the model keys stored in the database.
 	MasterKey string
+	// RunDeadlineSeconds ends an assistant run; at three quarters of it
+	// the run stops looking things up and answers.
+	RunDeadlineSeconds int64
 
 	// Storage is "local" (files under DataDir) or "s3".
 	Storage string
@@ -62,6 +65,9 @@ func FromEnv() (Config, error) {
 		return c, err
 	}
 	if c.MaxUploadMB, err = intEnv("KEINE_MAX_UPLOAD_MB", 4096); err != nil {
+		return c, err
+	}
+	if c.RunDeadlineSeconds, err = intEnv("KEINE_RUN_DEADLINE_SECONDS", 120); err != nil {
 		return c, err
 	}
 	switch c.Storage {

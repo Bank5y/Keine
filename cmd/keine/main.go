@@ -49,6 +49,7 @@ func run() error {
 		MaxUploadBytes: cfg.MaxUploadMB << 20,
 		Web:            webFS,
 		MasterKey:      cfg.MasterKey,
+		RunDeadline:    time.Duration(cfg.RunDeadlineSeconds) * time.Second,
 	})
 	if err != nil {
 		return err

@@ -36,6 +36,8 @@ type tagParser struct {
 	closed  map[Part]bool
 	// repeated: a section was opened a second time
 	repeated bool
+	// emitted: some text was passed on
+	emitted bool
 }
 
 func newTagParser(emit func(Part, string) error) *tagParser {
@@ -141,6 +143,7 @@ func (p *tagParser) write(s string) error {
 	}
 	p.started = true
 	p.text[p.cur].WriteString(trimmed)
+	p.emitted = true
 	return p.emit(p.cur, trimmed)
 }
 

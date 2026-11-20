@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/assistant"
+	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
 )
 
@@ -50,7 +52,13 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w, r, errors.New("response cannot stream"))
 		return
 	}
-	a, err := assistant.Analyze(ctx, turn, assistant.AnalysisPrompt.Messages(passage(p, in.Quote)), assistant.Sink{
+	run := assistant.Run{
+		Turn:     turn,
+		Tools:    append(assistant.CourseTools(&courseLibrary{s.courses, currentUser(r), p.Course}), s.opts.ExtraTools...),
+		Now:      s.opts.Now,
+		Deadline: s.opts.RunDeadline,
+	}
+	a, err := assistant.Analyze(ctx, run, assistant.AnalysisPrompt.Messages(passage(p, in.Quote)), assistant.Sink{
 		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
 		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
 	})
@@ -90,6 +98,7 @@ func passage(p course.Passage, quote string) assistant.Passage {
 		AuthorName:  p.Course.AuthorName,
 		AuthorIntro: p.Course.AuthorIntro,
 		Path:        append([]string{p.Chapter, p.Lesson.Title}, p.Headings...),
+		LessonKey:   p.Lesson.Key,
 		Quote:       quote,
 		Lesson:      p.Lesson.Markdown,
 	}
@@ -104,11 +113,41 @@ func passage(p course.Passage, quote string) assistant.Passage {
 			if l.Upcoming {
 				title += "（未上线）"
 			}
-			oc.Lessons = append(oc.Lessons, title)
+			oc.Lessons = append(oc.Lessons, assistant.OutlineLesson{Key: l.Key, Title: title})
 		}
 		out.Outline = append(out.Outline, oc)
 	}
 	return out
+}
+
+// courseLibrary is a course as its reader sees it, for the course tools:
+// the outline of the version they read, and each lesson read for them.
+type courseLibrary struct {
+	courses *course.Service
+	viewer  auth.User
+	course  course.Detail
+}
+
+func (c *courseLibrary) Lessons() []assistant.LessonRef {
+	var out []assistant.LessonRef
+	for _, ch := range c.course.Chapters {
+		for _, l := range ch.Lessons {
+			out = append(out, assistant.LessonRef{Key: l.Key, Title: l.Title, Chapter: ch.Title, HasText: l.HasText, Upcoming: l.Upcoming, Unavailable: l.Unavailable})
+		}
+	}
+	return out
+}
+
+func (c *courseLibrary) Text(ctx context.Context, key string) (string, error) {
+	for _, ch := range c.course.Chapters {
+		for _, l := range ch.Lessons {
+			if l.Key == key {
+				t, err := c.courses.Lesson(ctx, c.viewer, c.course.ID, l.ID)
+				return t.Markdown, err
+			}
+		}
+	}
+	return "", course.ErrLessonNotFound
 }
 
 // eventStream writes Server-Sent Events, each flushed as it is sent.

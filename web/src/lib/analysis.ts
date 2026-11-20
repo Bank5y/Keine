@@ -1,15 +1,18 @@
 // An analysis as the popover shows it (ADR 0008): the server streams the
-// three sections as Server-Sent Events (delta, then done or error), and
-// step folds them into what the popover shows.
+// three sections as Server-Sent Events (delta, then done or error), with an
+// activity for each lookup, and step folds them into what the popover shows.
+
+import { track, type ToolActivity } from '@/lib/progress';
 
 // the three parts of an analysis: title, intro and meaning ("body")
 export type Part = 'title' | 'intro' | 'body';
 export type Parts = Record<Part, string>;
 
 export type AnalysisEvent =
-  | { type: 'delta'; section: Part; text: string }
-  // a step of the run in progress; the popover shows only thinking so far
-  | { type: 'activity'; id: string; kind: string; target?: string; status: 'running' | 'done' | 'failed' }
+  // reset (with no text) throws away the draft streamed so far
+  | { type: 'delta'; section: Part | ''; text: string; reset?: boolean }
+  // a lookup of the run, or thinking while the model reasons
+  | { type: 'activity'; id: string; kind: string; target?: string; status: 'running' | 'done' | 'failed'; reason?: string }
   | { type: 'done'; title: string; intro: string; body: string }
   // message is the server's, in the reader's words
   | { type: 'error'; code: string; message?: string; kept: boolean }
@@ -18,14 +21,15 @@ export type AnalysisEvent =
   // a new run begins (a retry)
   | { type: 'start' };
 
+// activities are the run's lookups, kept through the answer
 export type AnalysisState =
   // thinking: the model is reasoning before it answers
-  | { status: 'loading'; thinking?: boolean }
-  | { status: 'streaming'; parts: Parts }
-  | { status: 'done'; parts: Parts }
-  | { status: 'error'; message: string; parts: Parts };
+  | { status: 'loading'; thinking?: boolean; activities: ToolActivity[] }
+  | { status: 'streaming'; parts: Parts; activities: ToolActivity[] }
+  | { status: 'done'; parts: Parts; activities: ToolActivity[] }
+  | { status: 'error'; message: string; parts: Parts; activities: ToolActivity[] };
 
-export const initial: AnalysisState = { status: 'loading' };
+export const initial: AnalysisState = { status: 'loading', activities: [] };
 const empty: Parts = { title: '', intro: '', body: '' };
 
 const partsOf = (s: AnalysisState): Parts => (s.status === 'loading' ? empty : s.parts);
@@ -33,20 +37,27 @@ const partsOf = (s: AnalysisState): Parts => (s.status === 'loading' ? empty : s
 export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
   if (e.type === 'start') return initial;
   if (s.status === 'done' || s.status === 'error') return s;
+  const { activities } = s;
   switch (e.type) {
     case 'activity':
-      if (e.kind !== 'thinking' || s.status !== 'loading') return s;
-      return { status: 'loading', thinking: e.status === 'running' };
+      if (e.kind !== 'thinking') {
+        const { type: _, ...a } = e;
+        return { ...s, activities: track(activities, a) };
+      }
+      if (s.status !== 'loading') return s;
+      return { status: 'loading', thinking: e.status === 'running', activities };
     case 'delta': {
+      if (e.reset) return { status: 'loading', activities };
+      if (!e.section) return s;
       const parts = partsOf(s);
-      return { status: 'streaming', parts: { ...parts, [e.section]: parts[e.section] + e.text } };
+      return { status: 'streaming', parts: { ...parts, [e.section]: parts[e.section] + e.text }, activities };
     }
     case 'done':
-      return { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body } };
+      return { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body }, activities };
     case 'error':
-      return { status: 'error', message: e.message || FALLBACK_ERROR, parts: e.kept ? partsOf(s) : empty };
+      return { status: 'error', message: e.message || FALLBACK_ERROR, parts: e.kept ? partsOf(s) : empty, activities };
     case 'end':
-      return { status: 'error', message: BROKEN, parts: partsOf(s) };
+      return { status: 'error', message: BROKEN, parts: partsOf(s), activities };
   }
   return s;
 }

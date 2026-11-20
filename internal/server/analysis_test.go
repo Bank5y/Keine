@@ -18,12 +18,14 @@ import (
 
 // step is what the scripted model does for one call: stream events, then
 // end with a result or fail with err. With hold, it streams and then waits
-// for the call to be cancelled.
+// for the call to be cancelled. before runs as the call starts (to move a
+// clock).
 type step struct {
 	events []assistant.Event
 	result assistant.Result
 	err    error
 	hold   bool
+	before func()
 }
 
 // scriptedModel is the model every site model resolves to: each call takes
@@ -53,6 +55,9 @@ func (m *scriptedModel) Stream(ctx context.Context, req assistant.Request, emit 
 	s := m.steps[0]
 	m.steps = m.steps[1:]
 	m.mu.Unlock()
+	if s.before != nil {
+		s.before()
+	}
 	for _, e := range s.events {
 		if err := emit(e); err != nil {
 			return assistant.Result{}, err
@@ -115,7 +120,13 @@ func aiApp(t *testing.T, m *scriptedModel) *app {
 // aiAppThinking is aiApp with thinking switched on or off for every kind.
 func aiAppThinking(t *testing.T, m *scriptedModel, thinking bool) *app {
 	t.Helper()
-	a := newApp(t, withModel(m), withMasterKey(masterKey))
+	return aiAppWith(t, m, thinking)
+}
+
+// aiAppWith is aiAppThinking with more options for the app.
+func aiAppWith(t *testing.T, m *scriptedModel, thinking bool, opts ...appOption) *app {
+	t.Helper()
+	a := newApp(t, append([]appOption{withModel(m), withMasterKey(masterKey)}, opts...)...)
 	admin := a.admin()
 	created := admin.mustOK(admin.do("POST", "/api/admin/models", map[string]any{
 		"format": "openai", "baseUrl": "https://model.example/v1", "key": "sk-test-0123456789", "model": "m-1", "displayName": "Flash", "rates": rates,

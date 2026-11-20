@@ -7,3 +7,6 @@ internal/web/dist/*
 
 # local work: Playwright venv, screenshots kept across sessions (scripts/demo)
 /.scratch/
+
+# reference write-ups for the maintainer, not part of the project
+/docs/reference-out/

@@ -35,7 +35,7 @@ var analysisSystem string
 // AnalysisPrompt is the prompt of an analysis. The sources that change
 // least come first, so the start of the request can be cached.
 var AnalysisPrompt = Prompt{
-	Version: "analysis-1",
+	Version: "analysis-2",
 	System:  strings.TrimSpace(analysisSystem),
 	Sources: []Source{SourceCourseInfo, SourceOutline, SourceSelection, SourceLesson},
 }
@@ -55,8 +55,10 @@ type Passage struct {
 	Outline     []OutlineChapter
 	// Path is where the selection sits: chapter, lesson, then the headings
 	// above it.
-	Path  []string
-	Quote string
+	Path []string
+	// LessonKey identifies the lesson of the selection.
+	LessonKey string
+	Quote     string
 	// Lesson is the lesson's Markdown with the selected place wrapped in
 	// SelectedOpen and SelectedClose (left unmarked when it cannot be told
 	// apart).
@@ -65,7 +67,14 @@ type Passage struct {
 
 type OutlineChapter struct {
 	Title   string
-	Lessons []string
+	Lessons []OutlineLesson
+}
+
+// OutlineLesson is a lesson of the outline: Key is the identifier the
+// course tools take.
+type OutlineLesson struct {
+	Key   string
+	Title string
 }
 
 // Messages puts the prompt and the passage's sources together as a
@@ -96,15 +105,15 @@ func (in Passage) section(s Source) string {
 			}
 		}
 	case SourceOutline:
-		b.WriteString("## 课程目录")
+		b.WriteString("## 课程目录（方括号里是讲的标识）")
 		for _, ch := range in.Outline {
 			b.WriteString("\n- " + ch.Title)
 			for _, l := range ch.Lessons {
-				b.WriteString("\n  - " + l)
+				fmt.Fprintf(&b, "\n  - %s [%s]", l.Title, l.Key)
 			}
 		}
 	case SourceSelection:
-		fmt.Fprintf(&b, "## 选中的原文\n位置：%s\n「%s」", strings.Join(in.Path, " › "), in.Quote)
+		fmt.Fprintf(&b, "## 选中的原文\n位置：%s（本讲 [%s]）\n「%s」", strings.Join(in.Path, " › "), in.LessonKey, in.Quote)
 	case SourceLesson:
 		fmt.Fprintf(&b, "## 本讲全文（选中处用 %s 标出）\n%s", SelectedOpen, strings.TrimSpace(in.Lesson))
 	}
