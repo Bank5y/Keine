@@ -50,9 +50,36 @@ describe('progressLines', () => {
   });
 
   it('says a lookup of a kind it does not know about in general words', () => {
-    expect(progressLines(all(act('tool-1', 'web_fetch', 'example.com', 'done')))).toEqual([
+    expect(progressLines(all(act('tool-1', 'fetch_more', 'example.com', 'done')))).toEqual([
       { text: '查阅了「example.com」', failed: false, running: false },
     ]);
+  });
+
+  it('names web searches and the sites read', () => {
+    expect(progressLines(all(
+      act('tool-1', 'web_search', 'Raft 任期', 'done'),
+      act('tool-2', 'web_fetch', 'raft.github.io', 'running'),
+    ))).toEqual([
+      { text: '搜索了「Raft 任期」', failed: false, running: false },
+      { text: '正在读「raft.github.io」', failed: false, running: true },
+    ]);
+  });
+
+  it('says only that web search is unavailable when the site key failed', () => {
+    const [l] = progressLines(all(act('tool-1', 'web_search', 'Raft', 'failed', 'quota_exhausted')));
+    expect(l).toEqual({ text: '没能搜索「Raft」', failed: true, running: false, note: '联网搜索暂不可用' });
+  });
+
+  it('tells the reader why their own key failed', () => {
+    const own = (reason: string) => progressLines([{ ...act('tool-1', 'web_search', 'Raft', 'failed', reason), ownKey: true }])[0].note;
+    expect(own('quota_exhausted')).toBe('你的搜索 key 余额不足');
+    expect(own('auth')).toBe('你的搜索 key 无效');
+    expect(own('unavailable')).toBe('联网搜索暂不可用');
+  });
+
+  it('marks a page that could not be read only as failed', () => {
+    const [l] = progressLines(all(act('tool-1', 'web_fetch', 'example.com', 'failed', 'not_found')));
+    expect(l).toEqual({ text: '没能读「example.com」', failed: true, running: false });
   });
 });
 
@@ -73,6 +100,14 @@ describe('summary', () => {
       act('tool-1', 'search_course', 'a', 'done'),
       act('tool-2', 'read_lesson', 'l99', 'failed', 'not_found'),
     ))).toBe('搜索 1 次 · 1 项失败');
+  });
+
+  it('counts web searches with the searches, and the pages read', () => {
+    expect(summary(all(
+      act('tool-1', 'web_search', 'a', 'done'),
+      act('tool-2', 'search_course', 'b', 'done'),
+      act('tool-3', 'web_fetch', 'raft.github.io', 'done'),
+    ))).toBe('搜索 2 次 · 读了 1 个网页');
   });
 
   it('is empty when nothing was looked up', () => {

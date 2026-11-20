@@ -118,7 +118,7 @@ function Progress({ activities }: { activities: ToolActivity[] }) {
     <ul className="analysis-progress">
       {progressLines(activities).map((l, i) => (
         <li key={i} className={cn(l.running && 'running', l.failed && 'failed')}>
-          <span className="analysis-dot" aria-hidden />{l.text}{l.failed ? <span className="analysis-failed">失败</span> : null}
+          <span className="analysis-dot" aria-hidden />{l.text}{l.failed ? <span className="analysis-failed">{l.note ?? '失败'}</span> : null}
         </li>
       ))}
     </ul>
@@ -193,8 +193,11 @@ function Foot({ state, onRetry }: { state: AnalysisState; onRetry: () => void })
     );
   }
   return (
-    <div className="analysis-foot">
-      {state.status === 'streaming' ? <><span>生成中…</span><span>Esc 关闭</span></> : <span>AI 生成，仅供参考</span>}
-    </div>
+    <>
+      {state.status === 'done' && state.noWeb ? <p className="analysis-no-web" role="status">这次没有拿到网络结果</p> : null}
+      <div className="analysis-foot">
+        {state.status === 'streaming' ? <><span>生成中…</span><span>Esc 关闭</span></> : <span>AI 生成，仅供参考</span>}
+      </div>
+    </>
   );
 }

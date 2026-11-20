@@ -12,8 +12,10 @@ export type AnalysisEvent =
   // reset (with no text) throws away the draft streamed so far
   | { type: 'delta'; section: Part | ''; text: string; reset?: boolean }
   // a lookup of the run, or thinking while the model reasons
-  | { type: 'activity'; id: string; kind: string; target?: string; status: 'running' | 'done' | 'failed'; reason?: string }
-  | { type: 'done'; title: string; intro: string; body: string }
+  | { type: 'activity'; id: string; kind: string; target?: string; status: 'running' | 'done' | 'failed'; reason?: string; ownKey?: boolean }
+  // degraded: the web capabilities that went off during the run; sources
+  // are the turn's metadata, which the popover does not show
+  | { type: 'done'; title: string; intro: string; body: string; degraded?: string[]; sources?: unknown[] }
   // message is the server's, in the reader's words
   | { type: 'error'; code: string; message?: string; kept: boolean }
   // the stream closed
@@ -26,7 +28,9 @@ export type AnalysisState =
   // thinking: the model is reasoning before it answers
   | { status: 'loading'; thinking?: boolean; activities: ToolActivity[] }
   | { status: 'streaming'; parts: Parts; activities: ToolActivity[] }
-  | { status: 'done'; parts: Parts; activities: ToolActivity[] }
+  // noWeb: the run got no web results, which the popover says apart from
+  // the sections (it never goes into the document)
+  | { status: 'done'; parts: Parts; activities: ToolActivity[]; noWeb?: true }
   | { status: 'error'; message: string; parts: Parts; activities: ToolActivity[] };
 
 export const initial: AnalysisState = { status: 'loading', activities: [] };
@@ -52,8 +56,10 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
       const parts = partsOf(s);
       return { status: 'streaming', parts: { ...parts, [e.section]: parts[e.section] + e.text }, activities };
     }
-    case 'done':
-      return { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body }, activities };
+    case 'done': {
+      const done: AnalysisState = { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body }, activities };
+      return e.degraded?.length ? { ...done, noWeb: true } : done;
+    }
     case 'error':
       return { status: 'error', message: e.message || FALLBACK_ERROR, parts: e.kept ? partsOf(s) : empty, activities };
     case 'end':

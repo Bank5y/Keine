@@ -127,14 +127,25 @@ func aiAppThinking(t *testing.T, m *scriptedModel, thinking bool) *app {
 func aiAppWith(t *testing.T, m *scriptedModel, thinking bool, opts ...appOption) *app {
 	t.Helper()
 	a := newApp(t, append([]appOption{withModel(m), withMasterKey(masterKey)}, opts...)...)
+	mapModel(t, a, map[string]any{"searchRoute": "off"}, thinking)
+	return a
+}
+
+// mapModel adds a site model, the given fields over a plain one, and maps
+// every turn kind to it.
+func mapModel(t *testing.T, a *app, fields map[string]any, thinking bool) {
+	t.Helper()
 	admin := a.admin()
-	created := admin.mustOK(admin.do("POST", "/api/admin/models", map[string]any{
+	body := map[string]any{
 		"format": "openai", "baseUrl": "https://model.example/v1", "key": "sk-test-0123456789", "model": "m-1", "displayName": "Flash", "rates": rates,
-	})).json()
+	}
+	for k, v := range fields {
+		body[k] = v
+	}
+	created := admin.mustOK(admin.do("POST", "/api/admin/models", body)).json()
 	for _, k := range []string{"analysis", "followup", "sync"} {
 		admin.mustOK(admin.do("PUT", "/api/admin/turns/"+k, map[string]any{"modelId": created["id"], "thinking": thinking}))
 	}
-	return a
 }
 
 // analysisColumn is a column whose first lesson mentions Agent twice.

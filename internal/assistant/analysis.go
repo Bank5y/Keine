@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,21 @@ type Activity struct {
 	Target string         `json:"target,omitempty"`
 	Status ActivityStatus `json:"status"`
 	Reason Category       `json:"reason,omitempty"`
+	// OwnKey: a failed web call ran on the reader's own key, so the reader
+	// is told why (no balance, a bad key) rather than only that it failed.
+	OwnKey bool `json:"ownKey,omitempty"`
+}
+
+// Meta is what a run records in its turn's metadata besides the answer
+// (ADR 0008): the source list, the capabilities that went off during the
+// run, and the web requests the services bill.
+type Meta struct {
+	Sources []WebSource `json:"sources"`
+	// Degraded are the web capabilities turned off during the run (an
+	// account failure, two passing ones in a row): the reader is told the
+	// run got no web results, which never goes into the document.
+	Degraded []string `json:"degraded,omitempty"`
+	Searches int      `json:"searches"`
 }
 
 type ActivityStatus string
@@ -111,7 +127,7 @@ const (
 	tooManyCalls  = "本步最多 5 个工具调用，这个调用没有执行；需要的话请在下一步再调用。"
 	internalNote  = "工具内部出错，这次调用没有结果。"
 	transientNote = "这次调用暂时失败了，没有结果。"
-	brokenFormat  = "本次运行 %s 不可用，请依据已有资料作答，不要编造来源。"
+	brokenFormat  = "本次运行%s不可用，请依据已有资料作答，不要编造来源。"
 	unknownFormat = "没有名为 %s 的工具。可用的工具：%s。"
 )
 
@@ -119,6 +135,10 @@ const (
 type Run struct {
 	Turn  Turn
 	Tools []Tool
+	// Web is how the run reaches the web on the Keine tool route; nil when
+	// it does not (the turn's model searches no web, or searches it
+	// itself). Its tools come after Tools.
+	Web *WebRoute
 	// Now tells the time the deadlines are kept by (default: the system
 	// clock).
 	Now func() time.Time
@@ -147,16 +167,48 @@ var errRunDeadline = errors.New("run deadline")
 // A call that fails before anything streamed (rate limit, unavailable) is
 // tried once more. An invalid answer that has not streamed is asked for
 // once more with what was wrong; one that has streamed ends the run.
-func Analyze(ctx context.Context, run Run, msgs []Message, out Sink) (Analysis, error) {
+//
+// With a web route, web_search (and web_fetch) are among the tools; the
+// meta returned, on failure too, lists what they found.
+func Analyze(ctx context.Context, run Run, msgs []Message, out Sink) (Analysis, Meta, error) {
 	if run.Now == nil {
 		run.Now = time.Now
 	}
 	if run.Deadline <= 0 {
 		run.Deadline = DefaultDeadline
 	}
+	var web *Web
+	if run.Web != nil {
+		web = newWeb(*run.Web)
+		run.Tools = append(slices.Clip(run.Tools), web.Tools()...)
+	}
+	r := newAnalysisRun(run, out)
+	r.web = web
+	a, err := r.analyze(ctx, msgs)
+	return a, r.meta(), err
+}
+
+// meta is what the run found and which capabilities went off.
+func (r *analysisRun) meta() Meta {
+	m := Meta{Sources: []WebSource{}}
+	if r.web == nil {
+		return m
+	}
+	m.Sources, m.Searches = r.web.Sources(), r.web.Searches()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, name := range []string{ToolWebSearch, ToolWebFetch} {
+		if b, ok := r.breakers[name]; ok && b.off {
+			m.Degraded = append(m.Degraded, name)
+		}
+	}
+	return m
+}
+
+func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, error) {
+	run := r.run
 	runCtx, cancel := context.WithTimeoutCause(ctx, run.Deadline, errRunDeadline)
 	defer cancel()
-	r := newAnalysisRun(run, out)
 	specs := make([]ToolSpec, len(run.Tools))
 	for i, t := range run.Tools {
 		specs[i] = t.Spec()
@@ -266,6 +318,8 @@ type analysisRun struct {
 	// calls and toolRuns number the activities
 	calls, toolRuns int
 	breakers        map[string]*breaker
+	// web is the run's web tools, nil without a web route
+	web *Web
 }
 
 // breaker is how a tool fared in this run (#117): it is off after an
@@ -430,7 +484,7 @@ func (r *analysisRun) runTool(ctx context.Context, id string, c ToolCall) string
 	off := b.off
 	r.mu.Unlock()
 	if off {
-		return fmt.Sprintf(brokenFormat, c.Name)
+		return offNote(c.Name)
 	}
 	act := Activity{ID: id, Kind: c.Name, Target: safeTarget(t, c.Arguments), Status: ActivityRunning}
 	_ = r.out.Activity(act)
@@ -459,6 +513,7 @@ func (r *analysisRun) runTool(ctx context.Context, id string, c ToolCall) string
 		return res
 	}
 	act.Status, act.Reason = ActivityFailed, terr.Reason
+	act.OwnKey = r.web.ownKeyFailure(c.Name)
 	_ = r.out.Activity(act)
 	switch terr.Failure {
 	case FailureInvalid:
@@ -466,7 +521,7 @@ func (r *analysisRun) runTool(ctx context.Context, id string, c ToolCall) string
 	case FailureTransient:
 		return transientNote
 	case FailureAccount:
-		return fmt.Sprintf(brokenFormat, c.Name)
+		return offNote(c.Name)
 	}
 	logToolFailure(c.Name, terr)
 	return internalNote
@@ -497,6 +552,16 @@ func safeTarget(t Tool, args string) (target string) {
 		}
 	}()
 	return t.Target(args)
+}
+
+// offNote is what a call to a tool that is off for the run is answered:
+// the capability by name, so the model answers without it.
+func offNote(tool string) string {
+	name, ok := capabilityNames[tool]
+	if !ok {
+		name = " " + tool + " "
+	}
+	return fmt.Sprintf(brokenFormat, name)
 }
 
 func runCode(c Category) string {

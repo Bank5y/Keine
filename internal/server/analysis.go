@@ -55,17 +55,18 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	run := assistant.Run{
 		Turn:     turn,
 		Tools:    append(assistant.CourseTools(&courseLibrary{s.courses, currentUser(r), p.Course}), s.opts.ExtraTools...),
+		Web:      turn.Web,
 		Now:      s.opts.Now,
 		Deadline: s.opts.RunDeadline,
 	}
-	a, err := assistant.Analyze(ctx, run, assistant.AnalysisPrompt.Messages(passage(p, in.Quote)), assistant.Sink{
+	a, meta, err := assistant.Analyze(ctx, run, assistant.AnalysisPrompt.Messages(passage(p, in.Quote)), assistant.Sink{
 		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
 		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
 	})
 	var re *assistant.RunError
 	switch {
 	case err == nil:
-		_ = sse.send("done", a)
+		_ = sse.send("done", analysisDone{Analysis: a, Degraded: meta.Degraded, Sources: meta.Sources})
 	case errors.As(err, &re):
 		slog.Info("analysis failed", "code", re.Code, "err", re.Cause)
 		_ = sse.send("error", runError(re.Code, re.Kept))
@@ -73,6 +74,18 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		slog.Error("analysis failed", "err", err)
 		_ = sse.send("error", runError(assistant.CodeProviderError, false))
 	}
+}
+
+// analysisDone is the done event of an analysis: the three parts, the
+// capabilities that went off (the reader is told the run got no web
+// results, which never goes into the document), and the turn's source
+// list (ADR 0008). The sources are the turn's metadata, made by the
+// server; the page shows none of them, and until the first turn is kept
+// on the server (#133) the event is where the turn's metadata goes.
+type analysisDone struct {
+	assistant.Analysis
+	Degraded []string              `json:"degraded,omitempty"`
+	Sources  []assistant.WebSource `json:"sources"`
 }
 
 // runMessages say what ended a run, in the reader's words.
