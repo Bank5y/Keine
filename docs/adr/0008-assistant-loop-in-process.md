@@ -10,16 +10,16 @@
 
 ## 服务商接入
 
-Keine 原生实现两个适配器：OpenAI 兼容接口（Chat Completions）和 Anthropic Messages。后者单独做，是因为 Anthropic 的 OpenAI 兼容层不支持缓存、也不建议用于生产。其他服务商走它们自己的 OpenAI 兼容端点，或者由部署者自选的模型网关（LiteLLM、OpenRouter 等）接入，Keine 只认 base URL，不为单个服务商写适配器。框架和官方 SDK 可以用在适配器内部，或作为循环写法的参考。
+Keine 原生实现两个适配器：OpenAI 兼容接口（Chat Completions）和 Anthropic Messages。后者单独做，是因为 Anthropic 的 OpenAI 兼容层不支持缓存、也不建议用于生产。其他服务商走它们自己的 OpenAI 兼容端点，或者由部署者自选的模型网关（LiteLLM、OpenRouter 等）接入，Keine 只认 base URL，不为单个服务商写适配器。例外是**服务商配置**：不是新的适配器，而是挂在通用适配器上的一组默认值和规则（默认地址、思考模式开关、推理内容的回传、用量字段映射、搜索和抓取的路线）。第一版只有 DeepSeek 一份，它是推荐的站点模型；其他服务商（Kimi、MiniMax 等）以后按需求加配置，不加适配器（#112）。框架和官方 SDK 可以用在适配器内部，或作为循环写法的参考。
 
 ## 联网搜索与服务商执行的工具
 
 联网搜索和网页抓取是助手的两项**能力**，不是固定的某个工具。每次运行开始时，按当前模型给每项能力解析出一条路线：
 
 - **服务商自带**：搜索在服务商那边执行（如 Anthropic 的 `web_search`、`web_fetch`）。这是「工具执行归循环」的唯一例外。适配器在能力表里声明自己是否「由模型自主决定调用」并且「能和 Keine 的工具同时使用」，两条都满足才能走这条路线。适配器负责把服务商的搜索过程转成 `activity`、把引用归一成 Keine 的来源格式、把搜索次数计入统一用量；服务商要求原样续传的内容（如 `pause_turn`、加密结果块）只在一次运行的内存里保留，不改变保存的消息格式。
-- **Keine 工具**：Keine 自己执行的 `web_search`，背后是可替换的搜索服务适配器（第一版接 Tavily）。
+- **Keine 工具**：Keine 自己执行的 `web_search` 和 `web_fetch`，背后是可替换的搜索服务适配器（第一版接 Tavily 和 DeepSeek Search / Fetch API）。服务商的独立搜索接口归在这一条：它由 Keine 调用，和模型 key 是同一把也没关系。
 
-部署者可以按模型指定路线；不指定时，适配器支持服务商自带就走它，否则走 Keine 工具；两条都没有时 AI 功能不启用。第一版：Anthropic 走服务商自带（搜索加抓取），OpenAI 兼容一路走 Keine 工具（只搜索，Keine 自己的抓取工具以后再加，并且只能抓取搜索结果里出现过的 URL）。只能强制搜索的形态（如 OpenAI Chat Completions 的搜索专用模型）和不能与其他工具共存的形态（如 DeepSeek 的内置搜索）不算支持。是否搜索一律由模型决定（`tool_choice: auto`），不强制。
+部署者可以按模型指定路线；不指定时，适配器支持服务商自带就走它，否则走 Keine 工具；两条都没有时 AI 功能不启用。第一版：Anthropic 走服务商自带（搜索加抓取）；DeepSeek 配置走 Keine 工具，搜索和抓取都接 DeepSeek 的 Search / Fetch API，用模型那一把 key，不需要 Tavily；其他 OpenAI 兼容模型走 Keine 工具接 Tavily，只有搜索。`web_fetch` 只能抓取本次运行的搜索结果里出现过的 URL。只能强制搜索的形态（如 OpenAI Chat Completions 的搜索专用模型）和不能与其他工具共存的形态（如 DeepSeek 的内置搜索：和函数工具一起声明时，非思考模式返回 400，思考模式请求能通过但模型不调用它，#99 实测）不算支持。是否搜索一律由模型决定（`tool_choice: auto`），不强制。
 
 ## 最终答案和输出格式
 
