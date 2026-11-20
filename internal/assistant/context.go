@@ -1,0 +1,112 @@
+package assistant
+
+import (
+	_ "embed"
+	"fmt"
+	"strings"
+)
+
+// Source is one kind of thing a turn puts in front of the model (#94).
+// Each turn kind declares its sources and their order with its prompt; what
+// a turn leaves out, the model looks up with tools.
+type Source string
+
+const (
+	SourceCourseInfo Source = "course_info"
+	SourceOutline    Source = "outline"
+	// SourceSelection is the selected text, listed once with its heading
+	// path.
+	SourceSelection Source = "selection"
+	// SourceLesson is the whole lesson text, the selected place marked.
+	SourceLesson Source = "lesson"
+)
+
+// Prompt is a versioned skill prompt with the context sources it goes
+// with; the version is what a saved turn records.
+type Prompt struct {
+	Version string
+	System  string
+	Sources []Source
+}
+
+//go:embed prompts/analysis.md
+var analysisSystem string
+
+// AnalysisPrompt is the prompt of an analysis. The sources that change
+// least come first, so the start of the request can be cached.
+var AnalysisPrompt = Prompt{
+	Version: "analysis-1",
+	System:  strings.TrimSpace(analysisSystem),
+	Sources: []Source{SourceCourseInfo, SourceOutline, SourceSelection, SourceLesson},
+}
+
+// Selected marks the selected place in the lesson text.
+const (
+	SelectedOpen  = "<selected>"
+	SelectedClose = "</selected>"
+)
+
+// Passage is a selection in a lesson and what surrounds it.
+type Passage struct {
+	CourseTitle string
+	CourseIntro string
+	AuthorName  string
+	AuthorIntro string
+	Outline     []OutlineChapter
+	// Path is where the selection sits: chapter, lesson, then the headings
+	// above it.
+	Path  []string
+	Quote string
+	// Lesson is the lesson's Markdown with the selected place wrapped in
+	// SelectedOpen and SelectedClose (left unmarked when it cannot be told
+	// apart).
+	Lesson string
+}
+
+type OutlineChapter struct {
+	Title   string
+	Lessons []string
+}
+
+// Messages puts the prompt and the passage's sources together as a
+// request's messages.
+func (p Prompt) Messages(in Passage) []Message {
+	var parts []string
+	for _, s := range p.Sources {
+		parts = append(parts, in.section(s))
+	}
+	return []Message{
+		{Role: RoleSystem, Content: p.System},
+		{Role: RoleUser, Content: strings.Join(parts, "\n\n")},
+	}
+}
+
+func (in Passage) section(s Source) string {
+	var b strings.Builder
+	switch s {
+	case SourceCourseInfo:
+		b.WriteString("## 课程信息\n课程：" + in.CourseTitle)
+		if in.CourseIntro != "" {
+			b.WriteString("\n简介：" + in.CourseIntro)
+		}
+		if in.AuthorName != "" {
+			b.WriteString("\n作者：" + in.AuthorName)
+			if in.AuthorIntro != "" {
+				b.WriteString("：" + in.AuthorIntro)
+			}
+		}
+	case SourceOutline:
+		b.WriteString("## 课程目录")
+		for _, ch := range in.Outline {
+			b.WriteString("\n- " + ch.Title)
+			for _, l := range ch.Lessons {
+				b.WriteString("\n  - " + l)
+			}
+		}
+	case SourceSelection:
+		fmt.Fprintf(&b, "## 选中的原文\n位置：%s\n「%s」", strings.Join(in.Path, " › "), in.Quote)
+	case SourceLesson:
+		fmt.Fprintf(&b, "## 本讲全文（选中处用 %s 标出）\n%s", SelectedOpen, strings.TrimSpace(in.Lesson))
+	}
+	return b.String()
+}

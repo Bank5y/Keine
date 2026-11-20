@@ -610,6 +610,52 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .ann-sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--line); }
 .ann-btn.primary { color: var(--on-brand); background: var(--brand); }
 .ann-btn.primary:hover { background: var(--brand-hover); color: var(--on-brand); }
+
+/* the analysis popover (#125): under the selection, streaming the answer */
+.analysis {
+  position: absolute; z-index: 30; width: 440px; max-width: calc(100vw - 32px);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 18%, transparent);
+  animation: fade .12s ease-out both; overflow: hidden;
+}
+.analysis-head { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); }
+.analysis-mark { width: 14px; height: 14px; color: var(--brand); flex: none; }
+.analysis-kind { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.analysis-quote { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-3); }
+.analysis-close { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 4px; color: var(--text-3); }
+.analysis-close:hover { background: var(--surface-2); color: var(--text); }
+.analysis-close svg { width: 14px; height: 14px; }
+.analysis-body { max-height: min(60vh, 520px); overflow-y: auto; padding: 14px 18px 16px; }
+.analysis-wait { margin: 2px 0 12px; font-size: 13px; color: var(--text-3); }
+.analysis-skeleton { display: flex; flex-direction: column; gap: 10px; }
+.analysis-skeleton span { display: block; height: 10px; border-radius: 3px; background: var(--surface-2); animation: pulse 1.6s ease-in-out infinite; }
+.analysis-title { margin: 0 0 8px; font-family: var(--serif); font-size: 18px; font-weight: 700; line-height: 1.45; color: var(--text); }
+.analysis-intro { margin: 0 0 12px; font-size: 14px; line-height: 1.7; color: var(--text-2); }
+.analysis-label { margin-bottom: 4px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.analysis-meaning .prose { font-size: 14px; line-height: 1.75; color: var(--text); }
+.analysis-meaning .prose > :first-child { margin-top: 0; }
+.analysis-meaning .prose > :last-child { margin-bottom: 0; }
+.analysis-meaning .mermaid-diagram { margin: 12px 0; text-align: center; }
+.analysis-meaning .mermaid-diagram svg { max-width: 100%; height: auto; }
+/* the caret after the text being written */
+.analysis-title.caret::after, .analysis-intro.caret::after, .analysis-meaning.caret .prose > :last-child::after {
+  content: ""; display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em;
+  background: var(--brand); animation: blink 1s steps(1) infinite;
+}
+.analysis-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 0 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
+.analysis-foot.end { justify-content: flex-end; }
+.analysis-error { padding: 16px 18px 18px; }
+.analysis-error.after-content { border-top: 1px solid var(--line); }
+.analysis-error-title { font-size: 14px; font-weight: 500; color: var(--text); }
+.analysis-error-text { margin-top: 3px; font-size: 13px; color: var(--text-3); }
+.analysis-retry { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); font-size: 13px; font-weight: 500; color: var(--text); }
+.analysis-retry:hover { background: var(--surface-2); }
+.analysis-retry svg { width: 12px; height: 12px; }
+.ann-btn.analyze { color: var(--brand); }
+.ann-btn.analyze:hover { color: var(--brand-hover); background: var(--brand-soft); }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .analysis, .analysis-skeleton span { animation: none; } .analysis-title.caret::after, .analysis-intro.caret::after, .analysis-meaning.caret .prose > :last-child::after { animation: none; } }
 .ann-btn:disabled { opacity: .45; pointer-events: none; }
 .ann-item { display: flex; flex-direction: column; gap: 4px; }
 .ann-bar.stacked .ann-item + .ann-item { border-top: 1px solid var(--line); padding-top: 4px; }

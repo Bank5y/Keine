@@ -133,6 +133,10 @@ func writeModelError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": apiError{
 			Code: "model_test_failed", Message: "测试连接没通过: " + msg, Category: string(failed.Category),
 		}})
+	case errors.Is(err, assistant.ErrAssistantUnavailable):
+		// before ErrKeyUnreadable, which it may wrap: readers learn no more
+		slog.Warn("assistant unavailable", "err", err)
+		writeError(w, http.StatusConflict, "ai_unavailable", "探索助手暂不可用")
 	case errors.Is(err, assistant.ErrMasterKeyMissing):
 		writeError(w, http.StatusBadRequest, "master_key_missing", "服务器没有配置加密主密钥 (KEINE_MASTER_KEY), 不能保存 key")
 	case errors.Is(err, assistant.ErrKeyUnreadable):

@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, NotebookPen, Pencil, Trash2, Underline } from 'lucide-react';
+import { Copy, NotebookPen, Pencil, Sparkles, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
+import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
+import { useUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
 // one CSS highlight per look; underlines paint above highlights so an
@@ -112,6 +114,12 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   const bar = useRef<HTMLDivElement>(null);
   const wide = useMedia(NOTE_RAIL_MEDIA);
   const railed = wide && !!rail;
+  // wide screens offer 分析 in place of 复制, once the assistant is set up
+  const user = useUser();
+  const canAnalyze = wide && !!user?.aiAvailable;
+  const [analysis, setAnalysis] = useState<{ quote: Quote; ranges: Range[]; at: Anchor } | null>(null);
+  const analyzing = useRef(false);
+  analyzing.current = !!analysis;
 
   useEffect(() => {
     let alive = true;
@@ -136,7 +144,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   }, [anns, placed]);
 
   // paint the annotation in focus
-  const focused = editing ? ('id' in editing ? placed.get(editing.id) : editing.ranges) : (active != null ? placed.get(active) : undefined);
+  const focused = analysis ? analysis.ranges : editing ? ('id' in editing ? placed.get(editing.id) : editing.ranges) : (active != null ? placed.get(active) : undefined);
   useEffect(() => {
     if (!supported()) return undefined;
     const h = new Highlight(...(focused ?? []));
@@ -177,6 +185,8 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     let t = 0;
     const taps = barTaps(bar);
     const read = () => {
+      // while an analysis is open, a new selection only asks to close it
+      if (analyzing.current) return;
       const s = getSelection();
       if (!s || s.isCollapsed || !s.rangeCount) { setPick(null); return; }
       const range = s.getRangeAt(0);
@@ -283,6 +293,19 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     } catch (ex) { failed(ex); }
   };
 
+  // analyze opens the analysis popover on a quote, under its text
+  const analyze = (quote: Quote, ranges: Range[]) => {
+    const rects = ranges.flatMap((r) => Array.from(r.getClientRects())).filter((c) => c.width > 0);
+    if (!rects.length) return;
+    const left = Math.min(...rects.map((c) => c.left));
+    const bottom = Math.max(...rects.map((c) => c.bottom)) + scrollY;
+    getSelection()?.removeAllRanges();
+    setPick(null);
+    setOpen(null);
+    setEditing(null);
+    setAnalysis({ quote, ranges, at: { left, bottom } });
+  };
+
   // startNote opens the note editor on an annotation, at its text
   const startNote = (a: Annotation) => {
     const line = firstLine(placed.get(a.id) ?? []);
@@ -310,7 +333,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         <span className="ann-sep" />
         <span className="ann-acts">
           <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
-          <button type="button" className="ann-btn" onClick={() => { void copy(pick.quote.quote); }}><Copy />复制</button>
+          <AnalyzeOrCopy analyzable={canAnalyze} onAnalyze={() => analyze(pick.quote, [pick.range])} onCopy={() => copy(pick.quote.quote)} />
         </span>
       </Floating>
     );
@@ -328,7 +351,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
               <span className="ann-sep" />
               <span className="ann-acts">
                 {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
-                <button type="button" className="ann-btn" onClick={() => { void copy(a.quote); }}><Copy />复制</button>
+                <AnalyzeOrCopy analyzable={canAnalyze} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} onCopy={() => copy(a.quote)} />
                 <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>
               </span>
             </div>
@@ -355,6 +378,9 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
           onEdit={startNote} onDelete={(a) => writeNote(a.id, '')} />
       ) : null}
       {floating}
+      {analysis ? (
+        <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)} />
+      ) : null}
     </>
   );
 }
@@ -425,6 +451,14 @@ function NoteEditor({ draft, onDraft, canClear, onSave, onCancel }: { draft: str
       </div>
     </div>
   );
+}
+
+// AnalyzeOrCopy is 分析 where the reader can analyze the text (a wide
+// screen, the assistant set up), and 复制 elsewhere, in the same place.
+function AnalyzeOrCopy({ analyzable, onAnalyze, onCopy }: { analyzable: boolean; onAnalyze: () => void; onCopy: () => Promise<void> }) {
+  return analyzable
+    ? <button type="button" className="ann-btn analyze" onClick={onAnalyze}><Sparkles />分析</button>
+    : <button type="button" className="ann-btn" onClick={() => { void onCopy(); }}><Copy />复制</button>;
 }
 
 function Looks({ current, onPick }: { current?: string; onPick: (look: Look) => void }) {

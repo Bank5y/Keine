@@ -38,6 +38,9 @@ type Options struct {
 	SweepInterval time.Duration
 	// MasterKey encrypts stored model keys; without it no key can be saved.
 	MasterKey string
+	// AdapterFor builds the adapter a site model is called through (default:
+	// by its interface format). Tests put a scripted model here.
+	AdapterFor assistant.AdapterFor
 }
 
 type Server struct {
@@ -74,7 +77,10 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		opts.Now = time.Now
 	}
 	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage).WithClock(opts.Now), notifications: notify.NewService(pool), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
-	s.models = assistant.NewModels(pool, box, func(format, baseURL, key string) assistant.Adapter { return openai.New(baseURL, key) })
+	if opts.AdapterFor == nil {
+		opts.AdapterFor = func(format, baseURL, key string) assistant.Adapter { return openai.New(baseURL, key) }
+	}
+	s.models = assistant.NewModels(pool, box, opts.AdapterFor)
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -164,6 +170,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/courses/{id}/lessons/{lesson}/annotations", s.signedIn(s.createAnnotation))
 	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}/previous-texts", s.signedIn(s.listPreviousTexts))
 	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}/suggestions", s.signedIn(s.listSuggestions))
+	s.mux.HandleFunc("POST /api/courses/{id}/lessons/{lesson}/analysis", s.signedIn(s.analyze))
 	s.mux.HandleFunc("PATCH /api/annotations/{id}", s.signedIn(s.restyleAnnotation))
 	s.mux.HandleFunc("DELETE /api/annotations/{id}", s.signedIn(s.deleteAnnotation))
 	s.mux.HandleFunc("POST /api/annotations/{id}/place", s.signedIn(s.placeAnnotation))
