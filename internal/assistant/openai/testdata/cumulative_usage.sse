@@ -1,0 +1,12 @@
+data: {"choices":[{"index":0,"delta":{"reasoning_content":"先想想"}}],"usage":{"prompt_tokens":40,"completion_tokens":1}}
+
+data: {"choices":[{"index":0,"delta":{"reasoning_content":"。"}}],"usage":{"prompt_tokens":40,"completion_tokens":2}}
+
+data: {"choices":[{"index":0,"delta":{"content":"答"}}],"usage":{"prompt_tokens":40,"completion_tokens":3}}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":40,"completion_tokens":4,"completion_tokens_details":{"reasoning_tokens":2}}}
+
+data: {"choices":[],"usage":{"prompt_tokens":40,"completion_tokens":4,"completion_tokens_details":{"reasoning_tokens":2}}}
+
+data: [DONE]
+

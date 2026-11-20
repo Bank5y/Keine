@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createElement, useEffect, useState, type ComponentType } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorBox, PageHead } from '@/components/common';
@@ -8,9 +8,12 @@ import { Link } from '@/lib/router';
 import type { User } from '@/lib/session';
 import { cn } from '@/lib/utils';
 import { AdminReviews } from '@/views/admin-reviews';
+import { AdminModels } from '@/views/admin-models';
 import { AdminUsers } from '@/views/admin-users';
 
-const TABS: [string, string][] = [['/admin/reviews', '审核'], ['/admin/users', '用户'], ['/admin/site', '站点设置']];
+const TABS: [string, string][] = [['/admin/reviews', '审核'], ['/admin/users', '用户'], ['/admin/models', '模型'], ['/admin/site', '站点设置']];
+
+const TAB_VIEWS: Record<string, ComponentType> = { '/admin/models': AdminModels, '/admin/site': SiteSettings };
 
 // AdminView stays mounted while its tabs change (each has its own address):
 // only the content below the tabs fades over, and the page keeps its place.
@@ -19,12 +22,12 @@ export function AdminView({ path, user }: { path: string; user: User }) {
   const [shown, fading] = useTabFade(tab);
   return (
     <div className="page enter">
-      <PageHead kicker="Admin" title="管理" sub="审核公开申请, 管理本站的账号与设置。" />
+      <PageHead kicker="Admin" title="管理" sub="审核公开申请, 管理本站的账号、模型与设置。" />
       <nav className="subnav" aria-label="管理">
         {TABS.map(([href, label]) => <Link key={href} href={href} keepScroll className={cn(tab === href && 'active')} aria-current={tab === href ? 'page' : undefined}>{label}</Link>)}
       </nav>
       <TabPane fading={fading}>
-        {shown === '/admin/site' ? <SiteSettings /> : (shown === '/admin/users' ? <AdminUsers me={user} /> : <AdminReviews />)}
+        {shown === '/admin/users' ? <AdminUsers me={user} /> : createElement(TAB_VIEWS[shown] ?? AdminReviews)}
       </TabPane>
     </div>
   );

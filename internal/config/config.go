@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"github.com/Bank5y/keine/internal/secret"
 )
 
 type Config struct {
@@ -14,6 +16,8 @@ type Config struct {
 	AdminPassword string
 	SecureCookies bool
 	MaxUploadMB   int64
+	// MasterKey encrypts the model keys stored in the database.
+	MasterKey string
 
 	// Storage is "local" (files under DataDir) or "s3".
 	Storage string
@@ -32,6 +36,7 @@ func FromEnv() (Config, error) {
 		DatabaseURL:   os.Getenv("KEINE_DATABASE_URL"),
 		AdminUsername: os.Getenv("KEINE_ADMIN_USERNAME"),
 		AdminPassword: os.Getenv("KEINE_ADMIN_PASSWORD"),
+		MasterKey:     os.Getenv("KEINE_MASTER_KEY"),
 		DataDir:       env("KEINE_DATA_DIR", "./data"),
 		Storage:       env("KEINE_STORAGE", "local"),
 		S3: S3{
@@ -48,6 +53,9 @@ func FromEnv() (Config, error) {
 	}
 	if (c.AdminUsername == "") != (c.AdminPassword == "") {
 		return c, fmt.Errorf("set both KEINE_ADMIN_USERNAME and KEINE_ADMIN_PASSWORD, or neither")
+	}
+	if c.MasterKey != "" && len(c.MasterKey) < secret.MinMasterKeyLen {
+		return c, fmt.Errorf("KEINE_MASTER_KEY must be at least %d characters", secret.MinMasterKeyLen)
 	}
 	var err error
 	if c.SecureCookies, err = boolEnv("KEINE_SECURE_COOKIES", false); err != nil {

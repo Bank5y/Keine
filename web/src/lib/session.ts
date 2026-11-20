@@ -1,7 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from '@/lib/api';
 
-export interface User { id: number; username: string; role: 'user' | 'admin'; disabled: boolean; createdAt: string }
+export interface User {
+  id: number; username: string; role: 'user' | 'admin'; disabled: boolean; createdAt: string;
+  // the assistant has a model for every turn kind (only /api/me says so)
+  aiAvailable?: boolean;
+}
 
 // undefined: still checking; null: signed out
 let current: User | null | undefined;

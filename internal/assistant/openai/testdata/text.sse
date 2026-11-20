@@ -1,0 +1,14 @@
+: keep-alive
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"m-1","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"m-1","choices":[{"index":0,"delta":{"content":"你好，"},"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"m-1","choices":[{"index":0,"delta":{"content":"世界。"},"finish_reason":null}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"m-1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"c1","object":"chat.completion.chunk","created":1,"model":"m-1","choices":[],"usage":{"prompt_tokens":30,"completion_tokens":5,"total_tokens":35,"prompt_tokens_details":{"cached_tokens":12}}}
+
+data: [DONE]
+

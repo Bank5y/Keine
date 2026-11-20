@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"content":"","tool_calls":[{"id":"x1","type":"function","function":{"name":"list_sections","arguments":"{\"lesson\":"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"function":{"arguments":"\"l-1\"}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"id":"x2","type":"function","function":{"name":"search_course","arguments":"{}"}}]}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
