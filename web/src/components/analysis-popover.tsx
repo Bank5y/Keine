@@ -7,7 +7,7 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Mermaid } from '@/components/mermaid';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { analyze, errorText, hasContent, initial, step, type AnalysisState, type Parts, type Section } from '@/lib/analysis';
+import { analyze, hasContent, initial, step, type AnalysisState, type Part, type Parts } from '@/lib/analysis';
 import type { Quote } from '@/lib/annotations';
 import { cn } from '@/lib/utils';
 
@@ -104,7 +104,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
 }
 
 // the section text is being written into, which shows the caret
-function writing(state: AnalysisState): Section | null {
+function writing(state: AnalysisState): Part | null {
   if (state.status !== 'streaming') return null;
   const p = state.parts;
   return p.body ? 'body' : p.intro ? 'intro' : 'title';
@@ -149,7 +149,7 @@ function Foot({ state, onRetry }: { state: AnalysisState; onRetry: () => void })
       <>
         <div className={cn('analysis-error', hasContent(state) && 'after-content')} role="alert">
           <div className="analysis-error-title">分析没能完成</div>
-          <div className="analysis-error-text">{errorText(state.code)}</div>
+          <div className="analysis-error-text">{state.message}</div>
         </div>
         <div className="analysis-foot end">
           <button type="button" className="analysis-retry" onClick={onRetry}><RotateCcw />重试</button>

@@ -502,17 +502,16 @@ func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
 	return err
 }
 
-// ErrTurnUnmapped: no site model serves the turn kind, so the assistant is
-// not available.
-var ErrTurnUnmapped = errors.New("no model serves the turn kind")
+// ErrAssistantUnavailable: no usable site model serves the turn kind (none
+// is mapped, or its key cannot be opened), so readers cannot run it.
+var ErrAssistantUnavailable = errors.New("assistant unavailable")
 
 // Turn is what a run calls: the adapter of the model serving a turn kind,
 // with the settings read when the run starts.
 type Turn struct {
-	Adapter       Adapter
-	Model         string
-	Thinking      bool
-	ContextWindow int
+	Adapter  Adapter
+	Model    string
+	Thinking bool
 }
 
 // ForTurn resolves the model serving a turn kind.
@@ -522,14 +521,13 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 		t               Turn
 		format, baseURL string
 		sealed          []byte
-		cw              *int32
 	)
 	err := s.db.QueryRow(ctx, `
-		SELECT m.id, m.format, m.base_url, m.api_key, m.model, m.context_window, t.thinking
+		SELECT m.id, m.format, m.base_url, m.api_key, m.model, t.thinking
 		FROM turn_models t JOIN site_models m ON m.id = t.model_id WHERE t.kind = $1`, kind).
-		Scan(&id, &format, &baseURL, &sealed, &t.Model, &cw, &t.Thinking)
+		Scan(&id, &format, &baseURL, &sealed, &t.Model, &t.Thinking)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Turn{}, ErrTurnUnmapped
+		return Turn{}, fmt.Errorf("%w: %s is not mapped", ErrAssistantUnavailable, kind)
 	}
 	if err != nil {
 		return Turn{}, err
@@ -537,12 +535,8 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 	key := ""
 	if len(sealed) > 0 {
 		if key, err = s.open(id, sealed); err != nil {
-			return Turn{}, err
+			return Turn{}, fmt.Errorf("%w: %w", ErrAssistantUnavailable, err)
 		}
-	}
-	t.ContextWindow = DefaultContextWindow
-	if cw != nil {
-		t.ContextWindow = int(*cw)
 	}
 	t.Adapter = s.adapterFor(format, baseURL, key)
 	return t, nil

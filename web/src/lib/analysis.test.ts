@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { errorText, hasContent, initial, readEvents, step, type AnalysisState } from '@/lib/analysis';
+import { FALLBACK_ERROR, hasContent, initial, readEvents, step, type AnalysisState } from '@/lib/analysis';
 
 const run = (...events: Parameters<typeof step>[1][]) => events.reduce<AnalysisState>(step, initial);
 
@@ -24,14 +24,18 @@ describe('step', () => {
   });
 
   it('keeps what streamed when an error says so, and drops it otherwise', () => {
-    const kept = run({ type: 'delta', section: 'title', text: 'Agent' }, { type: 'error', code: 'provider_error', kept: true });
-    expect(kept).toEqual({ status: 'error', code: 'provider_error', parts: { title: 'Agent', intro: '', body: '' } });
-    const dropped = run({ type: 'error', code: 'malformed_output', kept: false });
-    expect(dropped).toEqual({ status: 'error', code: 'malformed_output', parts: { title: '', intro: '', body: '' } });
+    const kept = run({ type: 'delta', section: 'title', text: 'Agent' }, { type: 'error', code: 'provider_error', message: '连不上。', kept: true });
+    expect(kept).toEqual({ status: 'error', message: '连不上。', parts: { title: 'Agent', intro: '', body: '' } });
+    const dropped = run({ type: 'error', code: 'malformed_output', message: '格式不对。', kept: false });
+    expect(dropped).toEqual({ status: 'error', message: '格式不对。', parts: { title: '', intro: '', body: '' } });
+  });
+
+  it('falls back to a general message when the server gives none', () => {
+    expect(run({ type: 'error', code: 'something_new', kept: false })).toMatchObject({ status: 'error', message: FALLBACK_ERROR });
   });
 
   it('ends an unfinished stream as a broken connection', () => {
-    expect(run({ type: 'delta', section: 'body', text: '半句' }, { type: 'end' })).toEqual({ status: 'error', code: 'network', parts: { title: '', intro: '', body: '半句' } });
+    expect(run({ type: 'delta', section: 'body', text: '半句' }, { type: 'end' })).toEqual({ status: 'error', message: '连接中断了，请重试。', parts: { title: '', intro: '', body: '半句' } });
     expect(run({ type: 'done', title: 'A', intro: 'B', body: 'C' }, { type: 'end' }).status).toBe('done');
   });
 
@@ -41,8 +45,8 @@ describe('step', () => {
   });
 
   it('ignores anything after the run ended', () => {
-    const s = run({ type: 'error', code: 'timeout', kept: false }, { type: 'delta', section: 'title', text: '迟到' });
-    expect(s).toEqual({ status: 'error', code: 'timeout', parts: { title: '', intro: '', body: '' } });
+    const s = run({ type: 'error', code: 'timeout', message: '超时。', kept: false }, { type: 'delta', section: 'title', text: '迟到' });
+    expect(s).toEqual({ status: 'error', message: '超时。', parts: { title: '', intro: '', body: '' } });
   });
 });
 
@@ -51,14 +55,6 @@ describe('hasContent', () => {
     expect(hasContent(initial)).toBe(false);
     expect(hasContent(run({ type: 'delta', section: 'title', text: 'A' }))).toBe(true);
     expect(hasContent(run({ type: 'error', code: 'timeout', kept: false }))).toBe(false);
-  });
-});
-
-describe('errorText', () => {
-  it('says what went wrong in the reader\'s words, with a fallback', () => {
-    expect(errorText('provider_error')).toBe('模型服务暂时无法连接，请稍后再试。');
-    expect(errorText('rate_limited')).toContain('繁忙');
-    expect(errorText('something_new')).toBe('分析没能完成，请重试。');
   });
 });
 
@@ -75,7 +71,7 @@ describe('readEvents', () => {
   });
 
   it('reads error events and skips unknown ones', () => {
-    const r = readEvents('event: ping\ndata: {}\n\nevent: error\ndata: {"code":"timeout","kept":true}\n\n');
-    expect(r.events).toEqual([{ type: 'error', code: 'timeout', kept: true }]);
+    const r = readEvents('event: ping\ndata: {}\n\nevent: error\ndata: {"code":"timeout","message":"超时。","kept":true}\n\n');
+    expect(r.events).toEqual([{ type: 'error', code: 'timeout', message: '超时。', kept: true }]);
   });
 });

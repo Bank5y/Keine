@@ -2,13 +2,15 @@
 // three sections as Server-Sent Events (delta, then done or error), and
 // step folds them into what the popover shows.
 
-export type Section = 'title' | 'intro' | 'body';
-export type Parts = Record<Section, string>;
+// the three parts of an analysis: title, intro and meaning ("body")
+export type Part = 'title' | 'intro' | 'body';
+export type Parts = Record<Part, string>;
 
 export type AnalysisEvent =
-  | { type: 'delta'; section: Section; text: string }
+  | { type: 'delta'; section: Part; text: string }
   | { type: 'done'; title: string; intro: string; body: string }
-  | { type: 'error'; code: string; kept: boolean }
+  // message is the server's, in the reader's words
+  | { type: 'error'; code: string; message?: string; kept: boolean }
   // the stream closed
   | { type: 'end' }
   // a new run begins (a retry)
@@ -18,7 +20,7 @@ export type AnalysisState =
   | { status: 'loading' }
   | { status: 'streaming'; parts: Parts }
   | { status: 'done'; parts: Parts }
-  | { status: 'error'; code: string; parts: Parts };
+  | { status: 'error'; message: string; parts: Parts };
 
 export const initial: AnalysisState = { status: 'loading' };
 const empty: Parts = { title: '', intro: '', body: '' };
@@ -36,9 +38,9 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
     case 'done':
       return { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body } };
     case 'error':
-      return { status: 'error', code: e.code, parts: e.kept ? partsOf(s) : empty };
+      return { status: 'error', message: e.message || FALLBACK_ERROR, parts: e.kept ? partsOf(s) : empty };
     case 'end':
-      return { status: 'error', code: 'network', parts: partsOf(s) };
+      return { status: 'error', message: BROKEN, parts: partsOf(s) };
   }
   return s;
 }
@@ -50,18 +52,10 @@ export const hasContent = (s: AnalysisState) => {
   return !!(p.title || p.intro || p.body);
 };
 
-const ERRORS: Record<string, string> = {
-  provider_error: '模型服务暂时无法连接，请稍后再试。',
-  rate_limited: '模型服务正繁忙，请稍后再试。',
-  timeout: '模型太久没有回应，请稍后再试。',
-  malformed_output: '助手的回答格式不对，请重试。',
-  output_truncated: '回答太长被截断了，请重试。',
-  network: '连接中断了，请重试。',
-  ai_unavailable: '探索助手暂不可用。',
-  quote_not_found: '正文里找不到选中的文字。',
-  not_annotatable: '这一讲不能分析。',
-};
-export const errorText = (code: string) => ERRORS[code] ?? '分析没能完成，请重试。';
+// what went wrong is the server's to say; these cover the server saying
+// nothing, and the connection breaking before it could
+export const FALLBACK_ERROR = '分析没能完成，请重试。';
+const BROKEN = '连接中断了，请重试。';
 
 // readEvents takes the events complete in buf; rest is the start of the
 // next one, to be read with the following chunk.
@@ -94,12 +88,12 @@ export async function analyze(courseId: number, lessonId: number, quote: { quote
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(quote),
     });
   } catch {
-    if (!signal.aborted) on({ type: 'error', code: 'network', kept: false });
+    if (!signal.aborted) on({ type: 'error', code: 'network', message: BROKEN, kept: false });
     return;
   }
   if (!res.ok || !res.body) {
     const body = await res.json().catch(() => null);
-    on({ type: 'error', code: body?.error?.code ?? 'network', kept: false });
+    on({ type: 'error', code: body?.error?.code ?? 'network', message: body?.error?.message, kept: false });
     return;
   }
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();

@@ -33,16 +33,16 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	turn, err := s.models.ForTurn(ctx, assistant.TurnAnalysis)
-	if err != nil {
-		if !errors.Is(err, assistant.ErrTurnUnmapped) {
-			slog.Warn("analysis model unusable", "err", err)
-		}
-		writeError(w, http.StatusConflict, "ai_unavailable", "探索助手暂不可用")
+	if !writeModelError(w, r, err) {
 		return
 	}
 	p, err := s.courses.Passage(ctx, currentUser(r), id, lessonID, anchor.Quote{Exact: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix})
 	if !writeAnnotationError(w, r, err) {
 		return
+	}
+	if !p.Marked {
+		// the model still gets the quote, but not which of its places
+		slog.Warn("selection not marked in the lesson source", "course", id, "lesson", lessonID)
 	}
 
 	sse, ok := startEvents(w)
@@ -59,11 +59,26 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		_ = sse.send("done", a)
 	case errors.As(err, &re):
 		slog.Info("analysis failed", "code", re.Code, "err", re.Cause)
-		_ = sse.send("error", map[string]any{"code": re.Code, "kept": re.Kept})
+		_ = sse.send("error", runError(re.Code, re.Kept))
 	case ctx.Err() == nil:
 		slog.Error("analysis failed", "err", err)
-		_ = sse.send("error", map[string]any{"code": assistant.CodeProviderError, "kept": false})
+		_ = sse.send("error", runError(assistant.CodeProviderError, false))
 	}
+}
+
+// runMessages say what ended a run, in the reader's words.
+var runMessages = map[string]string{
+	assistant.CodeProviderError:   "模型服务暂时无法连接，请稍后再试。",
+	assistant.CodeRateLimited:     "模型服务正繁忙，请稍后再试。",
+	assistant.CodeTimeout:         "模型太久没有回应，请稍后再试。",
+	assistant.CodeMalformedOutput: "助手的回答格式不对，请重试。",
+	assistant.CodeOutputTruncated: "回答太长被截断了，请重试。",
+}
+
+// runError is the error event of a run: its code, what it means, and
+// whether what streamed before it stays.
+func runError(code string, kept bool) map[string]any {
+	return map[string]any{"code": code, "message": runMessages[code], "kept": kept}
 }
 
 // passage is a course passage as the assistant reads it.

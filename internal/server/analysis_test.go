@@ -109,13 +109,19 @@ func withModel(m assistant.Adapter) appOption {
 // model and mapped every turn kind to it.
 func aiApp(t *testing.T, m *scriptedModel) *app {
 	t.Helper()
+	return aiAppThinking(t, m, false)
+}
+
+// aiAppThinking is aiApp with thinking switched on or off for every kind.
+func aiAppThinking(t *testing.T, m *scriptedModel, thinking bool) *app {
+	t.Helper()
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
 	admin := a.admin()
 	created := admin.mustOK(admin.do("POST", "/api/admin/models", map[string]any{
 		"format": "openai", "baseUrl": "https://model.example/v1", "key": "sk-test-0123456789", "model": "m-1", "displayName": "Flash", "rates": rates,
 	})).json()
 	for _, k := range []string{"analysis", "followup", "sync"} {
-		admin.mustOK(admin.do("PUT", "/api/admin/turns/"+k, map[string]any{"modelId": created["id"], "thinking": false}))
+		admin.mustOK(admin.do("PUT", "/api/admin/turns/"+k, map[string]any{"modelId": created["id"], "thinking": thinking}))
 	}
 	return a
 }
@@ -475,6 +481,8 @@ func TestAProviderFailureAfterADeltaEndsTheRunKeepingWhatStreamed(t *testing.T) 
 	}
 	if last := lastEvent(t, events); last.name != "error" || last.data["code"] != "provider_error" || last.data["kept"] != true {
 		t.Fatalf("expected provider_error keeping what streamed, got %+v", last)
+	} else if msg, _ := last.data["message"].(string); msg == "" || strings.Contains(msg, "connection reset") {
+		t.Fatalf("the error should say what happened in the reader's words, not the provider's: %q", msg)
 	}
 	if len(m.calls()) != 1 {
 		t.Fatalf("no retry once something streamed, got %d calls", len(m.calls()))
@@ -541,4 +549,28 @@ func TestAnalysisNeedsTheAssistantAvailable(t *testing.T) {
 
 	_, r := analyze(t, bob, id, lesson, agentQuote)
 	expectError(t, r, http.StatusConflict, "ai_unavailable")
+}
+
+func TestThinkingOnAllowsALongerAnswer(t *testing.T) {
+	m := newScriptedModel(texts(goodAnswer))
+	a := aiAppThinking(t, m, true)
+	bob := a.user("bob")
+	id, lesson := analysisColumn(t, bob)
+
+	analyze(t, bob, id, lesson, agentQuote)
+	if calls := m.calls(); len(calls) != 1 || calls[0].MaxTokens != 8192 {
+		t.Fatalf("thinking on caps output at 8192, got %+v", calls)
+	}
+}
+
+func TestAConnectionTimingOutBeforeAnyDeltaIsRetried(t *testing.T) {
+	m := newScriptedModel(step{err: &assistant.Error{Category: assistant.ErrTimeout, Detail: "dial tcp: i/o timeout"}}, texts(goodAnswer))
+	a := aiApp(t, m)
+	bob := a.user("bob")
+	id, lesson := analysisColumn(t, bob)
+
+	events, _ := analyze(t, bob, id, lesson, agentQuote)
+	if last := lastEvent(t, events); last.name != "done" || len(m.calls()) != 2 {
+		t.Fatalf("expected done after one retry, got %+v after %d calls", last, len(m.calls()))
+	}
 }

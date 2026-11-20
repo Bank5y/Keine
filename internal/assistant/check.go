@@ -39,7 +39,7 @@ func checkAnalysis(raw string, p *tagParser) []string {
 	if rawToolCall.MatchString(raw) {
 		add("答复里有原始的工具调用标记")
 	}
-	for _, s := range sections {
+	for _, s := range allParts {
 		if !p.closed[s] {
 			add("缺少完整的 %s…%s", openTag(s), closeTag(s))
 		}
@@ -48,10 +48,10 @@ func checkAnalysis(raw string, p *tagParser) []string {
 		add("有一段标签写了不止一次")
 	}
 	a := p.parts()
-	if p.closed[SectionTitle] && a.Title == "" {
+	if p.closed[PartTitle] && a.Title == "" {
 		add("标题是空的")
 	}
-	if p.closed[SectionIntro] && a.Intro == "" {
+	if p.closed[PartIntro] && a.Intro == "" {
 		add("简介是空的")
 	}
 	if headingLine.MatchString(a.Intro) || listLine.MatchString(a.Intro) {

@@ -333,9 +333,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         <span className="ann-sep" />
         <span className="ann-acts">
           <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
-          {canAnalyze
-            ? <button type="button" className="ann-btn analyze" onClick={() => analyze(pick.quote, [pick.range])}><Sparkles />分析</button>
-            : <button type="button" className="ann-btn" onClick={() => { void copy(pick.quote.quote); }}><Copy />复制</button>}
+          <AnalyzeOrCopy analyzable={canAnalyze} onAnalyze={() => analyze(pick.quote, [pick.range])} onCopy={() => copy(pick.quote.quote)} />
         </span>
       </Floating>
     );
@@ -353,9 +351,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
               <span className="ann-sep" />
               <span className="ann-acts">
                 {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
-                {canAnalyze
-                  ? <button type="button" className="ann-btn analyze" onClick={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])}><Sparkles />分析</button>
-                  : <button type="button" className="ann-btn" onClick={() => { void copy(a.quote); }}><Copy />复制</button>}
+                <AnalyzeOrCopy analyzable={canAnalyze} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} onCopy={() => copy(a.quote)} />
                 <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>
               </span>
             </div>
@@ -455,6 +451,14 @@ function NoteEditor({ draft, onDraft, canClear, onSave, onCancel }: { draft: str
       </div>
     </div>
   );
+}
+
+// AnalyzeOrCopy is 分析 where the reader can analyze the text (a wide
+// screen, the assistant set up), and 复制 elsewhere, in the same place.
+function AnalyzeOrCopy({ analyzable, onAnalyze, onCopy }: { analyzable: boolean; onAnalyze: () => void; onCopy: () => Promise<void> }) {
+  return analyzable
+    ? <button type="button" className="ann-btn analyze" onClick={onAnalyze}><Sparkles />分析</button>
+    : <button type="button" className="ann-btn" onClick={() => { void onCopy(); }}><Copy />复制</button>;
 }
 
 function Looks({ current, onPick }: { current?: string; onPick: (look: Look) => void }) {

@@ -3,10 +3,11 @@ package assistant
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
 
-// Analysis is a valid answer: the three sections of an exploration
+// Analysis is a valid answer: the three allParts of an exploration
 // document that an analysis writes.
 type Analysis struct {
 	Title string `json:"title"`
@@ -16,8 +17,8 @@ type Analysis struct {
 
 // Delta is a piece of a section as it streams in.
 type Delta struct {
-	Section Section `json:"section"`
-	Text    string  `json:"text"`
+	Part Part   `json:"section"`
+	Text string `json:"text"`
 }
 
 // Run error codes, as the reader's stream reports them.
@@ -52,7 +53,7 @@ const (
 
 // remedyPrompt asks again, once, for an answer whose first try was not
 // valid and not yet shown.
-const remedyPrompt = "上一次答复不合格：%s。请只按 <exp_title>/<exp_intro>/<exp_body> 格式重新作答，标签外不要写任何文字。"
+const remedyFormat = "上一次答复不合格：%s。请只按 <exp_title>/<exp_intro>/<exp_body> 格式重新作答，标签外不要写任何文字。"
 
 // Analyze runs an analysis on the turn's model and passes each piece of
 // the answer to delta as it streams. It returns the valid answer, a
@@ -75,7 +76,8 @@ func Analyze(ctx context.Context, turn Turn, msgs []Message, delta func(Delta) e
 				return Analysis{}, err
 			}
 			c := CategoryOf(err)
-			if !r.streamed && !retried && (c == ErrRateLimited || c == ErrUnavailable) {
+			// 429, 5xx and connection errors (a connection timing out among them)
+			if !r.streamed && !retried && (c == ErrRateLimited || c == ErrUnavailable || c == ErrTimeout) {
 				retried = true
 				continue
 			}
@@ -98,7 +100,7 @@ func Analyze(ctx context.Context, turn Turn, msgs []Message, delta func(Delta) e
 		remedied = true
 		msgs = append(msgs[:len(msgs):len(msgs)],
 			Message{Role: RoleAssistant, Content: raw},
-			Message{Role: RoleUser, Content: strings.Replace(remedyPrompt, "%s", strings.Join(problems, "；"), 1)})
+			Message{Role: RoleUser, Content: fmt.Sprintf(remedyFormat, strings.Join(problems, "；"))})
 	}
 }
 
@@ -114,12 +116,12 @@ type deltaError struct{ err error }
 
 func (e deltaError) Error() string { return e.err.Error() }
 
-// call makes one model call, streaming the tagged sections as it goes.
+// call makes one model call, streaming the tagged allParts as it goes.
 func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, *tagParser, Result, error) {
 	var raw strings.Builder
-	p := newTagParser(func(s Section, text string) error {
+	p := newTagParser(func(s Part, text string) error {
 		r.streamed = true
-		if err := r.delta(Delta{Section: s, Text: text}); err != nil {
+		if err := r.delta(Delta{Part: s, Text: text}); err != nil {
 			return deltaError{err}
 		}
 		return nil

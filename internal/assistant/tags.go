@@ -2,43 +2,44 @@ package assistant
 
 import "strings"
 
-// Section is a part of an analysis as the reader sees it stream in.
-type Section string
+// Part is one of the three parts of an analysis: title, intro and
+// meaning ("body" on the wire, ADR 0008).
+type Part string
 
 const (
-	SectionTitle Section = "title"
-	SectionIntro Section = "intro"
-	SectionBody  Section = "body"
+	PartTitle Part = "title"
+	PartIntro Part = "intro"
+	PartBody  Part = "body"
 )
 
-var sections = []Section{SectionTitle, SectionIntro, SectionBody}
+var allParts = []Part{PartTitle, PartIntro, PartBody}
 
-func openTag(s Section) string  { return "<exp_" + string(s) + ">" }
-func closeTag(s Section) string { return "</exp_" + string(s) + ">" }
+func openTag(s Part) string  { return "<exp_" + string(s) + ">" }
+func closeTag(s Part) string { return "</exp_" + string(s) + ">" }
 
-// tagParser splits a streamed answer into its tagged sections character by
+// tagParser splits a streamed answer into its tagged parts character by
 // character (ADR 0008): text outside the tags is dropped, a tag cut between
 // two chunks is held back until it is complete, and whitespace at either
 // end of a section is never passed on. What it passes on to emit is exactly
 // what it keeps as the section's text.
 type tagParser struct {
-	emit func(Section, string) error
+	emit func(Part, string) error
 	buf  string
 	// cur is the section being read, "" outside the tags
-	cur Section
+	cur Part
 	// discard: cur is a section met before, read only to find its end
 	discard bool
 	// started: cur has passed on text; ws is whitespace held back after it
 	started bool
 	ws      string
-	text    map[Section]*strings.Builder
-	closed  map[Section]bool
+	text    map[Part]*strings.Builder
+	closed  map[Part]bool
 	// repeated: a section was opened a second time
 	repeated bool
 }
 
-func newTagParser(emit func(Section, string) error) *tagParser {
-	return &tagParser{emit: emit, text: map[Section]*strings.Builder{}, closed: map[Section]bool{}}
+func newTagParser(emit func(Part, string) error) *tagParser {
+	return &tagParser{emit: emit, text: map[Part]*strings.Builder{}, closed: map[Part]bool{}}
 }
 
 func (p *tagParser) feed(s string) error {
@@ -92,8 +93,8 @@ func (p *tagParser) feed(s string) error {
 }
 
 // opening reports the section whose opening tag starts the buffer.
-func (p *tagParser) opening() (Section, bool) {
-	for _, s := range sections {
+func (p *tagParser) opening() (Part, bool) {
+	for _, s := range allParts {
 		if strings.HasPrefix(p.buf, openTag(s)) {
 			return s, true
 		}
@@ -103,7 +104,7 @@ func (p *tagParser) opening() (Section, bool) {
 
 // mayOpen tells whether the buffer may still grow into an opening tag.
 func (p *tagParser) mayOpen() bool {
-	for _, s := range sections {
+	for _, s := range allParts {
 		if strings.HasPrefix(openTag(s), p.buf) {
 			return true
 		}
@@ -111,7 +112,7 @@ func (p *tagParser) mayOpen() bool {
 	return false
 }
 
-func (p *tagParser) enter(s Section) {
+func (p *tagParser) enter(s Part) {
 	p.cur = s
 	if _, seen := p.text[s]; seen {
 		p.discard, p.repeated = true, true
@@ -145,11 +146,11 @@ func (p *tagParser) write(s string) error {
 
 // parts is what each closed section holds.
 func (p *tagParser) parts() Analysis {
-	get := func(s Section) string {
+	get := func(s Part) string {
 		if b := p.text[s]; b != nil {
 			return b.String()
 		}
 		return ""
 	}
-	return Analysis{Title: get(SectionTitle), Intro: get(SectionIntro), Body: get(SectionBody)}
+	return Analysis{Title: get(PartTitle), Intro: get(PartIntro), Body: get(PartBody)}
 }
