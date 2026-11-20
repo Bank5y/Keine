@@ -6,17 +6,21 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Empty, ErrorBox } from '@/components/common';
 import { api, ApiError, type Problem } from '@/lib/api';
-import { chooseProvider, type Preset } from '@/lib/provider';
+import { chooseProvider, keepRoute, searchLabel, searchRoutes, type Preset, type SearchRoute } from '@/lib/provider';
 import { cn } from '@/lib/utils';
 
 interface Rates { input: number; cacheRead: number; cacheWrite: number; output: number; search: number }
 interface SiteModel {
   id: number; format: 'openai'; provider: string; baseUrl: string; model: string; displayName: string;
   contextWindow: number | null; rates: Rates | null; keyLast4: string;
+  searchRoute: SearchRoute; search: SearchRoute; searchReady: boolean;
 }
 type TurnKind = 'analysis' | 'followup' | 'sync';
 interface TurnModel { modelId: number; thinking: boolean }
-interface State { models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; masterKey: boolean; providers: Preset[] }
+interface State {
+  models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; masterKey: boolean; providers: Preset[];
+  tavily: { set: boolean; keyLast4: string };
+}
 
 const TURNS: [TurnKind, string, string][] = [
   ['analysis', '分析', '读者选中原文点「分析」'],
@@ -59,6 +63,11 @@ export function AdminModels() {
   }
 
   const missing = st ? TURNS.filter(([k]) => !st.turns[k]).map(([, label]) => label) : [];
+  // mapped models whose search route resolves to nothing
+  const unrouted = st ? st.models.filter((m) => !m.searchReady && TURNS.some(([k]) => st.turns[k]?.modelId === m.id)) : [];
+  const why = missing.length
+    ? `${missing.join('、')}还没选模型, 读者看不到 AI 功能`
+    : `${unrouted.map((m) => m.displayName).join('、')}没有联网搜索路线: 配置 Tavily key, 或在模型里选「不联网」`;
 
   return (
     <div className="sections">
@@ -78,6 +87,7 @@ export function AdminModels() {
                   <div className="min-w-0">
                     <div className="name">{m.displayName}</div>
                     <div className="meta">{m.model}  ·  {st.providers.find((p) => p.id === m.provider)?.name ?? 'OpenAI 兼容'}  ·  {contextLabel(m)}</div>
+                    <div className={cn('meta', !m.searchReady && 'st warn')}>联网: {searchLabel(m)}</div>
                   </div>
                   {m.rates ? (
                     <div className="meta rates">
@@ -100,6 +110,7 @@ export function AdminModels() {
             <b>抓取网页从服务器发出</b>
             <p>模型需要读网页时, 由 Keine 的服务器主动访问外部网站, 而不是读者的浏览器。</p>
           </div>
+          {st ? <TavilyKey state={st.tavily} masterKey={st.masterKey} onSaved={setSt} /> : null}
         </div>
       </section>
       <section className="section">
@@ -108,7 +119,7 @@ export function AdminModels() {
           <div className="min-w-0">
             <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1">
               <span className={cn('st', st.aiAvailable ? 'ok' : 'warn')} style={{ fontSize: 13, fontWeight: 600 }}>{st.aiAvailable ? 'AI 已启用' : 'AI 未启用'}</span>
-              <span className="text-[13px] text-ink-3">{st.aiAvailable ? '读者能在阅读页使用分析和探索' : `${missing.join('、')}还没选模型, 读者看不到 AI 功能`}</span>
+              <span className="text-[13px] text-ink-3">{st.aiAvailable ? '读者能在阅读页使用分析和探索' : why}</span>
             </div>
             <div className="ledger">
               {TURNS.map(([kind, label, desc]) => {
@@ -151,15 +162,15 @@ export function AdminModels() {
   );
 }
 
-interface Form { provider: string; displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; rates: Record<keyof Rates, string> }
+interface Form { provider: string; displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; rates: Record<keyof Rates, string>; searchRoute: SearchRoute }
 
-const blank: Form = { provider: '', displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' } };
+const blank: Form = { provider: '', displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' }, searchRoute: '' };
 
 function formOf(m: SiteModel): Form {
   const r = m.rates;
   return {
     provider: m.provider, displayName: m.displayName, model: m.model, baseUrl: m.baseUrl, key: '',
-    contextWindow: m.contextWindow ? String(m.contextWindow) : '',
+    contextWindow: m.contextWindow ? String(m.contextWindow) : '', searchRoute: m.searchRoute,
     rates: r ? { input: String(r.input), cacheRead: String(r.cacheRead), cacheWrite: String(r.cacheWrite), output: String(r.output), search: String(r.search) } : blank.rates,
   };
 }
@@ -171,7 +182,7 @@ function payload(f: Form) {
   const cw = f.contextWindow.trim();
   return {
     format: 'openai', provider: f.provider, displayName: f.displayName, model: f.model, baseUrl: f.baseUrl, key: f.key,
-    contextWindow: cw === '' ? null : Number(cw), rates,
+    contextWindow: cw === '' ? null : Number(cw), rates, searchRoute: f.searchRoute,
   };
 }
 
@@ -215,7 +226,7 @@ function ModelDialog({ target, masterKey, presets, onClose, onDone }: { target: 
             <select id="mf" className="select" value="openai" onChange={() => {}}><option value="openai">OpenAI 兼容</option></select>
           </div>
           <div className="field"><label htmlFor="mp">服务商配置</label>
-            <select id="mp" className="select" value={f.provider} onChange={(e) => setF((x) => chooseProvider(x, e.target.value, presets))}>
+            <select id="mp" className="select" value={f.provider} onChange={(e) => setF((x) => ({ ...chooseProvider(x, e.target.value, presets), searchRoute: keepRoute(x.searchRoute, e.target.value) }))}>
               <option value="">无</option>
               {presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
@@ -238,6 +249,12 @@ function ModelDialog({ target, masterKey, presets, onClose, onDone }: { target: 
         </div>
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <div className="field"><label htmlFor="mc">上下文窗口 (token)</label><Input id="mc" inputMode="numeric" placeholder="128000" value={f.contextWindow} onChange={set('contextWindow')} /><span className="hint">留空按 128k。</span></div>
+          <div className="field"><label htmlFor="ms">联网搜索</label>
+            <select id="ms" className="select" value={f.searchRoute} onChange={(e) => setF((x) => ({ ...x, searchRoute: e.target.value as SearchRoute }))}>
+              {searchRoutes(f.provider).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+            <span className="hint">是否搜索由模型决定。解析不出路线时 AI 不启用。</span>
+          </div>
         </div>
         <fieldset className="field">
           <legend>费率 (积分)</legend>
@@ -257,5 +274,44 @@ function ModelDialog({ target, masterKey, presets, onClose, onDone }: { target: 
         </div>
       </form>
     </Dialog>
+  );
+}
+
+// TavilyKey is the site's Tavily key, which models without a search
+// service of their own search with. Saving it runs one real search.
+function TavilyKey({ state, masterKey, onSaved }: { state: { set: boolean; keyLast4: string }; masterKey: boolean; onSaved: (s: State) => void }) {
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function run(method: 'PUT' | 'DELETE') {
+    setBusy(true);
+    setErr('');
+    try {
+      onSaved(await api<State>(method, '/api/admin/tavily', method === 'PUT' ? { key } : undefined));
+      setKey('');
+      toast.success(method === 'PUT' ? '已保存 Tavily key' : '已删除 Tavily key');
+    } catch (ex) {
+      setErr(ex instanceof ApiError ? ex.message : '保存失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="tavily-key" onSubmit={(e) => { e.preventDefault(); void run('PUT'); }}>
+      <div className="field"><label htmlFor="tk">站点 Tavily key</label>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            id="tk" type="password" autoComplete="off" className="min-w-0 flex-1" disabled={!masterKey || busy} value={key} onChange={(e) => setKey(e.target.value)}
+            placeholder={!masterKey ? '不能保存 key' : state.set ? `已保存 ····${state.keyLast4}, 填新的替换` : 'tvly-…'}
+          />
+          <Button type="submit" size="sm" variant="default" disabled={busy || !key.trim()}>{busy ? '测试中…' : '测试并保存'}</Button>
+          {state.set ? <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void run('DELETE')}>删除</Button> : null}
+        </div>
+        <span className="hint">非 DeepSeek 的模型用它搜索 (只搜索, 不抓取网页)。保存前会做一次真实搜索。</span>
+      </div>
+      {err ? <ErrorBox message={err} /> : null}
+    </form>
   );
 }

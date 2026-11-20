@@ -34,6 +34,16 @@ func (s *Server) modelsState(w http.ResponseWriter, r *http.Request) (map[string
 		writeInternal(w, r, err)
 		return nil, false
 	}
+	tavily, err := s.models.Tavily(ctx)
+	if err != nil {
+		writeInternal(w, r, err)
+		return nil, false
+	}
+	available, err := s.models.Available(ctx)
+	if err != nil {
+		writeInternal(w, r, err)
+		return nil, false
+	}
 	out := map[string]any{}
 	for _, k := range assistant.TurnKinds {
 		if t, ok := turns[k]; ok {
@@ -45,7 +55,8 @@ func (s *Server) modelsState(w http.ResponseWriter, r *http.Request) (map[string
 	return map[string]any{
 		"models":      models,
 		"turns":       out,
-		"aiAvailable": len(turns) == len(assistant.TurnKinds),
+		"aiAvailable": available,
+		"tavily":      tavily,
 		"masterKey":   s.models.CanStoreKeys(),
 		"providers":   assistant.ProviderPresets,
 	}, true
@@ -125,7 +136,16 @@ func writeModelError(w http.ResponseWriter, r *http.Request, err error) bool {
 		return true
 	case errors.As(err, &invalid):
 		writeProblems(w, http.StatusBadRequest, "invalid_model", "模型配置不完整", invalid.Problems)
-	case errors.As(err, &failed):
+	case errors.As(err, &failed) && failed.Tavily:
+		slog.Warn("tavily test search failed", "err", failed.Cause)
+		msg, ok := tavilyFailures[failed.Category]
+		if !ok {
+			msg = "测试搜索没通过"
+		}
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": apiError{
+			Code: "tavily_test_failed", Message: "测试搜索没通过: " + msg, Category: string(failed.Category),
+		}})
+	case failed != nil:
 		slog.Warn("model connection test failed", "err", failed.Cause)
 		msg, ok := testFailureMessages[failed.Category]
 		if !ok {
@@ -134,6 +154,8 @@ func writeModelError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": apiError{
 			Code: "model_test_failed", Message: "测试连接没通过: " + msg, Category: string(failed.Category),
 		}})
+	case errors.Is(err, assistant.ErrTavilyKeyEmpty):
+		writeError(w, http.StatusBadRequest, "tavily_key_empty", "Tavily key 不能为空")
 	case errors.Is(err, assistant.ErrAssistantUnavailable):
 		// before ErrKeyUnreadable, which it may wrap: readers learn no more
 		slog.Warn("assistant unavailable", "err", err)
@@ -154,4 +176,36 @@ func writeModelError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeInternal(w, r, err)
 	}
 	return false
+}
+
+// tavilyFailures say what a failed test search means.
+var tavilyFailures = map[assistant.Category]string{
+	assistant.ErrAuth:           "Tavily key 无效",
+	assistant.ErrQuotaExhausted: "Tavily 账户的额度用完了",
+	assistant.ErrRateLimited:    "被 Tavily 限流了, 稍后再试",
+	assistant.ErrUnavailable:    "连不上 Tavily, 或它暂时不可用",
+	assistant.ErrTimeout:        "Tavily 太久没有回应",
+}
+
+// setTavily tests the site's Tavily key with one search and stores it.
+func (s *Server) setTavily(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Key string `json:"key"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	_, err := s.models.SetTavily(r.Context(), in.Key)
+	if !writeModelError(w, r, err) {
+		return
+	}
+	s.listModels(w, r)
+}
+
+func (s *Server) clearTavily(w http.ResponseWriter, r *http.Request) {
+	if err := s.models.ClearTavily(r.Context()); err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	s.listModels(w, r)
 }

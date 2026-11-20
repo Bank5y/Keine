@@ -61,10 +61,15 @@ type Model struct {
 	Model       string   `json:"model"`
 	DisplayName string   `json:"displayName"`
 	// ContextWindow is nil when unset (DefaultContextWindow applies).
-	ContextWindow *int      `json:"contextWindow"`
-	Rates         *Rates    `json:"rates"`
-	KeyLast4      string    `json:"keyLast4"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ContextWindow *int   `json:"contextWindow"`
+	Rates         *Rates `json:"rates"`
+	KeyLast4      string `json:"keyLast4"`
+	// SearchRoute is the admin's choice; Search is what it resolves to now,
+	// and SearchReady false when it resolves to nothing (ADR 0008).
+	SearchRoute SearchRoute `json:"searchRoute"`
+	Search      SearchRoute `json:"search"`
+	SearchReady bool        `json:"searchReady"`
+	UpdatedAt   time.Time   `json:"updatedAt"`
 }
 
 // ModelInput is a model as an admin submits it. An empty Key keeps the
@@ -72,13 +77,14 @@ type Model struct {
 type ModelInput struct {
 	Format string `json:"format"`
 	// Provider fills in an empty address or display name with its own.
-	Provider      Provider   `json:"provider"`
-	BaseURL       string     `json:"baseUrl"`
-	Key           string     `json:"key"`
-	Model         string     `json:"model"`
-	DisplayName   string     `json:"displayName"`
-	ContextWindow *int       `json:"contextWindow"`
-	Rates         *rateInput `json:"rates"`
+	Provider      Provider    `json:"provider"`
+	BaseURL       string      `json:"baseUrl"`
+	Key           string      `json:"key"`
+	Model         string      `json:"model"`
+	DisplayName   string      `json:"displayName"`
+	ContextWindow *int        `json:"contextWindow"`
+	Rates         *rateInput  `json:"rates"`
+	SearchRoute   SearchRoute `json:"searchRoute"`
 }
 
 // rateInput tells a missing rate from a zero one.
@@ -119,6 +125,8 @@ func (e *InvalidModelError) Error() string { return "invalid model: " + strings.
 type TestFailedError struct {
 	Category Category
 	Cause    error
+	// Tavily: the test was the search that saves the site's Tavily key
+	Tavily bool
 }
 
 func (e *TestFailedError) Error() string { return fmt.Sprintf("connection test failed: %v", e.Cause) }
@@ -132,17 +140,18 @@ type Models struct {
 	// box is nil when the deployment has no master key.
 	box        *secret.Box
 	adapterFor AdapterFor
+	searchFor  SearchFor
 }
 
-func NewModels(db *pgxpool.Pool, box *secret.Box, adapterFor AdapterFor) *Models {
-	return &Models{db: db, box: box, adapterFor: adapterFor}
+func NewModels(db *pgxpool.Pool, box *secret.Box, adapterFor AdapterFor, searchFor SearchFor) *Models {
+	return &Models{db: db, box: box, adapterFor: adapterFor, searchFor: searchFor}
 }
 
 // CanStoreKeys tells whether a master key is configured.
 func (s *Models) CanStoreKeys() bool { return s.box != nil }
 
 const modelColumns = `id, format, provider, base_url, key_last4, model, display_name, context_window,
-	rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, updated_at`
+	rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, search_route, updated_at`
 
 func scanModel(row pgx.Row) (Model, error) {
 	var (
@@ -151,7 +160,7 @@ func scanModel(row pgx.Row) (Model, error) {
 		cw *int32
 	)
 	if err := row.Scan(&m.ID, &m.Format, &m.Provider, &m.BaseURL, &m.KeyLast4, &m.Model, &m.DisplayName, &cw,
-		&r[0], &r[1], &r[2], &r[3], &r[4], &m.UpdatedAt); err != nil {
+		&r[0], &r[1], &r[2], &r[3], &r[4], &m.SearchRoute, &m.UpdatedAt); err != nil {
 		return m, err
 	}
 	if cw != nil {
@@ -165,6 +174,10 @@ func scanModel(row pgx.Row) (Model, error) {
 }
 
 func (s *Models) List(ctx context.Context) ([]Model, error) {
+	tv, err := s.Tavily(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Query(ctx, "SELECT "+modelColumns+" FROM site_models ORDER BY id")
 	if err != nil {
 		return nil, err
@@ -176,7 +189,7 @@ func (s *Models) List(ctx context.Context) ([]Model, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, m)
+		out = append(out, m.resolve(tv.Set))
 	}
 	return out, rows.Err()
 }
@@ -200,12 +213,32 @@ func (s *Models) Turns(ctx context.Context) (map[TurnKind]TurnModel, error) {
 	return out, rows.Err()
 }
 
-// Available tells whether every turn kind has a model, which is when the
-// assistant shows up for readers.
+// Available tells whether every turn kind has a model and every such
+// model a search route (or the deployer's choice of none), which is when
+// the assistant shows up for readers.
 func (s *Models) Available(ctx context.Context) (bool, error) {
-	var n int
-	err := s.db.QueryRow(ctx, "SELECT count(*) FROM turn_models").Scan(&n)
-	return n == len(TurnKinds), err
+	tv, err := s.Tavily(ctx)
+	if err != nil {
+		return false, err
+	}
+	rows, err := s.db.Query(ctx, "SELECT m.search_route, m.provider FROM turn_models t JOIN site_models m ON m.id = t.model_id")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var route SearchRoute
+		var p Provider
+		if err := rows.Scan(&route, &p); err != nil {
+			return false, err
+		}
+		if _, ok := Resolve(route, p, tv.Set); !ok {
+			return false, nil
+		}
+		n++
+	}
+	return n == len(TurnKinds), rows.Err()
 }
 
 // validated is a ModelInput that passed validation.
@@ -247,6 +280,12 @@ func validate(in ModelInput) (validated, error) {
 	}
 	if in.DisplayName == "" {
 		problems = append(problems, "显示名称不能为空")
+	}
+	switch {
+	case !validRoute(in.SearchRoute):
+		problems = append(problems, "没有这种联网搜索路线")
+	case in.SearchRoute == RouteDeepSeek && in.Provider != ProviderDeepSeek:
+		problems = append(problems, "DeepSeek 搜索只能用于 DeepSeek 服务商配置的模型")
 	}
 	if in.ContextWindow != nil && *in.ContextWindow <= 0 {
 		problems = append(problems, "上下文窗口要是正整数")
@@ -297,14 +336,17 @@ func (s *Models) Create(ctx context.Context, in ModelInput) (Model, error) {
 	r := rateArgs(v.rates)
 	m, err := scanModel(tx.QueryRow(ctx, `
 		INSERT INTO site_models (id, format, base_url, api_key, key_last4, model, display_name, context_window,
-			rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, provider)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, provider, search_route)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		RETURNING `+modelColumns,
-		id, v.in.Format, v.in.BaseURL, sealed, last4, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider))
+		id, v.in.Format, v.in.BaseURL, sealed, last4, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider, v.in.SearchRoute))
 	if err != nil {
 		return Model{}, err
 	}
-	return m, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return Model{}, err
+	}
+	return s.resolved(ctx, m)
 }
 
 // Update validates the edit, tests the connection with the new or the
@@ -354,22 +396,25 @@ func (s *Models) Update(ctx context.Context, id int64, in ModelInput) (Model, er
 		return Model{}, ErrModelChanged
 	}
 	r := rateArgs(v.rates)
-	args := []any{id, v.in.Format, v.in.BaseURL, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider}
+	args := []any{id, v.in.Format, v.in.BaseURL, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider, v.in.SearchRoute}
 	keySet := ""
 	if v.in.Key != "" {
 		sealed, last4 := s.seal(id, v.in.Key)
 		args = append(args, sealed, last4)
-		keySet = ", api_key = $13, key_last4 = $14"
+		keySet = ", api_key = $14, key_last4 = $15"
 	}
 	m, err := scanModel(tx.QueryRow(ctx, `
 		UPDATE site_models SET format = $2, base_url = $3, model = $4, display_name = $5, context_window = $6,
 			rate_input = $7, rate_cache_read = $8, rate_cache_write = $9, rate_output = $10, rate_search = $11,
-			provider = $12, updated_at = now()`+keySet+`
+			provider = $12, search_route = $13, updated_at = now()`+keySet+`
 		WHERE id = $1 RETURNING `+modelColumns, args...))
 	if err != nil {
 		return Model{}, err
 	}
-	return m, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return Model{}, err
+	}
+	return s.resolved(ctx, m)
 }
 
 const modelStateQuery = `SELECT api_key, EXISTS (SELECT 1 FROM turn_models WHERE model_id = $1)
@@ -455,6 +500,22 @@ func (s *Models) SetTurn(ctx context.Context, kind TurnKind, modelID *int64, thi
 	return tx.Commit(ctx)
 }
 
+// resolved fills in what a model's search route resolves to now.
+func (s *Models) resolved(ctx context.Context, m Model) (Model, error) {
+	tv, err := s.Tavily(ctx)
+	if err != nil {
+		return Model{}, err
+	}
+	return m.resolve(tv.Set), nil
+}
+
+// resolve fills in what the model's search route resolves to, given
+// whether the site has a Tavily key.
+func (m Model) resolve(tavilyKey bool) Model {
+	m.Search, m.SearchReady = Resolve(m.SearchRoute, m.Provider, tavilyKey)
+	return m
+}
+
 func keyPurpose(id int64) string { return fmt.Sprintf("site_model:%d", id) }
 
 // seal encrypts a key for the model's row; an empty key stays empty.
@@ -531,6 +592,9 @@ type Turn struct {
 	Adapter  Adapter
 	Model    string
 	Thinking bool
+	// Web is the run's way to the web on the Keine tool route; nil when the
+	// deployer chose none.
+	Web *WebRoute
 }
 
 // ForTurn resolves the model serving a turn kind.
@@ -540,12 +604,13 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 		t               Turn
 		format, baseURL string
 		provider        Provider
+		route           SearchRoute
 		sealed          []byte
 	)
 	err := s.db.QueryRow(ctx, `
-		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking
+		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking, m.search_route
 		FROM turn_models t JOIN site_models m ON m.id = t.model_id WHERE t.kind = $1`, kind).
-		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking)
+		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking, &route)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Turn{}, fmt.Errorf("%w: %s is not mapped", ErrAssistantUnavailable, kind)
 	}
@@ -558,6 +623,15 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 			return Turn{}, fmt.Errorf("%w: %w", ErrAssistantUnavailable, err)
 		}
 	}
+	tavily, err := s.tavilyKey(ctx, s.db)
+	if err != nil {
+		return Turn{}, fmt.Errorf("%w: tavily key: %w", ErrAssistantUnavailable, err)
+	}
+	resolved, ok := Resolve(route, provider, tavily != "")
+	if !ok {
+		return Turn{}, fmt.Errorf("%w: %s has no search route", ErrAssistantUnavailable, kind)
+	}
 	t.Adapter = s.adapterFor(Endpoint{Format: format, Provider: provider, BaseURL: baseURL, Key: key})
+	t.Web = s.routeOf(resolved, key, tavily)
 	return t, nil
 }

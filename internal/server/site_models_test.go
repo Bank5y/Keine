@@ -294,7 +294,9 @@ func TestAIAvailableOnceEveryTurnKindIsMapped(t *testing.T) {
 	f := newFakeModel(t)
 	admin := a.admin()
 	alice := a.user("alice")
-	id := addModel(t, admin, modelBody(f, "sk-1"))
+	body := modelBody(f, "sk-1")
+	body["searchRoute"] = "off"
+	id := addModel(t, admin, body)
 
 	if aiAvailable(t, alice) || aiAvailable(t, admin) {
 		t.Fatal("AI available without a mapping")

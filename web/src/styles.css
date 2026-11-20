@@ -419,6 +419,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .server-note { margin-top: 22px; padding-left: 12px; border-left: 2px solid var(--rule); font-size: 13px; }
 .server-note b { color: var(--text-2); font-weight: 600; }
 .server-note p { margin: 2px 0 0; color: var(--text-3); }
+.tavily-key { margin-top: 18px; max-width: 560px; }
 .switch { width: 32px; height: 18px; border-radius: 9px; background: var(--rule); position: relative; flex-shrink: 0; cursor: pointer; transition: background-color .15s; }
 .switch[data-state=checked] { background: var(--text); }
 .switch:disabled { opacity: .4; cursor: not-allowed; }
@@ -426,7 +427,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .switch-thumb { display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); transform: translateX(2px); transition: transform .15s; }
 .switch-thumb[data-state=checked] { transform: translateX(16px); }
 .model-form .field { margin-bottom: 16px; }
-.model-form .field .hint { color: var(--text-3); font-size: 12px; }
+.model-form .field .hint, .tavily-key .hint { color: var(--text-3); font-size: 12px; }
 .model-form .field .hint.warn { color: var(--warn); }
 .model-form .provider-hint { display: block; margin: -10px 0 16px; color: var(--text-3); font-size: 12px; }
 .model-form fieldset { border: 0; padding: 0; min-width: 0; }
@@ -660,6 +661,8 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 }
 .analysis-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 0 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
 .analysis-foot.end { justify-content: flex-end; }
+/* the run got no web results (#128): said here, never in the document */
+.analysis-no-web { margin: 0; padding: 10px 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
 .analysis-error { padding: 16px 18px 18px; }
 .analysis-error.after-content { border-top: 1px solid var(--line); }
 .analysis-error-title { font-size: 14px; font-weight: 500; color: var(--text); }

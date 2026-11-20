@@ -13,6 +13,7 @@ import (
 
 	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/assistant/openai"
+	"github.com/Bank5y/keine/internal/assistant/search"
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/db"
@@ -41,6 +42,10 @@ type Options struct {
 	// AdapterFor builds the adapter a site model is called through (default:
 	// by its interface format). Tests put a scripted model here.
 	AdapterFor assistant.AdapterFor
+	// SearchFor builds the search service of a web route (default: Tavily
+	// and DeepSeek Search / Fetch at their own addresses). Tests put a fake
+	// service here.
+	SearchFor assistant.SearchFor
 	// RunDeadline ends an assistant run (default assistant.DefaultDeadline),
 	// kept by Now.
 	RunDeadline time.Duration
@@ -86,7 +91,10 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if opts.AdapterFor == nil {
 		opts.AdapterFor = func(e assistant.Endpoint) assistant.Adapter { return openai.New(e) }
 	}
-	s.models = assistant.NewModels(pool, box, opts.AdapterFor)
+	if opts.SearchFor == nil {
+		opts.SearchFor = search.For
+	}
+	s.models = assistant.NewModels(pool, box, opts.AdapterFor, opts.SearchFor)
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -153,6 +161,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/admin/models/{id}", s.adminOnly(s.updateModel))
 	s.mux.HandleFunc("DELETE /api/admin/models/{id}", s.adminOnly(s.deleteModel))
 	s.mux.HandleFunc("PUT /api/admin/turns/{kind}", s.adminOnly(s.setTurnModel))
+	s.mux.HandleFunc("PUT /api/admin/tavily", s.adminOnly(s.setTavily))
+	s.mux.HandleFunc("DELETE /api/admin/tavily", s.adminOnly(s.clearTavily))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}", s.adminOnly(s.updateUser))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}/password", s.adminOnly(s.resetPassword))
 	s.mux.HandleFunc("POST /api/courses", s.signedIn(s.uploadCourse))
