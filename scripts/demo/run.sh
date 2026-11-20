@@ -7,7 +7,11 @@
 #   scripts/demo/run.sh stop   stop it and delete its database and files
 #
 # Several at once (one per worktree): give each its own DEMO_PORT, DEMO_PG_PORT,
-# DEMO_PG_NAME and DEMO_DIR, and pass the same variables to stop.
+# DEMO_MODEL_PORT, DEMO_PG_NAME and DEMO_DIR, and pass the same variables to stop.
+#
+# AI: a stand-in model endpoint (scripts/demo/fake_model.py, on DEMO_MODEL_PORT)
+# is the site model "演示模型", serving all three turn kinds, so the assistant is
+# available; the admin's 模型 tab shows it. Its key "bad" fails the connection test.
 #
 # Sample data (scripts/demo/seed.py): six public courses, one private course
 # with a pending publish request; bob subscribed to "Agent 系统设计 40 讲" with
@@ -22,13 +26,17 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 PORT=${DEMO_PORT:-18080}
 PG_PORT=${DEMO_PG_PORT:-55432}
+MODEL_PORT=${DEMO_MODEL_PORT:-18999}
 PG=${DEMO_PG_NAME:-keine-demo-pg}
 STATE=${DEMO_DIR:-${TMPDIR:-/tmp}/keine-demo}
 export KEINE_ADMIN_USERNAME=admin KEINE_ADMIN_PASSWORD=admin-password
-export DEMO_URL=http://127.0.0.1:$PORT
+export KEINE_MASTER_KEY=demo-master-key-not-a-secret-0123456789
+export DEMO_URL=http://127.0.0.1:$PORT DEMO_MODEL_URL=http://127.0.0.1:$MODEL_PORT/v1
 
 stop() {
-  if [[ -f $STATE/keine.pid ]]; then kill "$(cat "$STATE/keine.pid")" 2>/dev/null || true; fi
+  for pid in "$STATE"/keine.pid "$STATE"/model.pid; do
+    if [[ -f $pid ]]; then kill "$(cat "$pid")" 2>/dev/null || true; fi
+  done
   docker rm -f "$PG" >/dev/null 2>&1 || true
   rm -rf "$STATE"
 }
@@ -52,6 +60,9 @@ docker run -d --rm --name "$PG" -e POSTGRES_PASSWORD=demo -e POSTGRES_DB=keine \
 # over TCP: the image's init runs a temporary server on the socket only, then
 # restarts, so a socket check passes too early
 wait_for postgres docker exec "$PG" pg_isready -h 127.0.0.1 -U postgres -q
+
+nohup python3 "$ROOT/scripts/demo/fake_model.py" "$MODEL_PORT" >/dev/null 2>&1 &
+echo $! >"$STATE/model.pid"
 
 KEINE_ADDR=127.0.0.1:$PORT KEINE_DATA_DIR=$STATE/data \
 KEINE_DATABASE_URL="postgres://postgres:demo@127.0.0.1:$PG_PORT/keine?sslmode=disable" \

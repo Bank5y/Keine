@@ -1,7 +1,7 @@
 """Fills a fresh Keine instance with sample data for looking at the UI.
 
 Run by scripts/demo/run.sh against an empty database; see that script for
-what it creates. Users: alice, bob, carol (password <name>-password) and the
+what it creates (needs DEMO_MODEL_URL for the site model). Users: alice, bob, carol (password <name>-password) and the
 admin from KEINE_ADMIN_USERNAME / KEINE_ADMIN_PASSWORD.
 """
 import io, json, os, zipfile, zlib, struct, urllib.request, http.cookiejar, uuid, sys
@@ -129,4 +129,10 @@ alice.req("POST", f"/api/courses/{agent}/draft/ops", {"type": "moveLesson", "les
 admin.req("POST", f"/api/courses/{agent}/draft/ops", {"type": "deleteLesson", "lesson": "l08"})
 admin.req("POST", f"/api/courses/{agent}/draft/commit", {"skip": []})
 
-print(json.dumps({"agent": agent, "k8s": k8s, "others": others, "private": private, "l01": ids["l01"], "ids": ids}))
+# the assistant: one site model (scripts/demo/fake_model.py) for every turn kind
+model = admin.req("POST", "/api/admin/models", {"format": "openai", "baseUrl": os.environ["DEMO_MODEL_URL"], "key": "sk-demo-model-a1b2",
+    "model": "demo-flash", "displayName": "演示模型", "contextWindow": 1000000,
+    "rates": {"input": 200, "cacheRead": 4, "cacheWrite": 0, "output": 800, "search": 0.5}})["id"]
+for kind in ["analysis", "followup", "sync"]: admin.req("PUT", f"/api/admin/turns/{kind}", {"modelId": model, "thinking": False})
+
+print(json.dumps({"model": model, "agent": agent, "k8s": k8s, "others": others, "private": private, "l01": ids["l01"], "ids": ids}))
