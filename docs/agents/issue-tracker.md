@@ -14,6 +14,10 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Working a ticket
+
+`main` only receives pull request merges. Before the first commit for a ticket, branch off an up-to-date `origin/main` as `<type>/<number>-<short-name>` (`feat/124-site-models`; types as in the commit subjects: `feat`, `fix`, `docs`, `chore`), and open the pull request with `Closes #<number>` in its body.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

@@ -1,10 +1,10 @@
 # Coding standards
 
-Read during review. Each rule is a judgement call the CI checks (gofmt, go vet, tests, tsc) cannot make. Use the domain words in `GLOSSARY.md`.
+Read during review. Each rule is a judgement call the CI checks (gofmt, go vet, tests, tsc, `npm run lint`) cannot make. Use the domain words in `GLOSSARY.md`.
 
 ## Locks and storage
 
-- **Hold a course row lock for database work only.** Storage reads and copies run before the transaction; under the lock, re-read what they depended on (`files_dir`, visibility, completion, the draft) and start over when it changed (`ErrCourseBusy`). Copying large videos while the row is locked blocks every other update, approval and delete of that course.
+- **Hold a row lock for database work only.** Slow work (storage reads and copies, a site model's connection test) runs before the transaction; under the lock, re-read what it depended on (a course's `files_dir`, visibility, completion, the draft; a site model's stored key) and start over or refuse when it changed (`ErrCourseBusy`, `ErrModelChanged`). Copying large videos while the row is locked blocks every other update, approval and delete of that course.
 - **Decide anything that depends on course state from what was read under the lock.** A mode or permission computed before the lock is a guess until re-checked there.
 - **A file missing from storage degrades, it does not fail the whole operation.** Log it and go on (`lessonMarkdown` reads a missing text as empty); one lost file must not block a commit or hide every pending review.
 
@@ -19,4 +19,4 @@ Read during review. Each rule is a judgement call the CI checks (gofmt, go vet, 
 
 ## Errors
 
-- **A new error a user can hit is mapped end to end:** an exported error in `internal/course`, a status, code and Chinese message in `internal/server` (`writeCourseError` / `writeDraftError`), and the frontend shows the server's message or prevents the action.
+- **A new error a user can hit is mapped end to end:** an exported error in its domain package (`internal/course`, `internal/assistant`), a status, code and Chinese message in that package's `write…Error` helper in `internal/server` (`writeCourseError`, `writeModelError`), and the frontend shows the server's message or prevents the action. A `write…Error` helper returns true when there was no error: `if !writeCourseError(w, r, err) { return }`.
