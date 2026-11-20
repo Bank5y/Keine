@@ -20,17 +20,35 @@ import (
 
 type Adapter struct {
 	baseURL, key string
+	rules        rules
 	client       *http.Client
 }
 
-// New returns an adapter for the endpoint at baseURL (the part before
-// /chat/completions). key may be empty for endpoints without auth.
-func New(baseURL, key string) *Adapter {
-	return &Adapter{baseURL: strings.TrimRight(baseURL, "/"), key: key, client: http.DefaultClient}
+// rules are what a provider configuration (ADR 0008) changes on the wire.
+type rules struct {
+	// thinkingSwitch sends thinking: {type: enabled|disabled}
+	thinkingSwitch bool
+	// passReasoning sends a run's earlier reasoning back as it was
+	passReasoning bool
+	// cacheHitMiss reads prompt_cache_hit_tokens / prompt_cache_miss_tokens
+	cacheHitMiss bool
+}
+
+// providerRules are the rules of each provider configuration; a plain
+// endpoint has none.
+var providerRules = map[assistant.Provider]rules{
+	assistant.ProviderDeepSeek: {thinkingSwitch: true, passReasoning: true, cacheHitMiss: true},
+}
+
+// New returns an adapter for the endpoint: BaseURL is the part before
+// /chat/completions, Key may be empty for endpoints without auth, and the
+// provider configuration (ADR 0008) adds that provider's rules.
+func New(e assistant.Endpoint) *Adapter {
+	return &Adapter{baseURL: strings.TrimRight(e.BaseURL, "/"), key: e.Key, rules: providerRules[e.Provider], client: http.DefaultClient}
 }
 
 func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
-	body, err := json.Marshal(wireRequest(req))
+	body, err := json.Marshal(a.wireRequest(req))
 	if err != nil {
 		return assistant.Result{}, err
 	}
@@ -54,7 +72,7 @@ func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(a
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
 		return assistant.Result{}, &assistant.Error{Category: assistant.ErrBadResponse, Detail: "not a stream: " + ct}
 	}
-	return readStream(ctx, resp.Body, emit)
+	return readStream(ctx, resp.Body, emit, a.rules)
 }
 
 // --- request
@@ -85,11 +103,15 @@ type wireTool struct {
 	} `json:"function"`
 }
 
-func wireRequest(req assistant.Request) map[string]any {
+func (a *Adapter) wireRequest(req assistant.Request) map[string]any {
 	msgs := make([]wireMessage, 0, len(req.Messages))
 	for _, m := range req.Messages {
 		content := m.Content
-		wm := wireMessage{Role: string(m.Role), Content: &content, ReasoningContent: m.Reasoning, ToolCallID: m.ToolCallID}
+		wm := wireMessage{Role: string(m.Role), Content: &content, ToolCallID: m.ToolCallID}
+		if a.rules.passReasoning {
+			// within a run, as it was (#115); a run's history never has any
+			wm.ReasoningContent = m.Reasoning
+		}
 		if m.Role == assistant.RoleAssistant && content == "" && len(m.ToolCalls) > 0 {
 			wm.Content = nil
 		}
@@ -119,6 +141,10 @@ func wireRequest(req assistant.Request) map[string]any {
 	}
 	if req.MaxTokens > 0 {
 		body["max_tokens"] = req.MaxTokens
+	}
+	if a.rules.thinkingSwitch {
+		// thinking is on unless switched off
+		body["thinking"] = map[string]string{"type": map[bool]string{true: "enabled", false: "disabled"}[req.Thinking]}
 	}
 	return body
 }
@@ -159,6 +185,9 @@ type wireUsage struct {
 	CompletionTokensDetails *struct {
 		ReasoningTokens *int64 `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details"`
+	// DeepSeek's own counts of the prompt
+	PromptCacheHitTokens  *int64 `json:"prompt_cache_hit_tokens"`
+	PromptCacheMissTokens *int64 `json:"prompt_cache_miss_tokens"`
 }
 
 type wireError struct {
@@ -167,7 +196,7 @@ type wireError struct {
 	Code    any    `json:"code"`
 }
 
-func readStream(ctx context.Context, r io.Reader, emit func(assistant.Event) error) (assistant.Result, error) {
+func readStream(ctx context.Context, r io.Reader, emit func(assistant.Event) error, rules rules) (assistant.Result, error) {
 	var (
 		res      assistant.Result
 		finish   string
@@ -249,6 +278,10 @@ func readStream(ctx context.Context, r io.Reader, emit func(assistant.Event) err
 	}
 	res.Finish = finishReason(finish, len(asm.calls) > 0)
 	res.Usage = unify(usage)
+	if rules.cacheHitMiss && usage != nil && usage.PromptCacheHitTokens != nil && usage.PromptCacheMissTokens != nil {
+		hit, miss := *usage.PromptCacheHitTokens, *usage.PromptCacheMissTokens
+		res.Usage.CacheRead, res.Usage.Input = &hit, &miss
+	}
 	return res, nil
 }
 

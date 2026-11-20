@@ -6,16 +6,17 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Empty, ErrorBox } from '@/components/common';
 import { api, ApiError, type Problem } from '@/lib/api';
+import { chooseProvider, type Preset } from '@/lib/provider';
 import { cn } from '@/lib/utils';
 
 interface Rates { input: number; cacheRead: number; cacheWrite: number; output: number; search: number }
 interface SiteModel {
-  id: number; format: 'openai'; baseUrl: string; model: string; displayName: string;
+  id: number; format: 'openai'; provider: string; baseUrl: string; model: string; displayName: string;
   contextWindow: number | null; rates: Rates | null; keyLast4: string;
 }
 type TurnKind = 'analysis' | 'followup' | 'sync';
 interface TurnModel { modelId: number; thinking: boolean }
-interface State { models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; masterKey: boolean }
+interface State { models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; masterKey: boolean; providers: Preset[] }
 
 const TURNS: [TurnKind, string, string][] = [
   ['analysis', '分析', '读者选中原文点「分析」'],
@@ -76,7 +77,7 @@ export function AdminModels() {
                 <div className="model-row" key={m.id}>
                   <div className="min-w-0">
                     <div className="name">{m.displayName}</div>
-                    <div className="meta">{m.model}  ·  OpenAI 兼容  ·  {contextLabel(m)}</div>
+                    <div className="meta">{m.model}  ·  {st.providers.find((p) => p.id === m.provider)?.name ?? 'OpenAI 兼容'}  ·  {contextLabel(m)}</div>
                   </div>
                   {m.rates ? (
                     <div className="meta rates">
@@ -136,7 +137,7 @@ export function AdminModels() {
         ) : null}
       </section>
       <ModelDialog
-        target={editing} masterKey={st?.masterKey ?? false}
+        target={editing} masterKey={st?.masterKey ?? false} presets={st?.providers ?? []}
         onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load(); }}
       />
       <Dialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }} title="删除模型">
@@ -150,14 +151,14 @@ export function AdminModels() {
   );
 }
 
-interface Form { displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; rates: Record<keyof Rates, string> }
+interface Form { provider: string; displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; rates: Record<keyof Rates, string> }
 
-const blank: Form = { displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' } };
+const blank: Form = { provider: '', displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' } };
 
 function formOf(m: SiteModel): Form {
   const r = m.rates;
   return {
-    displayName: m.displayName, model: m.model, baseUrl: m.baseUrl, key: '',
+    provider: m.provider, displayName: m.displayName, model: m.model, baseUrl: m.baseUrl, key: '',
     contextWindow: m.contextWindow ? String(m.contextWindow) : '',
     rates: r ? { input: String(r.input), cacheRead: String(r.cacheRead), cacheWrite: String(r.cacheWrite), output: String(r.output), search: String(r.search) } : blank.rates,
   };
@@ -169,16 +170,17 @@ function payload(f: Form) {
   const rates = rateVals.every((v) => v === '') ? null : Object.fromEntries(RATE_FIELDS.map(([k], i) => [k, rateVals[i] === '' ? null : Number(rateVals[i])]));
   const cw = f.contextWindow.trim();
   return {
-    format: 'openai', displayName: f.displayName, model: f.model, baseUrl: f.baseUrl, key: f.key,
+    format: 'openai', provider: f.provider, displayName: f.displayName, model: f.model, baseUrl: f.baseUrl, key: f.key,
     contextWindow: cw === '' ? null : Number(cw), rates,
   };
 }
 
-function ModelDialog({ target, masterKey, onClose, onDone }: { target: SiteModel | 'new' | null; masterKey: boolean; onClose: () => void; onDone: () => void }) {
+function ModelDialog({ target, masterKey, presets, onClose, onDone }: { target: SiteModel | 'new' | null; masterKey: boolean; presets: Preset[]; onClose: () => void; onDone: () => void }) {
   const [f, setF] = useState<Form>(blank);
   const [err, setErr] = useState<{ message: string; problems?: Problem[]; test?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const editing = target && target !== 'new' ? target : null;
+  const preset = presets.find((p) => p.id === f.provider);
   useEffect(() => {
     if (!target) return;
     setF(target === 'new' ? blank : formOf(target));
@@ -208,18 +210,27 @@ function ModelDialog({ target, masterKey, onClose, onDone }: { target: SiteModel
     <Dialog open={!!target} onOpenChange={(v) => { if (!v && !busy) onClose(); }} title={editing ? `编辑「${editing.displayName}」` : '添加模型'} wide>
       <form onSubmit={submit} className="model-form">
         <p>保存前会发一次带假工具的流式请求, 通过了才保存。</p>
-        <div className="field"><label htmlFor="mf">接口格式</label>
-          <select id="mf" className="select" value="openai" onChange={() => {}}><option value="openai">OpenAI 兼容（Chat Completions）</option></select>
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+          <div className="field"><label htmlFor="mf">接口格式</label>
+            <select id="mf" className="select" value="openai" onChange={() => {}}><option value="openai">OpenAI 兼容</option></select>
+          </div>
+          <div className="field"><label htmlFor="mp">服务商配置</label>
+            <select id="mp" className="select" value={f.provider} onChange={(e) => setF((x) => chooseProvider(x, e.target.value, presets))}>
+              <option value="">无</option>
+              {presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
         </div>
+        {preset ? <span className="hint provider-hint">已套用 {preset.name} 的默认地址和显示名称，填 key 和模型名即可。</span> : null}
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <div className="field"><label htmlFor="mn">显示名称</label><Input id="mn" placeholder="例如: DeepSeek Flash" value={f.displayName} onChange={set('displayName')} /></div>
-          <div className="field"><label htmlFor="mm">模型名</label><Input id="mm" className="font-mono" placeholder="例如: deepseek-chat" value={f.model} onChange={set('model')} /></div>
+          <div className="field"><label htmlFor="mm">模型名</label><Input id="mm" className="font-mono" placeholder={preset ? '例如: deepseek-flash' : '例如: deepseek-chat'} value={f.model} onChange={set('model')} /></div>
         </div>
         <div className="field"><label htmlFor="mu">地址</label><Input id="mu" className="font-mono" placeholder="https://api.example.com/v1" value={f.baseUrl} onChange={set('baseUrl')} /></div>
         <div className="field"><label htmlFor="mk">Key</label>
           <Input
             id="mk" type="password" autoComplete="off" disabled={!masterKey} value={f.key} onChange={set('key')}
-            placeholder={!masterKey ? '不能保存 key' : editing?.keyLast4 ? `已保存 ····${editing.keyLast4}, 留空则不改` : '没有认证的端点可以留空'}
+            placeholder={!masterKey ? '不能保存 key' : editing?.keyLast4 ? `已保存 ····${editing.keyLast4}, 留空则不改` : preset ? `粘贴 ${preset.name} 的 API key` : '没有认证的端点可以留空'}
           />
           {masterKey
             ? <span className="hint">加密存库, 保存后只显示末 4 位。</span>

@@ -8,6 +8,8 @@ export type Parts = Record<Part, string>;
 
 export type AnalysisEvent =
   | { type: 'delta'; section: Part; text: string }
+  // a step of the run in progress; the popover shows only thinking so far
+  | { type: 'activity'; id: string; kind: string; target?: string; status: 'running' | 'done' | 'failed' }
   | { type: 'done'; title: string; intro: string; body: string }
   // message is the server's, in the reader's words
   | { type: 'error'; code: string; message?: string; kept: boolean }
@@ -17,7 +19,8 @@ export type AnalysisEvent =
   | { type: 'start' };
 
 export type AnalysisState =
-  | { status: 'loading' }
+  // thinking: the model is reasoning before it answers
+  | { status: 'loading'; thinking?: boolean }
   | { status: 'streaming'; parts: Parts }
   | { status: 'done'; parts: Parts }
   | { status: 'error'; message: string; parts: Parts };
@@ -31,6 +34,9 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
   if (e.type === 'start') return initial;
   if (s.status === 'done' || s.status === 'error') return s;
   switch (e.type) {
+    case 'activity':
+      if (e.kind !== 'thinking' || s.status !== 'loading') return s;
+      return { status: 'loading', thinking: e.status === 'running' };
     case 'delta': {
       const parts = partsOf(s);
       return { status: 'streaming', parts: { ...parts, [e.section]: parts[e.section] + e.text } };
@@ -70,7 +76,7 @@ export function readEvents(buf: string): { events: AnalysisEvent[]; rest: string
       if (line.startsWith('event: ')) name = line.slice(7);
       else if (line.startsWith('data: ')) data += line.slice(6);
     }
-    if (name !== 'delta' && name !== 'done' && name !== 'error') continue;
+    if (name !== 'delta' && name !== 'activity' && name !== 'done' && name !== 'error') continue;
     try { events.push({ type: name, ...JSON.parse(data) }); } catch { /* a broken event is skipped */ }
   }
   return { events, rest };

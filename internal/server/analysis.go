@@ -50,8 +50,9 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w, r, errors.New("response cannot stream"))
 		return
 	}
-	a, err := assistant.Analyze(ctx, turn, assistant.AnalysisPrompt.Messages(passage(p, in.Quote)), func(d assistant.Delta) error {
-		return sse.send("delta", d)
+	a, err := assistant.Analyze(ctx, turn, assistant.AnalysisPrompt.Messages(passage(p, in.Quote)), assistant.Sink{
+		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
+		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
 	})
 	var re *assistant.RunError
 	switch {

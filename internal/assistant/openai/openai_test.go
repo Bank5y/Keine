@@ -44,7 +44,12 @@ func newReplay(t *testing.T, recording string) *replay {
 }
 
 func (rp *replay) adapter() *openai.Adapter {
-	return openai.New(rp.srv.URL+"/v1", "sk-test")
+	return openai.New(assistant.Endpoint{Format: assistant.FormatOpenAI, BaseURL: rp.srv.URL + "/v1", Key: "sk-test"})
+}
+
+// deepseek is the adapter with the DeepSeek provider configuration.
+func (rp *replay) deepseek() *openai.Adapter {
+	return openai.New(assistant.Endpoint{Format: assistant.FormatOpenAI, Provider: assistant.ProviderDeepSeek, BaseURL: rp.srv.URL + "/v1", Key: "sk-test"})
 }
 
 // collect runs one call and returns its events.
@@ -181,6 +186,8 @@ func TestCumulativeUsageCountedOnce(t *testing.T) {
 	}
 }
 
+// a plain endpoint gets no reasoning back: passing it back is a provider
+// configuration's rule (TestDeepSeekSwitchesThinkingAndPassesReasoningBack)
 func TestRequestCarriesToolsAndHistory(t *testing.T) {
 	rp := newReplay(t, "text.sse")
 	req := assistant.Request{
@@ -199,7 +206,7 @@ func TestRequestCarriesToolsAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `{"max_tokens":64,"messages":[{"content":"sys","role":"system"},{"content":"q","role":"user"},` +
-		`{"content":null,"reasoning_content":"r","role":"assistant","tool_calls":[{"function":{"arguments":"{\"lesson\":\"l-1\"}","name":"read_lesson"},"id":"c1","type":"function"}]},` +
+		`{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"lesson\":\"l-1\"}","name":"read_lesson"},"id":"c1","type":"function"}]},` +
 		`{"content":"lesson text","role":"tool","tool_call_id":"c1"}],"model":"m-1","stream":true,"stream_options":{"include_usage":true},` +
 		`"tool_choice":"none","tools":[{"function":{"description":"Read a lesson","name":"read_lesson","parameters":{"type":"object"}},"type":"function"}]}`
 	got, _ := json.Marshal(rp.body)
@@ -231,7 +238,7 @@ func TestFailuresComeBackAsCategories(t *testing.T) {
 			w.WriteHeader(tc.status)
 			_, _ = io.WriteString(w, tc.body)
 		}))
-		_, _, err := collect(t, openai.New(srv.URL, "k"), hello)
+		_, _, err := collect(t, openai.New(assistant.Endpoint{Format: assistant.FormatOpenAI, BaseURL: srv.URL, Key: "k"}), hello)
 		srv.Close()
 		if got := assistant.CategoryOf(err); got != tc.want {
 			t.Errorf("%d %s: category = %q (%v), want %q", tc.status, tc.body, got, err, tc.want)
@@ -254,7 +261,7 @@ func TestUnreachableEndpoint(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
 	srv.Close()
-	_, _, err := collect(t, openai.New(url, "k"), hello)
+	_, _, err := collect(t, openai.New(assistant.Endpoint{Format: assistant.FormatOpenAI, BaseURL: url, Key: "k"}), hello)
 	if got := assistant.CategoryOf(err); got != assistant.ErrUnavailable {
 		t.Errorf("category = %q (%v)", got, err)
 	}
@@ -269,4 +276,64 @@ func TestTruncatedToolCallReportsLength(t *testing.T) {
 	if res.Finish != assistant.FinishLength {
 		t.Errorf("finish = %q, want length: the call was cut off", res.Finish)
 	}
+}
+
+// history is a run's messages after one call that thought and called a tool.
+var history = []assistant.Message{
+	{Role: assistant.RoleUser, Content: "Raft 里的任期是什么？"},
+	{Role: assistant.RoleAssistant, Reasoning: "先查一下课程。", ToolCalls: []assistant.ToolCall{{ID: "call_1", Name: "search_course", Arguments: `{"keyword":"任期"}`}}},
+	{Role: assistant.RoleTool, ToolCallID: "call_1", Content: "第 5 讲：任期是……"},
+}
+
+func TestDeepSeekStreamsReasoningApartAndMapsItsUsage(t *testing.T) {
+	rp := newReplay(t, "deepseek_thinking.sse")
+	events, res, err := collect(t, rp.deepseek(), assistant.Request{Model: "deepseek-flash", Messages: history, Thinking: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text(events, assistant.EventReasoning) == "" || text(events, assistant.EventText) == "" {
+		t.Fatalf("expected reasoning and text apart, got %+v", events)
+	}
+	u := res.Usage
+	if u.Input == nil || *u.Input != 237 || u.CacheRead == nil || *u.CacheRead != 768 || u.Output == nil || *u.Output != 152 || u.Reasoning == nil || *u.Reasoning != 112 {
+		t.Fatalf("usage: input 237 (cache misses), cache read 768, output 152 of which reasoning 112; got %s", show(u))
+	}
+	if u.CacheWrite != nil {
+		t.Fatalf("DeepSeek reports no cache writes, got %d", *u.CacheWrite)
+	}
+}
+
+func TestDeepSeekSwitchesThinkingAndPassesReasoningBack(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		rp := newReplay(t, "deepseek_thinking.sse")
+		if _, _, err := collect(t, rp.deepseek(), assistant.Request{Model: "deepseek-flash", Messages: history, Thinking: on}); err != nil {
+			t.Fatal(err)
+		}
+		want := map[bool]string{true: "enabled", false: "disabled"}[on]
+		if th, _ := rp.body["thinking"].(map[string]any); th["type"] != want {
+			t.Fatalf("thinking %v should send type %q, got %v", on, want, rp.body["thinking"])
+		}
+		msgs := rp.body["messages"].([]any)
+		if got := msgs[1].(map[string]any)["reasoning_content"]; got != "先查一下课程。" {
+			t.Fatalf("the reasoning of the run's earlier call goes back as it was, got %v", got)
+		}
+	}
+}
+
+func TestAPlainEndpointGetsNoProviderFields(t *testing.T) {
+	rp := newReplay(t, "text.sse")
+	if _, _, err := collect(t, rp.adapter(), assistant.Request{Model: "m", Messages: history, Thinking: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := rp.body["thinking"]; ok {
+		t.Fatalf("a plain endpoint gets no thinking switch: %v", rp.body)
+	}
+	if _, ok := rp.body["messages"].([]any)[1].(map[string]any)["reasoning_content"]; ok {
+		t.Fatalf("a plain endpoint gets no reasoning back: %v", rp.body["messages"])
+	}
+}
+
+func show(u assistant.Usage) string {
+	b, _ := json.Marshal(u)
+	return string(b)
 }

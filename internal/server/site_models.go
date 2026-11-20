@@ -47,6 +47,7 @@ func (s *Server) modelsState(w http.ResponseWriter, r *http.Request) (map[string
 		"turns":       out,
 		"aiAvailable": len(turns) == len(assistant.TurnKinds),
 		"masterKey":   s.models.CanStoreKeys(),
+		"providers":   assistant.ProviderPresets,
 	}, true
 }
 

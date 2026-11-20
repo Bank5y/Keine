@@ -78,7 +78,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	}
 	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage).WithClock(opts.Now), notifications: notify.NewService(pool), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
 	if opts.AdapterFor == nil {
-		opts.AdapterFor = func(format, baseURL, key string) assistant.Adapter { return openai.New(baseURL, key) }
+		opts.AdapterFor = func(e assistant.Endpoint) assistant.Adapter { return openai.New(e) }
 	}
 	s.models = assistant.NewModels(pool, box, opts.AdapterFor)
 	if opts.AdminUsername != "" {

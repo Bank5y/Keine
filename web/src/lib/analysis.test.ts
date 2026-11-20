@@ -15,6 +15,17 @@ describe('step', () => {
     expect(s).toEqual({ status: 'streaming', parts: { title: 'Agent（智能体）', intro: '能自主规划。', body: '第一段' } });
   });
 
+  it('shows thinking while the model reasons, until the answer starts', () => {
+    const thinking = run({ type: 'activity', id: 'thinking-1', kind: 'thinking', status: 'running' });
+    expect(thinking).toEqual({ status: 'loading', thinking: true });
+    expect(step(thinking, { type: 'activity', id: 'thinking-1', kind: 'thinking', status: 'done' })).toEqual({ status: 'loading', thinking: false });
+    expect(step(thinking, { type: 'delta', section: 'title', text: 'A' })).toEqual({ status: 'streaming', parts: { title: 'A', intro: '', body: '' } });
+  });
+
+  it('reads events of a kind it does not show yet as nothing', () => {
+    expect(run({ type: 'activity', id: 's1', kind: 'web_search', status: 'running' })).toEqual(initial);
+  });
+
   it('ends done with the sections the server checked', () => {
     const s = run(
       { type: 'delta', section: 'title', text: 'Agent' },
@@ -68,6 +79,11 @@ describe('readEvents', () => {
       { type: 'done', title: 'Agent', intro: 'i', body: 'b' },
     ]);
     expect(second.rest).toBe('');
+  });
+
+  it('reads activity events', () => {
+    expect(readEvents('event: activity\ndata: {"id":"thinking-1","kind":"thinking","status":"running"}\n\n').events)
+      .toEqual([{ type: 'activity', id: 'thinking-1', kind: 'thinking', status: 'running' }]);
   });
 
   it('reads error events and skips unknown ones', () => {
