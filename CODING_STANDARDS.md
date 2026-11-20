@@ -20,3 +20,16 @@ Read during review. Each rule is a judgement call the CI checks (gofmt, go vet, 
 ## Errors
 
 - **A new error a user can hit is mapped end to end:** an exported error in its domain package (`internal/course`, `internal/assistant`), a status, code and Chinese message in that package's `write…Error` helper in `internal/server` (`writeCourseError`, `writeModelError`), and the frontend shows the server's message or prevents the action. A `write…Error` helper returns true when there was no error: `if !writeCourseError(w, r, err) { return }`.
+
+## Harness documentation
+
+- **A change to the exploration assistant's harness updates its report in the same PR.** Loop, runtime, retries, context and prompts, search, tools, model adapters, output checks or usage recording: edit `docs/tech/Keine_explore_harness_v1.md`, and the matching `docs/tech/selections/` document when a choice between architectures changed.
+- **The report is a technical report for a review meeting**, written in Chinese:
+  - no code details (function names, file paths, snippets); draw with Mermaid;
+  - technical terms, never example objects (a sample term, lesson title or UI string);
+  - written as the settled v1: no 「第一版」「当前实现」「以后」 and no status markers;
+  - business first (intent recognition, information retrieval, knowledge capture), then the technical detail behind it;
+  - upper-layer cost control (积分、套餐、订阅) stays out; usage is recorded in its own chapter without those words;
+  - every tool gets its own third-level section: purpose, parameters, flow, result, errors, limits.
+- **Selections are stated, not argued, in the report.** The body says what was chosen with a footnote to 附录 D; each `docs/tech/selections/` document covers the candidate architectures with a diagram each, their trade-offs, and why one was chosen.
+- **`docs/reference-out/` is git-ignored** and holds write-ups for the maintainer that are not part of the project. An analysis there is based on source code or technical documentation actually read, never on search results or a README alone, and lists what was read and what stays unverified.
