@@ -44,3 +44,50 @@ type Endpoint struct {
 	BaseURL  string
 	Key      string
 }
+
+// FormatSpec is an interface format as its adapter declares it (ADR
+// 0008): the default address, and whether the provider runs web_search and
+// web_fetch itself.
+type FormatSpec struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	BaseURL string `json:"baseUrl"`
+	// ProviderWeb is what the provider's own search is like; the provider
+	// route needs both.
+	ProviderWeb ProviderWeb `json:"-"`
+}
+
+// ProviderWeb is a provider's own search as the provider route needs it:
+// the model decides whether to search (tool_choice auto, never forced),
+// and the search is declared alongside Keine's tools.
+type ProviderWeb struct {
+	ModelDecides bool
+	WithTools    bool
+}
+
+// Usable tells whether the provider route can take it.
+func (w ProviderWeb) Usable() bool { return w.ModelDecides && w.WithTools }
+
+// Formats are the interface formats there are. The Messages API's search
+// and fetch qualify; OpenAI-compatible endpoints have none that do (#99).
+var Formats = []FormatSpec{
+	{ID: FormatOpenAI, Name: "OpenAI 兼容"},
+	{ID: FormatAnthropic, Name: "Anthropic Messages", BaseURL: "https://api.anthropic.com", ProviderWeb: ProviderWeb{ModelDecides: true, WithTools: true}},
+}
+
+// formatOf returns a format; ok is false for an unknown one.
+func formatOf(id string) (FormatSpec, bool) {
+	for _, f := range Formats {
+		if f.ID == id {
+			return f, true
+		}
+	}
+	return FormatSpec{}, false
+}
+
+// providerWeb tells whether models of the format can take the provider
+// route.
+func providerWeb(format string) bool {
+	f, _ := formatOf(format)
+	return f.ProviderWeb.Usable()
+}

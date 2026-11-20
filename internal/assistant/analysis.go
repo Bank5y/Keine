@@ -168,8 +168,10 @@ var errRunDeadline = errors.New("run deadline")
 // tried once more. An invalid answer that has not streamed is asked for
 // once more with what was wrong; one that has streamed ends the run.
 //
-// With a web route, web_search (and web_fetch) are among the tools; the
-// meta returned, on failure too, lists what they found.
+// With a web route, web_search (and web_fetch) are among the tools; on the
+// provider route, the calls declare the provider's own, and each of its
+// steps is an activity too. The meta returned, on failure too, lists what
+// either found.
 func Analyze(ctx context.Context, run Run, msgs []Message, out Sink) (Analysis, Meta, error) {
 	if run.Now == nil {
 		run.Now = time.Now
@@ -188,15 +190,35 @@ func Analyze(ctx context.Context, run Run, msgs []Message, out Sink) (Analysis, 
 	return a, r.meta(), err
 }
 
-// meta is what the run found and which capabilities went off.
+// meta is what the run found, the searches billed (on the Keine tool
+// route by the search services, on the provider route in the usage of the
+// calls) and which capabilities went off.
 func (r *analysisRun) meta() Meta {
 	m := Meta{Sources: []WebSource{}}
+	if r.web != nil {
+		m.Sources, m.Searches = r.web.Sources(), r.web.Searches()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m.Searches += r.providerSearches
+	// a citation may name a page its search found under another title
+	type place struct {
+		url  string
+		kind WebSourceKind
+	}
+	seen := map[place]bool{}
+	for _, s := range m.Sources {
+		seen[place{s.URL, s.Kind}] = true
+	}
+	for _, s := range r.provided {
+		if p := (place{s.URL, s.Kind}); !seen[p] {
+			seen[p] = true
+			m.Sources = append(m.Sources, s)
+		}
+	}
 	if r.web == nil {
 		return m
 	}
-	m.Sources, m.Searches = r.web.Sources(), r.web.Searches()
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	for _, name := range []string{ToolWebSearch, ToolWebFetch} {
 		if b, ok := r.breakers[name]; ok && b.off {
 			m.Degraded = append(m.Degraded, name)
@@ -214,7 +236,8 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 		specs[i] = t.Spec()
 	}
 	steps := 0
-	answering := len(specs) == 0 // no more tool calls from here
+	tools := len(specs) > 0 || run.Turn.ProviderWeb
+	answering := !tools // no more tool calls from here
 	retried, remedied := false, false
 	timeout := func(cause error) error {
 		return &RunError{Code: CodeTimeout, Kept: r.streamed, Cause: cause}
@@ -227,11 +250,11 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 			answering = true
 			msgs = appendMessages(msgs, Message{Role: RoleUser, Content: softNote})
 		}
-		req := Request{Model: run.Turn.Model, Messages: msgs, Tools: specs, MaxTokens: maxTokens, Thinking: run.Turn.Thinking}
+		req := Request{Model: run.Turn.Model, Messages: msgs, Tools: specs, MaxTokens: maxTokens, Thinking: run.Turn.Thinking, ProviderWeb: run.Turn.ProviderWeb}
 		if run.Turn.Thinking {
 			req.MaxTokens = maxTokensThinking
 		}
-		if len(specs) > 0 {
+		if tools {
 			req.ToolChoice = "auto"
 			if answering {
 				req.ToolChoice = "none"
@@ -264,7 +287,7 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 					return Analysis{}, err
 				}
 			}
-			msgs = appendMessages(msgs, Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, ToolCalls: c.toolCalls})
+			msgs = appendMessages(msgs, Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, ToolCalls: c.toolCalls, Native: c.result.Native})
 			msgs = append(msgs, r.execute(runCtx, c.toolCalls)...)
 			if ctx.Err() != nil {
 				return Analysis{}, ctx.Err()
@@ -295,7 +318,7 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 		remedied = true
 		answering = true
 		msgs = appendMessages(msgs,
-			Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning},
+			Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, Native: c.result.Native},
 			Message{Role: RoleUser, Content: fmt.Sprintf(remedyFormat, strings.Join(problems, "；"))})
 	}
 }
@@ -320,6 +343,10 @@ type analysisRun struct {
 	breakers        map[string]*breaker
 	// web is the run's web tools, nil without a web route
 	web *Web
+	// provided are the sources the provider's own search found, or the
+	// answer cited, in order; providerSearches the searches it billed
+	provided         []WebSource
+	providerSearches int
 }
 
 // breaker is how a tool fared in this run (#117): it is off after an
@@ -411,11 +438,27 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 			return p.feed(e.Text)
 		case EventToolCall:
 			toolCalls = append(toolCalls, *e.ToolCall)
+		case EventWeb:
+			r.addProvided(e.Sources)
+			w := e.Web
+			if w == nil {
+				return nil
+			}
+			if err := r.out.Activity(Activity{ID: "web-" + w.ID, Kind: w.Kind, Target: w.Target, Status: w.Status, Reason: w.Reason}); err != nil {
+				return sinkError{err}
+			}
+		case EventSources:
+			r.addProvided(e.Sources)
 		}
 		return nil
 	})
 	if se, ok := errors.AsType[sinkError](err); ok {
 		return called{}, se.err
+	}
+	if err == nil && res.Usage.Searches != nil {
+		r.mu.Lock()
+		r.providerSearches += int(*res.Usage.Searches)
+		r.mu.Unlock()
 	}
 	if err == nil && think.Status == ActivityRunning {
 		// it thought to the end: the activity ends with the call
@@ -424,6 +467,13 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 		}
 	}
 	return called{raw: raw.String(), reasoning: reasoning.String(), parser: p, toolCalls: toolCalls, result: res}, err
+}
+
+// addProvided notes sources of the provider's own search.
+func (r *analysisRun) addProvided(sources []WebSource) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.provided = append(r.provided, sources...)
 }
 
 // errIdle cancels a model call that went quiet.

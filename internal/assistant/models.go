@@ -19,8 +19,12 @@ import (
 // DefaultContextWindow applies to a model whose context window is not set.
 const DefaultContextWindow = 128_000
 
-// FormatOpenAI is the only interface format of the first version.
-const FormatOpenAI = "openai"
+// The interface formats a site model can speak: OpenAI-compatible Chat
+// Completions, and Anthropic Messages.
+const (
+	FormatOpenAI    = "openai"
+	FormatAnthropic = "anthropic"
+)
 
 // TurnKind is what a run is for; each kind is served by one site model.
 type TurnKind string
@@ -221,7 +225,7 @@ func (s *Models) Available(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	rows, err := s.db.Query(ctx, "SELECT m.search_route, m.provider FROM turn_models t JOIN site_models m ON m.id = t.model_id")
+	rows, err := s.db.Query(ctx, "SELECT m.search_route, m.format, m.provider FROM turn_models t JOIN site_models m ON m.id = t.model_id")
 	if err != nil {
 		return false, err
 	}
@@ -229,11 +233,12 @@ func (s *Models) Available(ctx context.Context) (bool, error) {
 	n := 0
 	for rows.Next() {
 		var route SearchRoute
+		var format string
 		var p Provider
-		if err := rows.Scan(&route, &p); err != nil {
+		if err := rows.Scan(&route, &format, &p); err != nil {
 			return false, err
 		}
-		if _, ok := Resolve(route, p, tv.Set); !ok {
+		if _, ok := Resolve(route, format, p, tv.Set); !ok {
 			return false, nil
 		}
 		n++
@@ -269,8 +274,10 @@ func validate(in ModelInput) (validated, error) {
 			}
 		}
 	}
-	if in.Format != FormatOpenAI {
-		problems = append(problems, "接口格式只支持 OpenAI 兼容")
+	if f, ok := formatOf(in.Format); !ok {
+		problems = append(problems, "没有这种接口格式")
+	} else if in.BaseURL == "" {
+		in.BaseURL = f.BaseURL
 	}
 	if u, err := url.Parse(in.BaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		problems = append(problems, "地址要以 http:// 或 https:// 开头")
@@ -286,6 +293,8 @@ func validate(in ModelInput) (validated, error) {
 		problems = append(problems, "没有这种联网搜索路线")
 	case in.SearchRoute == RouteDeepSeek && in.Provider != ProviderDeepSeek:
 		problems = append(problems, "DeepSeek 搜索只能用于 DeepSeek 服务商配置的模型")
+	case in.SearchRoute == RouteProvider && !providerWeb(in.Format):
+		problems = append(problems, "服务商自带搜索只能用于 Anthropic Messages 格式的模型")
 	}
 	if in.ContextWindow != nil && *in.ContextWindow <= 0 {
 		problems = append(problems, "上下文窗口要是正整数")
@@ -512,7 +521,7 @@ func (s *Models) resolved(ctx context.Context, m Model) (Model, error) {
 // resolve fills in what the model's search route resolves to, given
 // whether the site has a Tavily key.
 func (m Model) resolve(tavilyKey bool) Model {
-	m.Search, m.SearchReady = Resolve(m.SearchRoute, m.Provider, tavilyKey)
+	m.Search, m.SearchReady = Resolve(m.SearchRoute, m.Format, m.Provider, tavilyKey)
 	return m
 }
 
@@ -547,10 +556,12 @@ func rateArgs(r *Rates) [5]*float64 {
 const testTimeout = 30 * time.Second
 
 // test makes one streaming call that declares a tool, which is what every
-// turn kind needs from the endpoint: auth, streaming, and tools accepted.
+// turn kind needs from the endpoint: auth, streaming, and tools accepted;
+// and on the provider route its search, which the model has to support.
 func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
+	route, _ := Resolve(in.SearchRoute, in.Format, in.Provider, false)
 	_, err := s.adapterFor(Endpoint{Format: in.Format, Provider: in.Provider, BaseURL: in.BaseURL, Key: key}).Stream(ctx, Request{
 		Model: in.Model,
 		Messages: []Message{
@@ -562,8 +573,9 @@ func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
 			Description: "Declared only to check that tools are accepted; never call it.",
 			Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		}},
-		ToolChoice: "auto",
-		MaxTokens:  64,
+		ToolChoice:  "auto",
+		MaxTokens:   64,
+		ProviderWeb: route == RouteProvider,
 	}, func(Event) error { return nil })
 	if err == nil {
 		return nil
@@ -593,8 +605,11 @@ type Turn struct {
 	Model    string
 	Thinking bool
 	// Web is the run's way to the web on the Keine tool route; nil when the
-	// deployer chose none.
+	// deployer chose none, or on the provider route.
 	Web *WebRoute
+	// ProviderWeb: the run searches with the provider's own tools (the
+	// provider route), which its calls declare.
+	ProviderWeb bool
 }
 
 // ForTurn resolves the model serving a turn kind.
@@ -627,11 +642,12 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 	if err != nil {
 		return Turn{}, fmt.Errorf("%w: tavily key: %w", ErrAssistantUnavailable, err)
 	}
-	resolved, ok := Resolve(route, provider, tavily != "")
+	resolved, ok := Resolve(route, format, provider, tavily != "")
 	if !ok {
 		return Turn{}, fmt.Errorf("%w: %s has no search route", ErrAssistantUnavailable, kind)
 	}
 	t.Adapter = s.adapterFor(Endpoint{Format: format, Provider: provider, BaseURL: baseURL, Key: key})
 	t.Web = s.routeOf(resolved, key, tavily)
+	t.ProviderWeb = resolved == RouteProvider
 	return t, nil
 }
