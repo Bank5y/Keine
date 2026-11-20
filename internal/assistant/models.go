@@ -501,3 +501,49 @@ func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
 	}
 	return err
 }
+
+// ErrTurnUnmapped: no site model serves the turn kind, so the assistant is
+// not available.
+var ErrTurnUnmapped = errors.New("no model serves the turn kind")
+
+// Turn is what a run calls: the adapter of the model serving a turn kind,
+// with the settings read when the run starts.
+type Turn struct {
+	Adapter       Adapter
+	Model         string
+	Thinking      bool
+	ContextWindow int
+}
+
+// ForTurn resolves the model serving a turn kind.
+func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
+	var (
+		id              int64
+		t               Turn
+		format, baseURL string
+		sealed          []byte
+		cw              *int32
+	)
+	err := s.db.QueryRow(ctx, `
+		SELECT m.id, m.format, m.base_url, m.api_key, m.model, m.context_window, t.thinking
+		FROM turn_models t JOIN site_models m ON m.id = t.model_id WHERE t.kind = $1`, kind).
+		Scan(&id, &format, &baseURL, &sealed, &t.Model, &cw, &t.Thinking)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Turn{}, ErrTurnUnmapped
+	}
+	if err != nil {
+		return Turn{}, err
+	}
+	key := ""
+	if len(sealed) > 0 {
+		if key, err = s.open(id, sealed); err != nil {
+			return Turn{}, err
+		}
+	}
+	t.ContextWindow = DefaultContextWindow
+	if cw != nil {
+		t.ContextWindow = int(*cw)
+	}
+	t.Adapter = s.adapterFor(format, baseURL, key)
+	return t, nil
+}

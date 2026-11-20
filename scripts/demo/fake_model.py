@@ -1,14 +1,33 @@
 """A stand-in OpenAI-compatible model endpoint for the demo (scripts/demo/run.sh).
 
-POST <url>/chat/completions streams a short reply as Server-Sent Events, so
-the site model's connection test passes and AI screens have a model to call.
-The key "bad" gets a 401, to show the failed-test state.
+POST <url>/chat/completions streams a reply as Server-Sent Events: a short one
+to the connection test (a request declaring tools), so it passes, and a
+tagged analysis to anything else, a few characters at a time, so the
+analysis popover has something to stream. The key "bad" gets a 401, to show
+the failed-test state.
 
     python3 scripts/demo/fake_model.py 18999
 """
-import http.server, json, sys
+import http.server, json, sys, time
 
 REPLY = ["这是", "演示用的", "模型回复。"]
+
+ANALYSIS = """<exp_title>Agent（智能体）</exp_title>
+<exp_intro>能够自主规划步骤、调用工具，并根据执行结果调整下一步行动的大模型应用。</exp_intro>
+<exp_body>
+Agent 指的是以大模型为核心、能围绕一个目标自己决定下一步做什么的程序：它把目标拆成若干步骤，每一步调用模型或工具，再根据结果决定继续、重试还是换一条路。
+
+在这一讲里，Agent 是和「把所有逻辑塞进一个提示词」相对的做法：后者指望模型一次想清楚，前者把控制流写在代码里，每一步只做一件事，更容易调试和评估。
+
+```mermaid
+flowchart TD
+  A["目标"] --> B["规划步骤"]
+  B --> C["执行一步"]
+  C --> D{"成功？"}
+  D -- "是" --> E["下一步"]
+  D -- "否" --> F["重试或回退"]
+```
+</exp_body>"""
 
 
 def chunk(delta, finish=None):
@@ -17,7 +36,7 @@ def chunk(delta, finish=None):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         if not self.path.endswith("/chat/completions"):
             self.send_error(404)
             return
@@ -30,6 +49,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
+        if not req.get("tools"):
+            time.sleep(0.8)
+            for i in range(0, len(ANALYSIS), 4):
+                self.wfile.write(chunk({"content": ANALYSIS[i:i + 4]}).encode())
+                self.wfile.flush()
+                time.sleep(0.02)
+            self.wfile.write((chunk({}, "stop") + "data: [DONE]\n\n").encode())
+            return
         body = "".join(chunk({"content": t}) for t in REPLY) + chunk({}, "stop")
         usage = {"prompt_tokens": 120, "completion_tokens": 8, "prompt_tokens_details": {"cached_tokens": 64}}
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
