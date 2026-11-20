@@ -97,6 +97,7 @@
 
 /* code blocks have their own palette per theme, so highlighting stays legible
    on both papers instead of borrowing the ui's status colours */
+/* stylelint-disable-next-line no-duplicate-selectors -- tokens grouped by topic */
 :root {
   --code-bg: #f3eee6; --code-bar: #ebe4d8; --code-line: #ddd4c6; --code-text: #2a2621; --code-dim: #7d766a;
   --code-keyword: #a8341f; --code-string: #3c6b2c; --code-number: #2d5a9a; --code-title: #8a5a0b;
@@ -109,6 +110,7 @@
     --code-type: #caa6ea; --code-attr: #e7a66a; --code-comment: #7f776b; --code-del: #ef7a7f; --code-add: #7fbf9a;
   }
 }
+/* stylelint-disable-next-line no-duplicate-selectors -- tokens grouped by topic */
 :root[data-theme="dark"] {
   --code-bg: #1a1713; --code-bar: #221e19; --code-line: #322c25; --code-text: #e4ddd0; --code-dim: #8d8577;
   --code-keyword: #f08a70; --code-string: #a9d18e; --code-number: #8db8ec; --code-title: #e8c27c;
@@ -164,9 +166,8 @@
 }
 
 @layer base {
-  * { box-sizing: border-box; border-color: var(--border); }
+  * { box-sizing: border-box; border-color: var(--border); scrollbar-width: thin; }
   html { scrollbar-gutter: stable; scrollbar-color: var(--scroll-thumb) transparent; }
-  * { scrollbar-width: thin; }
   body {
     min-height: 100vh;
     background: var(--bg);
@@ -588,10 +589,10 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
   position: absolute; z-index: 60; display: flex; align-items: center; gap: 2px; padding: 4px;
   background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; font-family: var(--sans); font-size: 13px; color: var(--text-2);
   box-shadow: 0 12px 28px -14px color-mix(in srgb, var(--text) 45%, transparent), 0 2px 6px color-mix(in srgb, var(--text) 8%, transparent);
-  animation: fade .12s ease-out both; white-space: nowrap; max-width: calc(100vw - 16px);
+  animation: fade .12s ease-out both; white-space: nowrap; max-width: calc(100vw - 16px); flex-wrap: wrap;
 }
 .ann-bar.stacked { flex-direction: column; align-items: stretch; gap: 4px; }
-.ann-row { display: flex; align-items: center; gap: 2px; }
+.ann-row { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
 .ann-bar.stacked .ann-row + .ann-row { border-top: 1px solid var(--line); padding-top: 4px; }
 .ann-quote { max-width: 9em; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; color: var(--text-3); font-family: var(--serif); }
 .ann-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border-radius: 4px; color: inherit; }
@@ -607,8 +608,6 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .ann-swatch.c-blue { background: var(--mark-blue-solid); }
 .ann-swatch.c-pink { background: var(--mark-pink-solid); }
 .ann-sep { width: 1px; align-self: stretch; margin: 4px 4px; background: var(--line); }
-.ann-bar { flex-wrap: wrap; }
-.ann-row { flex-wrap: wrap; }
 .ann-btn.primary { color: var(--on-brand); background: var(--brand); }
 .ann-btn.primary:hover { background: var(--brand-hover); color: var(--on-brand); }
 .ann-btn:disabled { opacity: .45; pointer-events: none; }

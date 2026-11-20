@@ -179,7 +179,12 @@ function ModelDialog({ target, masterKey, onClose, onDone }: { target: SiteModel
   const [err, setErr] = useState<{ message: string; problems?: Problem[]; test?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const editing = target && target !== 'new' ? target : null;
-  useEffect(() => { if (target) { setF(editing ? formOf(editing) : blank); setErr(null); setBusy(false); } }, [target]);
+  useEffect(() => {
+    if (!target) return;
+    setF(target === 'new' ? blank : formOf(target));
+    setErr(null);
+    setBusy(false);
+  }, [target]);
 
   const set = (k: keyof Omit<Form, 'rates'>) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
 

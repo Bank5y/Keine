@@ -43,6 +43,9 @@ const STALE_MS = 300;
 
 const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
+
+// one empty list for every render without a lesson, so effects on it stay put
+const NO_HEADINGS: Heading[] = [];
 export function LessonView({ courseId, lessonId }: { courseId: number; lessonId: number }) {
   const { course, reload } = useCourse(courseId);
   // switching lessons keeps this view (and the course sidebar) mounted: the
@@ -70,7 +73,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   // its last position would no longer reach the lesson it belongs to
   const shown = current ?? (slow || lesson?.video ? null : lesson);
   const { headings: found, active, jump } = useHeadings(doc, shown?.id);
-  const headings = current ? found : [];
+  const headings = current ? found : NO_HEADINGS;
 
   // opened at "#heading": go there once that heading has rendered
   const hashDone = useRef<number | null>(null);
