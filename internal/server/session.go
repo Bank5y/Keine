@@ -71,5 +71,15 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, currentUser(r))
+	ai, err := s.models.Available(r.Context())
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		auth.User
+		// AIAvailable: the assistant has a model for every turn kind, so
+		// readers get analysis and exploration.
+		AIAvailable bool `json:"aiAvailable"`
+	}{currentUser(r), ai})
 }

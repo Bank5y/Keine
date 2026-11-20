@@ -21,6 +21,8 @@ type apiError struct {
 	// Problems lists individual issues, e.g. every invalid field of a course
 	// manifest.
 	Problems any `json:"problems,omitempty"`
+	// Category is the kind of a model failure (a failed connection test).
+	Category string `json:"category,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

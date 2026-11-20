@@ -7,6 +7,8 @@ services:
       KEINE_DATABASE_URL: postgres://keine:keine@postgres:5432/keine?sslmode=disable
       KEINE_ADMIN_USERNAME: ${KEINE_ADMIN_USERNAME:-admin}
       KEINE_ADMIN_PASSWORD: ${KEINE_ADMIN_PASSWORD:?set KEINE_ADMIN_PASSWORD (at least 8 characters)}
+      # encrypts stored model keys (at least 32 characters); without it no key can be saved
+      KEINE_MASTER_KEY: ${KEINE_MASTER_KEY:-}
     volumes:
       - keine-data:/data
     depends_on:

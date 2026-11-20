@@ -11,10 +11,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Bank5y/keine/internal/assistant"
+	"github.com/Bank5y/keine/internal/assistant/openai"
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/db"
 	"github.com/Bank5y/keine/internal/notify"
+	"github.com/Bank5y/keine/internal/secret"
 	"github.com/Bank5y/keine/internal/storage"
 )
 
@@ -33,6 +36,8 @@ type Options struct {
 	Now func() time.Time
 	// SweepInterval is how often expiring drafts are swept (default 1 hour).
 	SweepInterval time.Duration
+	// MasterKey encrypts stored model keys; without it no key can be saved.
+	MasterKey string
 }
 
 type Server struct {
@@ -41,6 +46,7 @@ type Server struct {
 	auth          *auth.Service
 	courses       *course.Service
 	notifications *notify.Service
+	models        *assistant.Models
 	// generator helps users write a course manifest
 	generator course.Generator
 	files     storage.Store
@@ -53,6 +59,13 @@ type Server struct {
 // New connects to the database, migrates it and makes sure the deployment's
 // admin account exists.
 func New(ctx context.Context, opts Options) (*Server, error) {
+	var box *secret.Box
+	if opts.MasterKey != "" {
+		var err error
+		if box, err = secret.NewBox(opts.MasterKey); err != nil {
+			return nil, err
+		}
+	}
 	pool, err := db.Open(ctx, opts.DatabaseURL)
 	if err != nil {
 		return nil, err
@@ -61,6 +74,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		opts.Now = time.Now
 	}
 	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage).WithClock(opts.Now), notifications: notify.NewService(pool), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
+	s.models = assistant.NewModels(pool, box, func(format, baseURL, key string) assistant.Adapter { return openai.New(baseURL, key) })
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -122,6 +136,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/site", s.getSite)
 	s.mux.HandleFunc("PUT /api/site", s.adminOnly(s.putSite))
 	s.mux.HandleFunc("GET /api/admin/users", s.adminOnly(s.listUsers))
+	s.mux.HandleFunc("GET /api/admin/models", s.adminOnly(s.listModels))
+	s.mux.HandleFunc("POST /api/admin/models", s.adminOnly(s.createModel))
+	s.mux.HandleFunc("PUT /api/admin/models/{id}", s.adminOnly(s.updateModel))
+	s.mux.HandleFunc("DELETE /api/admin/models/{id}", s.adminOnly(s.deleteModel))
+	s.mux.HandleFunc("PUT /api/admin/turns/{kind}", s.adminOnly(s.setTurnModel))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}", s.adminOnly(s.updateUser))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}/password", s.adminOnly(s.resetPassword))
 	s.mux.HandleFunc("POST /api/courses", s.signedIn(s.uploadCourse))

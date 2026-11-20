@@ -48,6 +48,7 @@ func run() error {
 		SecureCookies:  cfg.SecureCookies,
 		MaxUploadBytes: cfg.MaxUploadMB << 20,
 		Web:            webFS,
+		MasterKey:      cfg.MasterKey,
 	})
 	if err != nil {
 		return err
