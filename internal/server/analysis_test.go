@@ -101,7 +101,7 @@ func cut(s string, at ...int) []string {
 
 func withModel(m assistant.Adapter) appOption {
 	return func(o *server.Options) {
-		o.AdapterFor = func(format, baseURL, key string) assistant.Adapter { return m }
+		o.AdapterFor = func(assistant.Endpoint) assistant.Adapter { return m }
 	}
 }
 
@@ -572,5 +572,71 @@ func TestAConnectionTimingOutBeforeAnyDeltaIsRetried(t *testing.T) {
 	events, _ := analyze(t, bob, id, lesson, agentQuote)
 	if last := lastEvent(t, events); last.name != "done" || len(m.calls()) != 2 {
 		t.Fatalf("expected done after one retry, got %+v after %d calls", last, len(m.calls()))
+	}
+}
+
+// thinking puts reasoning before a step's text.
+func thinking(s step, reasoning ...string) step {
+	var ev []assistant.Event
+	for _, r := range reasoning {
+		ev = append(ev, assistant.Event{Kind: assistant.EventReasoning, Text: r})
+	}
+	s.events = append(ev, s.events...)
+	return s
+}
+
+func TestReasoningShowsAsThinkingAndNeverStreamsAsText(t *testing.T) {
+	m := newScriptedModel(thinking(texts(cut(goodAnswer, 30)...), "先想一想任期", "再想想定义"))
+	a := aiAppThinking(t, m, true)
+	bob := a.user("bob")
+	id, lesson := analysisColumn(t, bob)
+
+	events, _ := analyze(t, bob, id, lesson, agentQuote)
+	var activity []string
+	for _, e := range events {
+		switch e.name {
+		case "delta":
+			if strings.Contains(e.data["text"].(string), "想") {
+				t.Fatalf("reasoning streamed as text: %+v", e)
+			}
+		case "activity":
+			if e.data["kind"] != "thinking" || e.data["id"] == "" {
+				t.Fatalf("expected a thinking activity, got %+v", e)
+			}
+			activity = append(activity, e.data["status"].(string))
+		}
+	}
+	if strings.Join(activity, ",") != "running,done" {
+		t.Fatalf("thinking should run once and be done, got %v", activity)
+	}
+	if first := events[0]; first.name != "activity" {
+		t.Fatalf("thinking shows before any text, got %+v first", first)
+	}
+	if lastEvent(t, events).name != "done" || !m.calls()[0].Thinking {
+		t.Fatalf("expected done, with thinking asked for: %+v", lastEvent(t, events))
+	}
+}
+
+func TestReasoningGoesBackWithinARunButNotIntoTheNext(t *testing.T) {
+	m := newScriptedModel(thinking(texts("没有标签。"), "第一步的推理"), texts(goodAnswer), texts(goodAnswer))
+	a := aiAppThinking(t, m, true)
+	bob := a.user("bob")
+	id, lesson := analysisColumn(t, bob)
+
+	analyze(t, bob, id, lesson, agentQuote)
+	calls := m.calls()
+	if len(calls) != 2 {
+		t.Fatalf("expected a remedy call, got %d calls", len(calls))
+	}
+	if got := calls[1].Messages[2]; got.Role != assistant.RoleAssistant || got.Reasoning != "第一步的推理" {
+		t.Fatalf("the second call of the run should carry the first one's reasoning, got %+v", got)
+	}
+
+	analyze(t, bob, id, lesson, agentQuote)
+	next := m.calls()[2]
+	for _, msg := range next.Messages {
+		if msg.Reasoning != "" {
+			t.Fatalf("a new run carries no reasoning, got %+v", next.Messages)
+		}
 	}
 }

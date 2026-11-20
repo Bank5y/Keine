@@ -54,11 +54,12 @@ type Rates struct {
 // Model is a site model as the admin page shows it: never the key, only
 // its last four characters ("" when there is none).
 type Model struct {
-	ID          int64  `json:"id"`
-	Format      string `json:"format"`
-	BaseURL     string `json:"baseUrl"`
-	Model       string `json:"model"`
-	DisplayName string `json:"displayName"`
+	ID          int64    `json:"id"`
+	Format      string   `json:"format"`
+	Provider    Provider `json:"provider"`
+	BaseURL     string   `json:"baseUrl"`
+	Model       string   `json:"model"`
+	DisplayName string   `json:"displayName"`
 	// ContextWindow is nil when unset (DefaultContextWindow applies).
 	ContextWindow *int      `json:"contextWindow"`
 	Rates         *Rates    `json:"rates"`
@@ -69,7 +70,9 @@ type Model struct {
 // ModelInput is a model as an admin submits it. An empty Key keeps the
 // stored one when editing.
 type ModelInput struct {
-	Format        string     `json:"format"`
+	Format string `json:"format"`
+	// Provider fills in an empty address or display name with its own.
+	Provider      Provider   `json:"provider"`
 	BaseURL       string     `json:"baseUrl"`
 	Key           string     `json:"key"`
 	Model         string     `json:"model"`
@@ -120,8 +123,8 @@ type TestFailedError struct {
 
 func (e *TestFailedError) Error() string { return fmt.Sprintf("connection test failed: %v", e.Cause) }
 
-// AdapterFor builds the adapter for a model's format.
-type AdapterFor func(format, baseURL, key string) Adapter
+// AdapterFor builds the adapter for a model's endpoint.
+type AdapterFor func(Endpoint) Adapter
 
 // Models keeps the site models and the turn kind mapping.
 type Models struct {
@@ -138,7 +141,7 @@ func NewModels(db *pgxpool.Pool, box *secret.Box, adapterFor AdapterFor) *Models
 // CanStoreKeys tells whether a master key is configured.
 func (s *Models) CanStoreKeys() bool { return s.box != nil }
 
-const modelColumns = `id, format, base_url, key_last4, model, display_name, context_window,
+const modelColumns = `id, format, provider, base_url, key_last4, model, display_name, context_window,
 	rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, updated_at`
 
 func scanModel(row pgx.Row) (Model, error) {
@@ -147,7 +150,7 @@ func scanModel(row pgx.Row) (Model, error) {
 		r  [5]*float64
 		cw *int32
 	)
-	if err := row.Scan(&m.ID, &m.Format, &m.BaseURL, &m.KeyLast4, &m.Model, &m.DisplayName, &cw,
+	if err := row.Scan(&m.ID, &m.Format, &m.Provider, &m.BaseURL, &m.KeyLast4, &m.Model, &m.DisplayName, &cw,
 		&r[0], &r[1], &r[2], &r[3], &r[4], &m.UpdatedAt); err != nil {
 		return m, err
 	}
@@ -217,6 +220,22 @@ func validate(in ModelInput) (validated, error) {
 	in.Model = strings.TrimSpace(in.Model)
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	in.Key = strings.TrimSpace(in.Key)
+	if in.Provider != ProviderNone {
+		p, ok := preset(in.Provider)
+		switch {
+		case !ok:
+			problems = append(problems, "没有这个服务商配置")
+		case in.Format != p.Format:
+			problems = append(problems, p.Name+" 只能用 OpenAI 兼容格式")
+		default:
+			if in.BaseURL == "" {
+				in.BaseURL = p.BaseURL
+			}
+			if in.DisplayName == "" {
+				in.DisplayName = p.DisplayName
+			}
+		}
+	}
 	if in.Format != FormatOpenAI {
 		problems = append(problems, "接口格式只支持 OpenAI 兼容")
 	}
@@ -278,10 +297,10 @@ func (s *Models) Create(ctx context.Context, in ModelInput) (Model, error) {
 	r := rateArgs(v.rates)
 	m, err := scanModel(tx.QueryRow(ctx, `
 		INSERT INTO site_models (id, format, base_url, api_key, key_last4, model, display_name, context_window,
-			rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, provider)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING `+modelColumns,
-		id, v.in.Format, v.in.BaseURL, sealed, last4, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4]))
+		id, v.in.Format, v.in.BaseURL, sealed, last4, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider))
 	if err != nil {
 		return Model{}, err
 	}
@@ -335,17 +354,17 @@ func (s *Models) Update(ctx context.Context, id int64, in ModelInput) (Model, er
 		return Model{}, ErrModelChanged
 	}
 	r := rateArgs(v.rates)
-	args := []any{id, v.in.Format, v.in.BaseURL, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4]}
+	args := []any{id, v.in.Format, v.in.BaseURL, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider}
 	keySet := ""
 	if v.in.Key != "" {
 		sealed, last4 := s.seal(id, v.in.Key)
 		args = append(args, sealed, last4)
-		keySet = ", api_key = $12, key_last4 = $13"
+		keySet = ", api_key = $13, key_last4 = $14"
 	}
 	m, err := scanModel(tx.QueryRow(ctx, `
 		UPDATE site_models SET format = $2, base_url = $3, model = $4, display_name = $5, context_window = $6,
 			rate_input = $7, rate_cache_read = $8, rate_cache_write = $9, rate_output = $10, rate_search = $11,
-			updated_at = now()`+keySet+`
+			provider = $12, updated_at = now()`+keySet+`
 		WHERE id = $1 RETURNING `+modelColumns, args...))
 	if err != nil {
 		return Model{}, err
@@ -471,7 +490,7 @@ const testTimeout = 30 * time.Second
 func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
-	_, err := s.adapterFor(in.Format, in.BaseURL, key).Stream(ctx, Request{
+	_, err := s.adapterFor(Endpoint{Format: in.Format, Provider: in.Provider, BaseURL: in.BaseURL, Key: key}).Stream(ctx, Request{
 		Model: in.Model,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "This is a connection test. Do not call any tool."},
@@ -520,12 +539,13 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 		id              int64
 		t               Turn
 		format, baseURL string
+		provider        Provider
 		sealed          []byte
 	)
 	err := s.db.QueryRow(ctx, `
-		SELECT m.id, m.format, m.base_url, m.api_key, m.model, t.thinking
+		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking
 		FROM turn_models t JOIN site_models m ON m.id = t.model_id WHERE t.kind = $1`, kind).
-		Scan(&id, &format, &baseURL, &sealed, &t.Model, &t.Thinking)
+		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Turn{}, fmt.Errorf("%w: %s is not mapped", ErrAssistantUnavailable, kind)
 	}
@@ -538,6 +558,6 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 			return Turn{}, fmt.Errorf("%w: %w", ErrAssistantUnavailable, err)
 		}
 	}
-	t.Adapter = s.adapterFor(format, baseURL, key)
+	t.Adapter = s.adapterFor(Endpoint{Format: format, Provider: provider, BaseURL: baseURL, Key: key})
 	return t, nil
 }

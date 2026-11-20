@@ -1,9 +1,9 @@
 """A stand-in OpenAI-compatible model endpoint for the demo (scripts/demo/run.sh).
 
 POST <url>/chat/completions streams a reply as Server-Sent Events: a short one
-to the connection test (a request declaring tools), so it passes, and a
-tagged analysis to anything else, a few characters at a time, so the
-analysis popover has something to stream. The key "bad" gets a 401, to show
+to the connection test (a request declaring tools), so it passes, and to
+anything else some reasoning, then a tagged analysis a few characters at a
+time, so the analysis popover has something to stream. The key "bad" gets a 401, to show
 the failed-test state.
 
     python3 scripts/demo/fake_model.py 18999
@@ -50,7 +50,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
         if not req.get("tools"):
-            time.sleep(0.8)
+            time.sleep(0.4)
+            # reasoning first, as a thinking model streams it: the popover shows 正在思考
+            for part in ["读者选中了 Agent，", "先给标准含义，", "再结合这一讲。"]:
+                self.wfile.write(chunk({"reasoning_content": part}).encode())
+                self.wfile.flush()
+                time.sleep(0.5)
             for i in range(0, len(ANALYSIS), 4):
                 self.wfile.write(chunk({"content": ANALYSIS[i:i + 4]}).encode())
                 self.wfile.flush()

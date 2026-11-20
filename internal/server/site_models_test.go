@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/server"
 )
 
@@ -337,4 +338,45 @@ func TestAdminDeletesModel(t *testing.T) {
 	}
 	expectError(t, admin.do("DELETE", fmt.Sprintf("/api/admin/models/%d", id), nil), http.StatusNotFound, "model_not_found")
 	expectError(t, admin.do("PUT", fmt.Sprintf("/api/admin/models/%d", id), modelBody(f, "sk-1")), http.StatusNotFound, "model_not_found")
+}
+
+func TestChoosingDeepSeekFillsInItsAddressAndName(t *testing.T) {
+	m := newScriptedModel()
+	var endpoints []assistant.Endpoint
+	var mu sync.Mutex
+	a := newApp(t, withMasterKey(masterKey), func(o *server.Options) {
+		o.AdapterFor = func(e assistant.Endpoint) assistant.Adapter {
+			mu.Lock()
+			endpoints = append(endpoints, e)
+			mu.Unlock()
+			return m
+		}
+	})
+	admin := a.admin()
+
+	state := admin.mustOK(admin.do("GET", "/api/admin/models", nil))
+	presets := state.list("providers")
+	if len(presets) != 1 {
+		t.Fatalf("expected the DeepSeek preset, got %v", presets)
+	}
+	ds := presets[0].(map[string]any)
+	if ds["id"] != "deepseek" || ds["baseUrl"] != "https://api.deepseek.com" || ds["displayName"] != "DeepSeek" {
+		t.Fatalf("unexpected preset %v", ds)
+	}
+
+	created := admin.mustOK(admin.do("POST", "/api/admin/models", map[string]any{
+		"format": "openai", "provider": "deepseek", "key": "sk-deepseek-0123456789", "model": "deepseek-flash", "rates": rates,
+	})).json()
+	if created["provider"] != "deepseek" || created["baseUrl"] != "https://api.deepseek.com" || created["displayName"] != "DeepSeek" {
+		t.Fatalf("only key and model name were given, the rest comes from the preset: %v", created)
+	}
+	mu.Lock()
+	last := endpoints[len(endpoints)-1]
+	mu.Unlock()
+	if last.Provider != assistant.ProviderDeepSeek || last.BaseURL != "https://api.deepseek.com" || last.Key != "sk-deepseek-0123456789" {
+		t.Fatalf("the connection test should run with the provider configuration, got %+v", last)
+	}
+
+	r := admin.do("POST", "/api/admin/models", map[string]any{"format": "openai", "provider": "kimi", "model": "x", "baseUrl": "https://x.example", "displayName": "X"})
+	expectError(t, r, http.StatusBadRequest, "invalid_model")
 }

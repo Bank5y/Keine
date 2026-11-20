@@ -114,7 +114,9 @@ function Body({ state }: { state: AnalysisState }) {
   if (state.status === 'loading') {
     return (
       <div className="analysis-body" aria-busy="true">
-        <p className="analysis-wait">正在结合本讲上下文分析…</p>
+        {state.thinking
+          ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p>
+          : <p className="analysis-wait">正在结合本讲上下文分析…</p>}
         <div className="analysis-skeleton">
           <span style={{ width: 170, height: 16 }} />
           <span style={{ width: '100%' }} /><span style={{ width: '94%' }} /><span style={{ width: '78%' }} />

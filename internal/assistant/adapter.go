@@ -39,6 +39,9 @@ type Request struct {
 	ToolChoice string
 	// MaxTokens caps the output; 0 leaves it to the provider.
 	MaxTokens int
+	// Thinking switches the model's thinking on or off where the provider
+	// configuration has a switch; elsewhere it changes nothing.
+	Thinking bool
 }
 
 type Message struct {

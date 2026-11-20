@@ -21,6 +21,30 @@ type Delta struct {
 	Text string `json:"text"`
 }
 
+// Activity is a step of a run the reader sees in progress (ADR 0008): only
+// its kind, target and status; the words are the front end's. While the
+// model reasons there is one of kind "thinking", and the reasoning itself
+// never leaves the server.
+type Activity struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Target string `json:"target,omitempty"`
+	Status string `json:"status"`
+}
+
+const (
+	ActivityThinking = "thinking"
+	StatusRunning    = "running"
+	StatusDone       = "done"
+)
+
+// Sink is where a run sends what the reader sees while it goes. An error
+// from either (the reader went away) stops the run.
+type Sink struct {
+	Delta    func(Delta) error
+	Activity func(Activity) error
+}
+
 // Run error codes, as the reader's stream reports them.
 const (
 	CodeProviderError   = "provider_error"
@@ -56,17 +80,21 @@ const (
 const remedyFormat = "上一次答复不合格：%s。请只按 <exp_title>/<exp_intro>/<exp_body> 格式重新作答，标签外不要写任何文字。"
 
 // Analyze runs an analysis on the turn's model and passes each piece of
-// the answer to delta as it streams. It returns the valid answer, a
-// *RunError, or the context's error when the run was cancelled.
+// the answer to out as it streams, with a thinking activity while the
+// model reasons. It returns the valid answer, a *RunError, or the
+// context's error when the run was cancelled.
+//
+// The reasoning of a call goes back to the model with the run's later
+// calls, as it was, and nowhere else (ADR 0008).
 //
 // A call that fails before anything streamed (rate limit, unavailable) is
 // tried once more. An invalid answer that has not streamed is asked for
 // once more with what was wrong; one that has streamed ends the run.
-func Analyze(ctx context.Context, turn Turn, msgs []Message, delta func(Delta) error) (Analysis, error) {
-	r := analysisRun{turn: turn, delta: delta}
+func Analyze(ctx context.Context, turn Turn, msgs []Message, out Sink) (Analysis, error) {
+	r := analysisRun{turn: turn, out: out}
 	retried, remedied := false, false
 	for {
-		raw, p, res, err := r.call(ctx, msgs)
+		raw, reasoning, p, res, err := r.call(ctx, msgs)
 		if err != nil {
 			if ctx.Err() != nil {
 				return Analysis{}, ctx.Err()
@@ -99,30 +127,42 @@ func Analyze(ctx context.Context, turn Turn, msgs []Message, delta func(Delta) e
 		}
 		remedied = true
 		msgs = append(msgs[:len(msgs):len(msgs)],
-			Message{Role: RoleAssistant, Content: raw},
+			Message{Role: RoleAssistant, Content: raw, Reasoning: reasoning},
 			Message{Role: RoleUser, Content: fmt.Sprintf(remedyFormat, strings.Join(problems, "；"))})
 	}
 }
 
 type analysisRun struct {
 	turn     Turn
-	delta    func(Delta) error
+	out      Sink
 	streamed bool
+	// calls counts the run's model calls, which name their activities
+	calls int
 }
 
-// deltaError wraps a failure to pass a delta on (the reader went away), so
-// it is not taken for the model's.
-type deltaError struct{ err error }
+// sinkError wraps a failure to pass something on to the reader (who went
+// away), so it is not taken for the model's.
+type sinkError struct{ err error }
 
-func (e deltaError) Error() string { return e.err.Error() }
+func (e sinkError) Error() string { return e.err.Error() }
 
-// call makes one model call, streaming the tagged allParts as it goes.
-func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, *tagParser, Result, error) {
-	var raw strings.Builder
+// call makes one model call, streaming the tagged parts as it goes. It
+// returns the answer's text and the reasoning before it.
+func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, string, *tagParser, Result, error) {
+	var raw, reasoning strings.Builder
+	r.calls++
+	think := Activity{ID: fmt.Sprintf("thinking-%d", r.calls), Kind: ActivityThinking}
+	activity := func(status string) error {
+		think.Status = status
+		if err := r.out.Activity(think); err != nil {
+			return sinkError{err}
+		}
+		return nil
+	}
 	p := newTagParser(func(s Part, text string) error {
 		r.streamed = true
-		if err := r.delta(Delta{Part: s, Text: text}); err != nil {
-			return deltaError{err}
+		if err := r.out.Delta(Delta{Part: s, Text: text}); err != nil {
+			return sinkError{err}
 		}
 		return nil
 	})
@@ -130,18 +170,38 @@ func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, *tagPar
 	if r.turn.Thinking {
 		max = maxTokensThinking
 	}
-	res, err := r.turn.Adapter.Stream(ctx, Request{Model: r.turn.Model, Messages: msgs, MaxTokens: max}, func(e Event) error {
-		if e.Kind != EventText {
-			return nil
+	req := Request{Model: r.turn.Model, Messages: msgs, MaxTokens: max, Thinking: r.turn.Thinking}
+	res, err := r.turn.Adapter.Stream(ctx, req, func(e Event) error {
+		switch e.Kind {
+		case EventReasoning:
+			if think.Status == "" {
+				if err := activity(StatusRunning); err != nil {
+					return err
+				}
+			}
+			reasoning.WriteString(e.Text)
+		case EventText:
+			if think.Status == StatusRunning {
+				if err := activity(StatusDone); err != nil {
+					return err
+				}
+			}
+			raw.WriteString(e.Text)
+			return p.feed(e.Text)
 		}
-		raw.WriteString(e.Text)
-		return p.feed(e.Text)
+		return nil
 	})
-	var de deltaError
-	if errors.As(err, &de) {
-		return "", nil, res, de.err
+	var se sinkError
+	if errors.As(err, &se) {
+		return "", "", nil, res, se.err
 	}
-	return raw.String(), p, res, err
+	if think.Status == StatusRunning && ctx.Err() == nil {
+		// it thought to the end: the activity ends with the call
+		if aerr := activity(StatusDone); aerr != nil {
+			return "", "", nil, res, aerr.(sinkError).err
+		}
+	}
+	return raw.String(), reasoning.String(), p, res, err
 }
 
 func runCode(c Category) string {
