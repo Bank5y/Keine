@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Analysis is a valid answer: the three allParts of an exploration
@@ -15,21 +17,25 @@ type Analysis struct {
 	Body  string `json:"body"`
 }
 
-// Delta is a piece of a section as it streams in.
+// Delta is a piece of a section as it streams in. One with Reset (and no
+// text) throws away what streamed so far: the model wrote a draft, then
+// went on to look something up.
 type Delta struct {
-	Part Part   `json:"section"`
-	Text string `json:"text"`
+	Part  Part   `json:"section"`
+	Text  string `json:"text"`
+	Reset bool   `json:"reset,omitempty"`
 }
 
 // Activity is a step of a run the reader sees in progress (ADR 0008): only
-// its kind, target and status; the words are the front end's. While the
-// model reasons there is one of kind "thinking", and the reasoning itself
-// never leaves the server.
+// its kind, target and status, and why it failed; the words are the front
+// end's. Kind is a tool's name, or "thinking" while the model reasons (the
+// reasoning itself never leaves the server).
 type Activity struct {
 	ID     string         `json:"id"`
 	Kind   string         `json:"kind"`
 	Target string         `json:"target,omitempty"`
 	Status ActivityStatus `json:"status"`
+	Reason Category       `json:"reason,omitempty"`
 }
 
 type ActivityStatus string
@@ -38,6 +44,7 @@ const (
 	ActivityThinking                = "thinking"
 	ActivityRunning  ActivityStatus = "running"
 	ActivityDone     ActivityStatus = "done"
+	ActivityFailed   ActivityStatus = "failed"
 )
 
 // Sink is where a run sends what the reader sees while it goes. An error
@@ -71,75 +78,230 @@ func (e *RunError) Error() string {
 	return e.Code
 }
 
-// Output tokens an analysis may write, with thinking off and on (#118).
+// The fixed numbers of a run (#118).
 const (
+	// output tokens an analysis may write, with thinking off and on
 	maxTokens         = 4096
 	maxTokensThinking = 8192
+	// MaxSteps is how many model calls with tools a run makes before the
+	// one that has to answer.
+	MaxSteps = 6
+	// MaxParallel is how many tool calls of one step are carried out.
+	MaxParallel = 5
+	// DefaultDeadline ends a run; at three quarters of it (the soft
+	// deadline) the run stops looking things up and answers.
+	DefaultDeadline = 120 * time.Second
 )
 
-// remedyPrompt asks again, once, for an answer whose first try was not
-// valid and not yet shown.
-const remedyFormat = "上一次答复不合格：%s。请只按 <exp_title>/<exp_intro>/<exp_body> 格式重新作答，标签外不要写任何文字。"
+var (
+	toolTimeout = 15 * time.Second
+	// a model call that sends nothing for this long, at its start or in
+	// the middle, failed to connect
+	idleTimeout = 30 * time.Second
+	// before the second try of a tool that failed for a while
+	toolBackoff = 300 * time.Millisecond
+)
+
+// What the run tells the model along the way.
+const (
+	remedyFormat  = "上一次答复不合格：%s。请只按 <exp_title>/<exp_intro>/<exp_body> 格式重新作答，标签外不要写任何文字。"
+	lastStepNote  = "还剩 1 次查询。之后必须直接作答。"
+	stepsUsedNote = "查询次数已用完。请不要再调用工具，根据已有资料直接作答。"
+	softNote      = "时间快到了。请不要再调用工具，根据已有资料直接作答。"
+	tooManyCalls  = "本步最多 5 个工具调用，这个调用没有执行；需要的话请在下一步再调用。"
+	internalNote  = "工具内部出错，这次调用没有结果。"
+	transientNote = "这次调用暂时失败了，没有结果。"
+	brokenFormat  = "本次运行 %s 不可用，请依据已有资料作答，不要编造来源。"
+	unknownFormat = "没有名为 %s 的工具。可用的工具：%s。"
+)
+
+// Run is what an analysis runs with besides its messages.
+type Run struct {
+	Turn  Turn
+	Tools []Tool
+	// Now tells the time the deadlines are kept by (default: the system
+	// clock).
+	Now func() time.Time
+	// Deadline ends the run (default DefaultDeadline).
+	Deadline time.Duration
+}
+
+// errRunDeadline is what cancels a run whose time is up.
+var errRunDeadline = errors.New("run deadline")
 
 // Analyze runs an analysis on the turn's model and passes each piece of
-// the answer to out as it streams, with a thinking activity while the
-// model reasons. It returns the valid answer, a *RunError, or the
-// context's error when the run was cancelled.
+// the answer to out as it streams, with an activity for each tool call and
+// while the model reasons. It returns the valid answer, a *RunError, or
+// the context's error when the run was cancelled.
+//
+// The loop (ADR 0008): the answer is the first call that makes no tool
+// calls. A call that makes some has them carried out (at most MaxParallel,
+// at once) and their results passed back for the next call. After MaxSteps
+// such calls, or once the soft deadline passed, the run makes one call
+// that keeps the tools declared but may not use them. A draft that
+// streamed before tool calls is thrown away with a reset.
 //
 // The reasoning of a call goes back to the model with the run's later
-// calls, as it was, and nowhere else (ADR 0008).
+// calls, as it was, and nowhere else.
 //
 // A call that fails before anything streamed (rate limit, unavailable) is
 // tried once more. An invalid answer that has not streamed is asked for
 // once more with what was wrong; one that has streamed ends the run.
-func Analyze(ctx context.Context, turn Turn, msgs []Message, out Sink) (Analysis, error) {
-	r := analysisRun{turn: turn, out: out}
+func Analyze(ctx context.Context, run Run, msgs []Message, out Sink) (Analysis, error) {
+	if run.Now == nil {
+		run.Now = time.Now
+	}
+	if run.Deadline <= 0 {
+		run.Deadline = DefaultDeadline
+	}
+	runCtx, cancel := context.WithTimeoutCause(ctx, run.Deadline, errRunDeadline)
+	defer cancel()
+	r := newAnalysisRun(run, out)
+	specs := make([]ToolSpec, len(run.Tools))
+	for i, t := range run.Tools {
+		specs[i] = t.Spec()
+	}
+	steps := 0
+	answering := len(specs) == 0 // no more tool calls from here
 	retried, remedied := false, false
+	timeout := func(cause error) error {
+		return &RunError{Code: CodeTimeout, Kept: r.streamed, Cause: cause}
+	}
 	for {
-		raw, reasoning, p, res, err := r.call(ctx, msgs)
+		if r.past(run.Deadline) {
+			return Analysis{}, timeout(errRunDeadline)
+		}
+		if !answering && r.past(run.Deadline*3/4) {
+			answering = true
+			msgs = appendMessages(msgs, Message{Role: RoleUser, Content: softNote})
+		}
+		req := Request{Model: run.Turn.Model, Messages: msgs, Tools: specs, MaxTokens: maxTokens, Thinking: run.Turn.Thinking}
+		if run.Turn.Thinking {
+			req.MaxTokens = maxTokensThinking
+		}
+		if len(specs) > 0 {
+			req.ToolChoice = "auto"
+			if answering {
+				req.ToolChoice = "none"
+			}
+		}
+		c, err := r.call(runCtx, req)
 		if err != nil {
-			if ctx.Err() != nil {
+			switch {
+			case ctx.Err() != nil:
 				return Analysis{}, ctx.Err()
+			case errors.Is(err, errRunDeadline) || errors.Is(context.Cause(runCtx), errRunDeadline):
+				return Analysis{}, timeout(err)
 			}
 			var re *RunError
 			if errors.As(err, &re) {
 				return Analysis{}, err
 			}
-			c := CategoryOf(err)
+			cat := CategoryOf(err)
 			// 429, 5xx and connection errors (a connection timing out among them)
-			if !r.streamed && !retried && (c == ErrRateLimited || c == ErrUnavailable || c == ErrTimeout) {
+			if !r.streamed && !retried && (cat == ErrRateLimited || cat == ErrUnavailable || cat == ErrTimeout) {
 				retried = true
 				continue
 			}
-			return Analysis{}, &RunError{Code: runCode(c), Kept: r.streamed, Cause: err}
+			return Analysis{}, &RunError{Code: runCode(cat), Kept: r.streamed, Cause: err}
 		}
-		problems := checkAnalysis(raw, p)
-		if res.Finish == FinishLength {
+		if len(c.toolCalls) > 0 && !answering {
+			steps++
+			if c.parser.emitted {
+				if err := r.reset(); err != nil {
+					return Analysis{}, err
+				}
+			}
+			msgs = appendMessages(msgs, Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, ToolCalls: c.toolCalls})
+			msgs = append(msgs, r.execute(runCtx, c.toolCalls)...)
+			if ctx.Err() != nil {
+				return Analysis{}, ctx.Err()
+			}
+			switch {
+			case steps == MaxSteps-1:
+				msgs = append(msgs, Message{Role: RoleUser, Content: lastStepNote})
+			case steps >= MaxSteps:
+				answering = true
+				msgs = append(msgs, Message{Role: RoleUser, Content: stepsUsedNote})
+			}
+			continue
+		}
+		problems := checkAnalysis(c.raw, c.parser)
+		if c.result.Finish == FinishLength {
 			problems = append([]string{"答复太长，被截断了"}, problems...)
 		}
 		if len(problems) == 0 {
-			return p.parts(), nil
+			return c.parser.parts(), nil
 		}
 		if r.streamed || remedied {
 			code := CodeMalformedOutput
-			if res.Finish == FinishLength {
+			if c.result.Finish == FinishLength {
 				code = CodeOutputTruncated
 			}
 			return Analysis{}, &RunError{Code: code, Kept: r.streamed, Cause: errors.New(strings.Join(problems, "; "))}
 		}
 		remedied = true
-		msgs = append(msgs[:len(msgs):len(msgs)],
-			Message{Role: RoleAssistant, Content: raw, Reasoning: reasoning},
+		answering = true
+		msgs = appendMessages(msgs,
+			Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning},
 			Message{Role: RoleUser, Content: fmt.Sprintf(remedyFormat, strings.Join(problems, "；"))})
 	}
 }
 
+// appendMessages appends to a copy, so the caller's slice is never written.
+func appendMessages(msgs []Message, more ...Message) []Message {
+	return append(msgs[:len(msgs):len(msgs)], more...)
+}
+
 type analysisRun struct {
-	turn     Turn
-	out      Sink
+	run   Run
+	start time.Time
+	tools map[string]Tool
+	// mu keeps what goes to the reader in order while tools run at once,
+	// and guards the breakers
+	mu  sync.Mutex
+	out Sink
+	// streamed: the reader sees some of an answer
 	streamed bool
-	// calls counts the run's model calls, which name their activities
-	calls int
+	// calls and toolRuns number the activities
+	calls, toolRuns int
+	breakers        map[string]*breaker
+}
+
+// breaker is how a tool fared in this run (#117): it is off after an
+// account failure or two transient ones in a row.
+type breaker struct {
+	failures int
+	off      bool
+}
+
+func newAnalysisRun(run Run, out Sink) *analysisRun {
+	r := &analysisRun{run: run, start: run.Now(), tools: map[string]Tool{}, breakers: map[string]*breaker{}}
+	for _, t := range run.Tools {
+		r.tools[t.Spec().Name] = t
+		r.breakers[t.Spec().Name] = &breaker{}
+	}
+	r.out = Sink{
+		Delta: func(d Delta) error {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			return out.Delta(d)
+		},
+		Activity: func(a Activity) error {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			return out.Activity(a)
+		},
+	}
+	return r
+}
+
+// past tells whether d has passed since the run started.
+func (r *analysisRun) past(d time.Duration) bool { return r.run.Now().Sub(r.start) >= d }
+
+func (r *analysisRun) reset() error {
+	r.streamed = false
+	return r.out.Delta(Delta{Reset: true})
 }
 
 // sinkError wraps a failure to pass something on to the reader (who went
@@ -148,10 +310,18 @@ type sinkError struct{ err error }
 
 func (e sinkError) Error() string { return e.err.Error() }
 
-// call makes one model call, streaming the tagged parts as it goes. It
-// returns the answer's text and the reasoning before it.
-func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, string, *tagParser, Result, error) {
+// called is what one model call wrote.
+type called struct {
+	raw, reasoning string
+	parser         *tagParser
+	toolCalls      []ToolCall
+	result         Result
+}
+
+// call makes one model call, streaming the tagged parts as it goes.
+func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	var raw, reasoning strings.Builder
+	var toolCalls []ToolCall
 	r.calls++
 	think := Activity{ID: fmt.Sprintf("thinking-%d", r.calls), Kind: ActivityThinking}
 	activity := func(status ActivityStatus) error {
@@ -165,12 +335,10 @@ func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, string,
 		}
 		return nil
 	})
-	max := maxTokens
-	if r.turn.Thinking {
-		max = maxTokensThinking
-	}
-	req := Request{Model: r.turn.Model, Messages: msgs, MaxTokens: max, Thinking: r.turn.Thinking}
-	res, err := r.turn.Adapter.Stream(ctx, req, func(e Event) error {
+	res, err := r.stream(ctx, req, func(e Event) error {
+		if r.past(r.run.Deadline) {
+			return errRunDeadline
+		}
 		switch e.Kind {
 		case EventReasoning:
 			if think.Status == "" {
@@ -187,20 +355,148 @@ func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, string,
 			}
 			raw.WriteString(e.Text)
 			return p.feed(e.Text)
+		case EventToolCall:
+			toolCalls = append(toolCalls, *e.ToolCall)
 		}
 		return nil
 	})
-	var se sinkError
-	if errors.As(err, &se) {
-		return "", "", nil, res, se.err
+	if se, ok := errors.AsType[sinkError](err); ok {
+		return called{}, se.err
 	}
 	if err == nil && think.Status == ActivityRunning {
 		// it thought to the end: the activity ends with the call
 		if aerr := activity(ActivityDone); aerr != nil {
-			return "", "", nil, res, aerr
+			return called{}, aerr
 		}
 	}
-	return raw.String(), reasoning.String(), p, res, err
+	return called{raw: raw.String(), reasoning: reasoning.String(), parser: p, toolCalls: toolCalls, result: res}, err
+}
+
+// errIdle cancels a model call that went quiet.
+var errIdle = errors.New("model call idle")
+
+// stream makes the adapter's call, failing it as a connection failure when
+// the model sends nothing for idleTimeout.
+func (r *analysisRun) stream(ctx context.Context, req Request, emit func(Event) error) (Result, error) {
+	callCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	idle := time.AfterFunc(idleTimeout, func() { cancel(errIdle) })
+	defer idle.Stop()
+	res, err := r.run.Turn.Adapter.Stream(callCtx, req, func(e Event) error {
+		idle.Reset(idleTimeout)
+		return emit(e)
+	})
+	if err != nil && ctx.Err() == nil && errors.Is(context.Cause(callCtx), errIdle) {
+		// a connection failure, not the run's deadline (#118)
+		return res, &Error{Category: ErrUnavailable, Detail: fmt.Sprintf("no event for %s", idleTimeout)}
+	}
+	return res, err
+}
+
+// execute carries out a step's tool calls, at most MaxParallel of them and
+// at once, and answers each in order.
+func (r *analysisRun) execute(ctx context.Context, calls []ToolCall) []Message {
+	out := make([]Message, len(calls))
+	var wg sync.WaitGroup
+	for i, c := range calls {
+		out[i] = Message{Role: RoleTool, ToolCallID: c.ID}
+		if i >= MaxParallel {
+			out[i].Content = tooManyCalls
+			continue
+		}
+		r.mu.Lock()
+		r.toolRuns++
+		id := fmt.Sprintf("tool-%d", r.toolRuns)
+		r.mu.Unlock()
+		wg.Go(func() { out[i].Content = r.runTool(ctx, id, c) })
+	}
+	wg.Wait()
+	return out
+}
+
+// runTool answers one tool call. A failure never ends the run: it becomes
+// what the model is told (#117).
+func (r *analysisRun) runTool(ctx context.Context, id string, c ToolCall) string {
+	t, ok := r.tools[c.Name]
+	if !ok {
+		names := make([]string, 0, len(r.run.Tools))
+		for _, t := range r.run.Tools {
+			names = append(names, t.Spec().Name)
+		}
+		return fmt.Sprintf(unknownFormat, c.Name, strings.Join(names, "、"))
+	}
+	b := r.breakers[c.Name]
+	r.mu.Lock()
+	off := b.off
+	r.mu.Unlock()
+	if off {
+		return fmt.Sprintf(brokenFormat, c.Name)
+	}
+	act := Activity{ID: id, Kind: c.Name, Target: safeTarget(t, c.Arguments), Status: ActivityRunning}
+	_ = r.out.Activity(act)
+	res, terr := r.attempt(ctx, t, c.Arguments)
+	if terr != nil && terr.Failure == FailureTransient && ctx.Err() == nil {
+		select {
+		case <-time.After(toolBackoff):
+			res, terr = r.attempt(ctx, t, c.Arguments)
+		case <-ctx.Done():
+		}
+	}
+	r.mu.Lock()
+	switch {
+	case terr == nil:
+		b.failures = 0
+	case terr.Failure == FailureAccount:
+		b.off = true
+	case terr.Failure == FailureTransient:
+		b.failures++
+		b.off = b.failures >= 2
+	}
+	r.mu.Unlock()
+	if terr == nil {
+		act.Status = ActivityDone
+		_ = r.out.Activity(act)
+		return res
+	}
+	act.Status, act.Reason = ActivityFailed, terr.Reason
+	_ = r.out.Activity(act)
+	switch terr.Failure {
+	case FailureInvalid:
+		return terr.Message
+	case FailureTransient:
+		return transientNote
+	case FailureAccount:
+		return fmt.Sprintf(brokenFormat, c.Name)
+	}
+	logToolFailure(c.Name, terr)
+	return internalNote
+}
+
+// attempt calls a tool once, within toolTimeout, turning a panic into an
+// internal failure.
+func (r *analysisRun) attempt(ctx context.Context, t Tool, args string) (res string, terr *ToolError) {
+	ctx, cancel := context.WithTimeout(ctx, toolTimeout)
+	defer cancel()
+	defer func() {
+		if p := recover(); p != nil {
+			res, terr = "", &ToolError{Failure: FailureInternal, Reason: ReasonInternal, Cause: fmt.Errorf("panic: %v", p)}
+		}
+	}()
+	res, err := t.Execute(ctx, args)
+	if err != nil {
+		return "", toolErrorOf(err)
+	}
+	return res, nil
+}
+
+// safeTarget is the call's target, or none when working it out panics.
+func safeTarget(t Tool, args string) (target string) {
+	defer func() {
+		if p := recover(); p != nil {
+			target = ""
+		}
+	}()
+	return t.Target(args)
 }
 
 func runCode(c Category) string {

@@ -34,7 +34,7 @@ const (
 type Request struct {
 	Model    string
 	Messages []Message
-	Tools    []Tool
+	Tools    []ToolSpec
 	// ToolChoice is "" (provider default), "auto" or "none".
 	ToolChoice string
 	// MaxTokens caps the output; 0 leaves it to the provider.
@@ -55,8 +55,8 @@ type Message struct {
 	ToolCallID string
 }
 
-// Tool is a tool declaration: Parameters is its JSON Schema.
-type Tool struct {
+// ToolSpec is a tool declaration: Parameters is its JSON Schema.
+type ToolSpec struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage

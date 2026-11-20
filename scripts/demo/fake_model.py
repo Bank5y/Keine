@@ -1,14 +1,15 @@
 """A stand-in OpenAI-compatible model endpoint for the demo (scripts/demo/run.sh).
 
 POST <url>/chat/completions streams a reply as Server-Sent Events: a short one
-to the connection test (a request declaring tools), so it passes, and to
-anything else some reasoning, then a tagged analysis a few characters at a
-time, so the analysis popover has something to stream. The key "bad" gets a 401, to show
+to the connection test (a request declaring only connection_check), so it
+passes. An analysis first looks up the course (search_course and read_lesson
+at once, so the popover shows its progress), then, with the results back,
+streams some reasoning and a tagged analysis a few characters at a time. The key "bad" gets a 401, to show
 the failed-test state.
 
     python3 scripts/demo/fake_model.py 18999
 """
-import http.server, json, sys, time
+import http.server, json, re, sys, time
 
 REPLY = ["这是", "演示用的", "模型回复。"]
 
@@ -49,7 +50,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
-        if not req.get("tools"):
+        tools = [t["function"]["name"] for t in req.get("tools") or []]
+        if tools != ["connection_check"] and not any(m.get("role") == "tool" for m in req.get("messages", [])):
+            self.look_up(req)
+            return
+        if tools != ["connection_check"]:
             time.sleep(0.4)
             # reasoning first, as a thinking model streams it: the popover shows 正在思考
             for part in ["读者选中了 Agent，", "先给标准含义，", "再结合这一讲。"]:
@@ -66,6 +71,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         usage = {"prompt_tokens": 120, "completion_tokens": 8, "prompt_tokens_details": {"cached_tokens": 64}}
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
         self.wfile.write(body.encode())
+
+    def look_up(self, req):
+        """Calls two course tools at once: a search, and a read of another lesson."""
+        context = "".join(m.get("content") or "" for m in req["messages"] if m["role"] == "user")
+        here = re.search(r"本讲 \[([^\]]+)\]", context)
+        others = [k for k in re.findall(r"^  - .* \[([^\]]+)\]$", context, re.M) if not here or k != here.group(1)]
+        calls = [("search_course", {"query": "Agent"})]
+        if others:
+            calls.append(("read_lesson", {"lesson": others[0]}))
+        time.sleep(0.6)
+        for i, (name, args) in enumerate(calls):
+            call = {"index": i, "id": f"call_{i}", "type": "function", "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)}}
+            self.wfile.write(chunk({"tool_calls": [call]}).encode())
+        self.wfile.write((chunk({}, "tool_calls") + "data: [DONE]\n\n").encode())
+        self.wfile.flush()
 
     def log_message(self, *args):
         pass

@@ -198,7 +198,7 @@ func TestRequestCarriesToolsAndHistory(t *testing.T) {
 			{Role: assistant.RoleAssistant, Reasoning: "r", ToolCalls: []assistant.ToolCall{{ID: "c1", Name: "read_lesson", Arguments: `{"lesson":"l-1"}`}}},
 			{Role: assistant.RoleTool, ToolCallID: "c1", Content: "lesson text"},
 		},
-		Tools:      []assistant.Tool{{Name: "read_lesson", Description: "Read a lesson", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		Tools:      []assistant.ToolSpec{{Name: "read_lesson", Description: "Read a lesson", Parameters: json.RawMessage(`{"type":"object"}`)}},
 		ToolChoice: "none",
 		MaxTokens:  64,
 	}

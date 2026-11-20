@@ -41,6 +41,12 @@ type Options struct {
 	// AdapterFor builds the adapter a site model is called through (default:
 	// by its interface format). Tests put a scripted model here.
 	AdapterFor assistant.AdapterFor
+	// RunDeadline ends an assistant run (default assistant.DefaultDeadline),
+	// kept by Now.
+	RunDeadline time.Duration
+	// ExtraTools are offered to every run besides the course tools. Tests
+	// put tools that fail here.
+	ExtraTools []assistant.Tool
 }
 
 type Server struct {
