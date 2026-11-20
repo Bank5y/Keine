@@ -56,9 +56,14 @@ describe('step', () => {
   });
 
   it('notes a run that got no web results, apart from the sections', () => {
-    const s = run({ type: 'done', title: 'Agent', intro: '简介。', body: '含义。', degraded: ['web_search'] });
+    const s = run({ type: 'done', title: 'Agent', intro: '简介。', body: '含义。', degraded: ['web_search'], sources: [] });
     expect(s).toEqual({ status: 'done', activities: [], parts: { title: 'Agent', intro: '简介。', body: '含义。' }, noWeb: true });
     expect(run({ type: 'done', title: 'A', intro: 'B', body: 'C', degraded: [] })).not.toHaveProperty('noWeb');
+  });
+
+  it('says nothing of the web when the run found sources before search went off', () => {
+    const found = [{ title: 'Raft', url: 'https://raft.github.io/', kind: 'search' }];
+    expect(run({ type: 'done', title: 'A', intro: 'B', body: 'C', degraded: ['web_search'], sources: found })).not.toHaveProperty('noWeb');
   });
 
   it('keeps what streamed when an error says so, and drops it otherwise', () => {

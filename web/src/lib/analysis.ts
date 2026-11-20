@@ -14,7 +14,8 @@ export type AnalysisEvent =
   // a lookup of the run, or thinking while the model reasons
   | { type: 'activity'; id: string; kind: string; target?: string; status: 'running' | 'done' | 'failed'; reason?: string; ownKey?: boolean }
   // degraded: the web capabilities that went off during the run; sources
-  // are the turn's metadata, which the popover does not show
+  // are the turn's metadata, which the popover does not show, only whether
+  // there are any
   | { type: 'done'; title: string; intro: string; body: string; degraded?: string[]; sources?: unknown[] }
   // message is the server's, in the reader's words
   | { type: 'error'; code: string; message?: string; kept: boolean }
@@ -58,7 +59,8 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
     }
     case 'done': {
       const done: AnalysisState = { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body }, activities };
-      return e.degraded?.length ? { ...done, noWeb: true } : done;
+      // a capability went off and the run found nothing on the web
+      return e.degraded?.length && !e.sources?.length ? { ...done, noWeb: true } : done;
     }
     case 'error':
       return { status: 'error', message: e.message || FALLBACK_ERROR, parts: e.kept ? partsOf(s) : empty, activities };
