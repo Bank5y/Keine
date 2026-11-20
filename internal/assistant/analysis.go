@@ -26,16 +26,18 @@ type Delta struct {
 // model reasons there is one of kind "thinking", and the reasoning itself
 // never leaves the server.
 type Activity struct {
-	ID     string `json:"id"`
-	Kind   string `json:"kind"`
-	Target string `json:"target,omitempty"`
-	Status string `json:"status"`
+	ID     string         `json:"id"`
+	Kind   string         `json:"kind"`
+	Target string         `json:"target,omitempty"`
+	Status ActivityStatus `json:"status"`
 }
 
+type ActivityStatus string
+
 const (
-	ActivityThinking = "thinking"
-	StatusRunning    = "running"
-	StatusDone       = "done"
+	ActivityThinking                = "thinking"
+	ActivityRunning  ActivityStatus = "running"
+	ActivityDone     ActivityStatus = "done"
 )
 
 // Sink is where a run sends what the reader sees while it goes. An error
@@ -152,12 +154,9 @@ func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, string,
 	var raw, reasoning strings.Builder
 	r.calls++
 	think := Activity{ID: fmt.Sprintf("thinking-%d", r.calls), Kind: ActivityThinking}
-	activity := func(status string) error {
+	activity := func(status ActivityStatus) error {
 		think.Status = status
-		if err := r.out.Activity(think); err != nil {
-			return sinkError{err}
-		}
-		return nil
+		return r.out.Activity(think)
 	}
 	p := newTagParser(func(s Part, text string) error {
 		r.streamed = true
@@ -175,15 +174,15 @@ func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, string,
 		switch e.Kind {
 		case EventReasoning:
 			if think.Status == "" {
-				if err := activity(StatusRunning); err != nil {
-					return err
+				if err := activity(ActivityRunning); err != nil {
+					return sinkError{err}
 				}
 			}
 			reasoning.WriteString(e.Text)
 		case EventText:
-			if think.Status == StatusRunning {
-				if err := activity(StatusDone); err != nil {
-					return err
+			if think.Status == ActivityRunning {
+				if err := activity(ActivityDone); err != nil {
+					return sinkError{err}
 				}
 			}
 			raw.WriteString(e.Text)
@@ -195,10 +194,10 @@ func (r *analysisRun) call(ctx context.Context, msgs []Message) (string, string,
 	if errors.As(err, &se) {
 		return "", "", nil, res, se.err
 	}
-	if think.Status == StatusRunning && ctx.Err() == nil {
+	if err == nil && think.Status == ActivityRunning {
 		// it thought to the end: the activity ends with the call
-		if aerr := activity(StatusDone); aerr != nil {
-			return "", "", nil, res, aerr.(sinkError).err
+		if aerr := activity(ActivityDone); aerr != nil {
+			return "", "", nil, res, aerr
 		}
 	}
 	return raw.String(), reasoning.String(), p, res, err
