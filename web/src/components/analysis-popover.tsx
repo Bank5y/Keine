@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef, useState, type ComponentProps } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, RotateCcw, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, RotateCcw, Sparkles, X } from 'lucide-react';
 import type { Components, ExtraProps } from 'react-markdown';
 import { CodeBlock } from '@/components/code-block';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { analyze, hasContent, initial, step, type AnalysisState, type Part, type Parts } from '@/lib/analysis';
 import type { Quote } from '@/lib/annotations';
+import { readNotice, useUser } from '@/lib/session';
 import { progressLines, summary, type ToolActivity } from '@/lib/progress';
 import { cn } from '@/lib/utils';
 
@@ -48,16 +49,29 @@ const finishedParts = diagrams(true);
 export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
   courseId: number; lessonId: number; quote: Quote; at: Anchor; onClose: () => void;
 }) {
+  const user = useUser();
   const [state, dispatch] = useReducer(step, initial);
   const [attempt, setAttempt] = useState(0);
   const [asking, setAsking] = useState(false);
+  // a reader who has not read the notice reads it first, and starts the
+  // run with 分析 (#132)
+  const [started, setStarted] = useState(!!user?.aiNoticeRead);
+  const [noticeOpen, setNoticeOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!started) return undefined;
     const ctl = new AbortController();
     void analyze(courseId, lessonId, quote, dispatch, ctl.signal);
     return () => ctl.abort();
-  }, [courseId, lessonId, quote, attempt]);
+  }, [courseId, lessonId, quote, attempt, started]);
+
+  const start = () => {
+    setStarted(true);
+    // the run goes ahead whether or not the mark is saved; unsaved, the
+    // notice shows again next time
+    readNotice().catch(() => {});
+  };
 
   const stateRef = useRef<AnalysisState>(state);
   stateRef.current = state;
@@ -88,8 +102,28 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
             <span className="analysis-quote" title={quote.quote}>「{quote.quote}」</span>
             <button type="button" className="analysis-close" aria-label="关闭" onClick={requestClose}><X /></button>
           </div>
-          <Body state={state} />
-          <Foot state={state} onRetry={retry} />
+          {started ? <Body state={state} /> : (
+            <div className="analysis-body">
+              <p className="analysis-lead">分析会把下面这些内容发给 {user?.aiProvider || '模型服务'}，由它生成解读。</p>
+              <Notice search={user?.aiSearch} className="analysis-notice" />
+            </div>
+          )}
+          {started && noticeOpen ? (
+            <div className="analysis-notice-panel" id="analysis-notice">
+              <div className="analysis-notice-title">发给第三方服务的内容</div>
+              <Notice search={user?.aiSearch} />
+            </div>
+          ) : null}
+          {started ? (
+            <Foot state={state} onRetry={retry}>
+              <Credit provider={user?.aiProvider} open={noticeOpen} onToggle={() => setNoticeOpen((v) => !v)} />
+            </Foot>
+          ) : (
+            <div className="analysis-foot">
+              <span>AI 生成 · {user?.aiProvider || '模型服务'}</span>
+              <Button size="sm" variant="default" onClick={start}><Sparkles />分析</Button>
+            </div>
+          )}
         </div>,
         document.body,
       )}
@@ -177,8 +211,33 @@ function Body({ state }: { state: AnalysisState }) {
   );
 }
 
-function Foot({ state, onRetry }: { state: AnalysisState; onRetry: () => void }) {
-  if (state.status === 'loading') return null;
+// Notice says what goes to third-party services and what does not (#132);
+// search is where searches go ('' or absent when the run has no web).
+function Notice({ search, className }: { search?: string; className?: string }) {
+  return (
+    <dl className={cn('notice', className)}>
+      <dt>会发送</dt>
+      <dd>选中的原文、本讲全文、课程名称和目录、你的提问和探索文档{search ? `；联网搜索时，搜索词会发给 ${search}` : ''}。</dd>
+      <dt>不会发送</dt>
+      <dd>你的标注、笔记和其他探索。</dd>
+      <dt>使用自带模型时</dt>
+      <dd>以上内容发到你自己配置的服务地址。</dd>
+    </dl>
+  );
+}
+
+// Credit names the service that wrote the answer; it opens the notice.
+function Credit({ provider, open, onToggle }: { provider?: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" className="analysis-credit" aria-expanded={open} aria-controls="analysis-notice" onClick={onToggle}>
+      AI 生成 · {provider || '模型服务'}{open ? <ChevronUp /> : <ChevronDown />}
+    </button>
+  );
+}
+
+// Foot ends the popover: credit (the service that wrote the answer) on the
+// left, what can be done on the right.
+function Foot({ state, onRetry, children: credit }: { state: AnalysisState; onRetry: () => void; children: ReactNode }) {
   if (state.status === 'error') {
     return (
       <>
@@ -186,7 +245,8 @@ function Foot({ state, onRetry }: { state: AnalysisState; onRetry: () => void })
           <div className="analysis-error-title">分析没能完成</div>
           <div className="analysis-error-text">{state.message}</div>
         </div>
-        <div className="analysis-foot end">
+        <div className="analysis-foot">
+          {credit}
           <button type="button" className="analysis-retry" onClick={onRetry}><RotateCcw />重试</button>
         </div>
       </>
@@ -196,7 +256,8 @@ function Foot({ state, onRetry }: { state: AnalysisState; onRetry: () => void })
     <>
       {state.status === 'done' && state.noWeb ? <p className="analysis-no-web" role="status">这次没有拿到网络结果</p> : null}
       <div className="analysis-foot">
-        {state.status === 'streaming' ? <><span>生成中…</span><span>Esc 关闭</span></> : <span>AI 生成，仅供参考</span>}
+        {credit}
+        {state.status === 'streaming' ? <span>生成中… Esc 关闭</span> : null}
       </div>
     </>
   );

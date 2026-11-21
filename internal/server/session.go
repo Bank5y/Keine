@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/auth"
 )
 
@@ -71,7 +72,13 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
 	ai, err := s.models.Available(r.Context())
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	notice, err := s.models.Notice(r.Context(), u.ID)
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -81,5 +88,16 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		// AIAvailable: the assistant has a model for every turn kind, so
 		// readers get analysis and exploration.
 		AIAvailable bool `json:"aiAvailable"`
-	}{currentUser(r), ai})
+		assistant.Notice
+	}{u, ai, notice})
+}
+
+// readNotice notes that the reader read the notice of what goes to
+// third-party services (#132), which then shows on no device again.
+func (s *Server) readNotice(w http.ResponseWriter, r *http.Request) {
+	if err := s.models.ReadNotice(r.Context(), currentUser(r).ID); err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
