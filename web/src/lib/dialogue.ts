@@ -3,7 +3,7 @@
 // a stack of drawers; the node map draws the whole tree.
 
 import { postStream, type StreamEvent } from '@/lib/analysis';
-import type { DialogueNode, NodeKind, Question, Turn } from '@/lib/explorations';
+import type { CourseLink, DialogueNode, NodeKind, Question, Turn } from '@/lib/explorations';
 import { track, type ToolActivity } from '@/lib/progress';
 
 export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
@@ -116,8 +116,9 @@ export function mapLayout(nodes: DialogueNode[], o: { col: number; row: number; 
 // ---- a run of the dialogue ----
 
 // Run is a turn being answered as it streams: the reply so far, the
-// lookups, and whether the model is thinking.
-export interface Run { text: string; activities: ToolActivity[]; thinking: boolean }
+// lookups, whether the model is thinking, and whether, the answer written,
+// it is linking it to the course (ADR 0011).
+export interface Run { text: string; activities: ToolActivity[]; thinking: boolean; linking?: boolean }
 
 export function stepRun(s: Run | undefined, e: StreamEvent): Run {
   const r = s ?? { text: '', activities: [], thinking: false };
@@ -126,10 +127,25 @@ export function stepRun(s: Run | undefined, e: StreamEvent): Run {
       return e.reset ? { ...r, text: '' } : { ...r, text: r.text + (e.text ?? ''), thinking: false };
     case 'activity':
       if (e.kind === 'thinking') return { ...r, thinking: e.status === 'running' };
+      if (e.kind === 'link_course') return { ...r, linking: e.status === 'running' };
       return { ...r, activities: track(r.activities, e as unknown as ToolActivity) };
     default:
       return r;
   }
+}
+
+// CourseLinkItem is a line of a reply's 「课程里的相关内容」: where in the
+// course, the reader's link there, and how it relates to the answer.
+export interface CourseLinkItem { href: string; place: string; note: string }
+
+// courseLinkItems are a turn's course links as the reply's end lists them,
+// each linked to its lesson and section in the reader.
+export function courseLinkItems(courseId: number, links: CourseLink[] | undefined): CourseLinkItem[] {
+  return (links ?? []).map((l) => ({
+    href: `/courses/${courseId}/lessons/${l.lesson.id}${l.section ? `#${encodeURIComponent(l.section.id)}` : ''}`,
+    place: l.section ? `${l.lesson.title} › ${l.section.title}` : l.lesson.title,
+    note: l.note,
+  }));
 }
 
 // what the stream's last event says: done carries the turn or node kept;

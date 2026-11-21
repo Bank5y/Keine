@@ -65,6 +65,17 @@ export interface Turn {
   reply: string;
   meta: { source: 'site' | 'own'; model: string; degraded?: string[]; sources: unknown[]; interrupted?: Interruption };
   createdAt: string;
+  // what the turn a node forks with linked of the course (ADR 0011)
+  courseLinks?: CourseLink[];
+}
+
+// CourseLink is a concept of another lesson a turn's answer linked: where
+// it is (the section null for the lesson's top) and how it relates.
+export interface CourseLink {
+  concept: string;
+  note: string;
+  lesson: { id: number; key: string; title: string };
+  section: { id: string; title: string } | null;
 }
 
 export interface DialogueNode {
