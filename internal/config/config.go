@@ -21,6 +21,9 @@ type Config struct {
 	// RunDeadlineSeconds ends an assistant run; at three quarters of it
 	// the run stops looking things up and answers.
 	RunDeadlineSeconds int64
+	// MaxRuns is how many assistant runs go at once; one more is turned
+	// away as busy, not queued.
+	MaxRuns int64
 
 	// Storage is "local" (files under DataDir) or "s3".
 	Storage string
@@ -68,6 +71,9 @@ func FromEnv() (Config, error) {
 		return c, err
 	}
 	if c.RunDeadlineSeconds, err = intEnv("KEINE_RUN_DEADLINE_SECONDS", 120); err != nil {
+		return c, err
+	}
+	if c.MaxRuns, err = intEnv("KEINE_MAX_RUNS", 16); err != nil {
 		return c, err
 	}
 	switch c.Storage {

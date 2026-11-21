@@ -17,31 +17,52 @@ export type AnalysisEvent =
   // are the turn's metadata, which the popover does not show, only whether
   // there are any
   | { type: 'done'; title: string; intro: string; body: string; degraded?: string[]; sources?: unknown[] }
-  // message is the server's, in the reader's words
-  | { type: 'error'; code: string; message?: string; kept: boolean }
+  // message is the server's, in the reader's words; length comes with
+  // length_choice_required
+  | { type: 'error'; code: string; message?: string; kept: boolean; length?: LessonLength }
   // the stream closed
   | { type: 'end' }
   // a new run begins (a retry)
   | { type: 'start' };
 
+// LessonLength is a lesson too long to send whole without asking (#131):
+// the limits and the lesson in tokens, its length in characters, and
+// whether the whole lesson still fits the model.
+export interface LessonLength { soft: number; hard: number; lesson: number; chars: number; full: boolean }
+
+// Length is the reader's choice of how much of a long lesson to send.
+export type Length = 'related' | 'full';
+
+// Refusal is a run turned away before it started: what to call it, and
+// whether trying again can help.
+export interface Refusal { title: string; retry: boolean }
+
+const refusals: Record<string, Refusal> = {
+  busy: { title: '分析没能开始', retry: true },
+  run_in_progress: { title: '分析没能开始', retry: true },
+  context_too_long: { title: '分析没能开始', retry: false },
+};
+
 // activities are the run's lookups, kept through the answer
 export type AnalysisState =
+  // choose: the lesson is long, and the reader chooses how much to send
+  | { status: 'choose'; length: LessonLength }
   // thinking: the model is reasoning before it answers
   | { status: 'loading'; thinking?: boolean; activities: ToolActivity[] }
   | { status: 'streaming'; parts: Parts; activities: ToolActivity[] }
   // noWeb: the run got no web results, which the popover says apart from
   // the sections (it never goes into the document)
   | { status: 'done'; parts: Parts; activities: ToolActivity[]; noWeb?: true }
-  | { status: 'error'; message: string; parts: Parts; activities: ToolActivity[] };
+  | { status: 'error'; message: string; parts: Parts; activities: ToolActivity[]; refusal?: Refusal };
 
 export const initial: AnalysisState = { status: 'loading', activities: [] };
 const empty: Parts = { title: '', intro: '', body: '' };
 
-const partsOf = (s: AnalysisState): Parts => (s.status === 'loading' ? empty : s.parts);
+const partsOf = (s: AnalysisState): Parts => ('parts' in s ? s.parts : empty);
 
 export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
   if (e.type === 'start') return initial;
-  if (s.status === 'done' || s.status === 'error') return s;
+  if (s.status === 'done' || s.status === 'error' || s.status === 'choose') return s;
   const { activities } = s;
   switch (e.type) {
     case 'activity':
@@ -62,8 +83,11 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
       // a capability went off and the run found nothing on the web
       return e.degraded?.length && !e.sources?.length ? { ...done, noWeb: true } : done;
     }
-    case 'error':
-      return { status: 'error', message: e.message || FALLBACK_ERROR, parts: e.kept ? partsOf(s) : empty, activities };
+    case 'error': {
+      if (e.code === 'length_choice_required' && e.length) return { status: 'choose', length: e.length };
+      const out: AnalysisState = { status: 'error', message: e.message || FALLBACK_ERROR, parts: e.kept ? partsOf(s) : empty, activities };
+      return refusals[e.code] ? { ...out, refusal: refusals[e.code] } : out;
+    }
     case 'end':
       return { status: 'error', message: BROKEN, parts: partsOf(s), activities };
   }
@@ -105,12 +129,12 @@ export function readEvents(buf: string): { events: AnalysisEvent[]; rest: string
 // ending with 'end' when the stream closes. A refusal before the run
 // (a JSON error) comes as an error event; aborting the signal stops it
 // without one.
-export async function analyze(courseId: number, lessonId: number, quote: { quote: string; prefix: string; suffix: string }, on: (e: AnalysisEvent) => void, signal: AbortSignal) {
+export async function analyze(courseId: number, lessonId: number, quote: { quote: string; prefix: string; suffix: string }, length: Length | undefined, on: (e: AnalysisEvent) => void, signal: AbortSignal) {
   let res: Response;
   try {
     res = await fetch(`/api/courses/${courseId}/lessons/${lessonId}/analysis`, {
       method: 'POST', credentials: 'same-origin', signal,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(quote),
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...quote, length }),
     });
   } catch {
     if (!signal.aborted) on({ type: 'error', code: 'network', message: BROKEN, kept: false });
@@ -118,7 +142,7 @@ export async function analyze(courseId: number, lessonId: number, quote: { quote
   }
   if (!res.ok || !res.body) {
     const body = await res.json().catch(() => null);
-    on({ type: 'error', code: body?.error?.code ?? 'network', message: body?.error?.message, kept: false });
+    on({ type: 'error', code: body?.error?.code ?? 'network', message: body?.error?.message, kept: false, length: body?.error?.length });
     return;
   }
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();

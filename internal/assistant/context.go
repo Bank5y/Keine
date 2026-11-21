@@ -63,6 +63,10 @@ type Passage struct {
 	// SelectedOpen and SelectedClose (left unmarked when it cannot be told
 	// apart).
 	Lesson string
+	// Sections is the lesson's outline of sections, set when Lesson holds
+	// only the sections around the selection (LengthRelated); each is
+	// indented two spaces a level below the top.
+	Sections []string
 }
 
 type OutlineChapter struct {
@@ -115,7 +119,15 @@ func (in Passage) section(s Source) string {
 	case SourceSelection:
 		fmt.Fprintf(&b, "## 选中的原文\n位置：%s（本讲 [%s]）\n「%s」", strings.Join(in.Path, " › "), in.LessonKey, in.Quote)
 	case SourceLesson:
-		fmt.Fprintf(&b, "## 本讲全文（选中处用 %s 标出）\n%s", SelectedOpen, strings.TrimSpace(in.Lesson))
+		if in.Sections == nil {
+			fmt.Fprintf(&b, "## 本讲全文（选中处用 %s 标出）\n%s", SelectedOpen, strings.TrimSpace(in.Lesson))
+			break
+		}
+		b.WriteString("## 本讲小节目录")
+		for _, s := range in.Sections {
+			b.WriteString("\n" + s)
+		}
+		fmt.Fprintf(&b, "\n\n## 本讲相关小节（读者选了只看相关小节：选中处所在的小节和相邻小节，选中处用 %s 标出；其余小节可以用工具按需读取）\n%s", SelectedOpen, strings.TrimSpace(in.Lesson))
 	}
 	return b.String()
 }
