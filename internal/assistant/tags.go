@@ -17,8 +17,30 @@ const (
 
 var allParts = []Part{PartTitle, PartIntro, PartBody}
 
-func openTag(s Part) string  { return "<exp_" + string(s) + ">" }
-func closeTag(s Part) string { return "</exp_" + string(s) + ">" }
+func openTag(s Part) string  { return analysisForm.open(s) }
+func closeTag(s Part) string { return analysisForm.close(s) }
+
+// tagForm is the shape of a tagged answer (ADR 0008): the prefix of its
+// tags and its parts, how a finished one is checked and told to answer
+// again, and how much it may write.
+type tagForm struct {
+	prefix string
+	parts  []Part
+	// check lists what is wrong with a finished answer; none means valid
+	check func(raw string, p *tagParser) []string
+	// remedy asks for the answer again, %s being what was wrong
+	remedy string
+	// output tokens it may write, with thinking off and on
+	maxTokens, maxThinking int
+}
+
+func (f *tagForm) open(s Part) string  { return "<" + f.prefix + string(s) + ">" }
+func (f *tagForm) close(s Part) string { return "</" + f.prefix + string(s) + ">" }
+
+// analysisForm is the analysis's: three parts in exp_ tags.
+var analysisForm = &tagForm{prefix: "exp_", parts: allParts, remedy: remedyFormat, maxTokens: maxTokens, maxThinking: maxTokensThinking}
+
+func init() { analysisForm.check = checkAnalysis }
 
 // tagParser splits a streamed answer into its tagged parts character by
 // character (ADR 0008): text outside the tags is dropped, a tag cut between
@@ -26,6 +48,7 @@ func closeTag(s Part) string { return "</exp_" + string(s) + ">" }
 // end of a section is never passed on. What it passes on to emit is exactly
 // what it keeps as the section's text.
 type tagParser struct {
+	form *tagForm
 	emit func(Part, string) error
 	buf  string
 	// cur is the section being read, "" outside the tags
@@ -44,7 +67,11 @@ type tagParser struct {
 }
 
 func newTagParser(emit func(Part, string) error) *tagParser {
-	return &tagParser{emit: emit, text: map[Part]*strings.Builder{}, closed: map[Part]bool{}}
+	return newFormParser(analysisForm, emit)
+}
+
+func newFormParser(form *tagForm, emit func(Part, string) error) *tagParser {
+	return &tagParser{form: form, emit: emit, text: map[Part]*strings.Builder{}, closed: map[Part]bool{}}
 }
 
 func (p *tagParser) feed(s string) error {
@@ -58,7 +85,7 @@ func (p *tagParser) feed(s string) error {
 			}
 			p.buf = p.buf[i:]
 			if sec, ok := p.opening(); ok {
-				p.buf = p.buf[len(openTag(sec)):]
+				p.buf = p.buf[len(p.form.open(sec)):]
 				p.enter(sec)
 				continue
 			}
@@ -68,7 +95,7 @@ func (p *tagParser) feed(s string) error {
 			p.buf = p.buf[1:]
 			continue
 		}
-		end := closeTag(p.cur)
+		end := p.form.close(p.cur)
 		if i < 0 {
 			err := p.write(p.buf)
 			p.buf = ""
@@ -99,8 +126,8 @@ func (p *tagParser) feed(s string) error {
 
 // opening reports the section whose opening tag starts the buffer.
 func (p *tagParser) opening() (Part, bool) {
-	for _, s := range allParts {
-		if strings.HasPrefix(p.buf, openTag(s)) {
+	for _, s := range p.form.parts {
+		if strings.HasPrefix(p.buf, p.form.open(s)) {
 			return s, true
 		}
 	}
@@ -109,8 +136,8 @@ func (p *tagParser) opening() (Part, bool) {
 
 // mayOpen tells whether the buffer may still grow into an opening tag.
 func (p *tagParser) mayOpen() bool {
-	for _, s := range allParts {
-		if strings.HasPrefix(openTag(s), p.buf) {
+	for _, s := range p.form.parts {
+		if strings.HasPrefix(p.form.open(s), p.buf) {
 			return true
 		}
 	}
@@ -150,15 +177,17 @@ func (p *tagParser) write(s string) error {
 	return p.emit(p.cur, trimmed)
 }
 
-// parts is what each closed section holds.
-func (p *tagParser) parts() Analysis {
-	get := func(s Part) string {
-		if b := p.text[s]; b != nil {
-			return b.String()
-		}
-		return ""
+// get is what a section holds.
+func (p *tagParser) get(s Part) string {
+	if b := p.text[s]; b != nil {
+		return b.String()
 	}
-	return Analysis{Title: get(PartTitle), Intro: get(PartIntro), Body: get(PartBody)}
+	return ""
+}
+
+// parts is what each section of an analysis holds.
+func (p *tagParser) parts() Analysis {
+	return Analysis{Title: p.get(PartTitle), Intro: p.get(PartIntro), Body: p.get(PartBody)}
 }
 
 // ErrAnalysisExpired: the analysis to pin is not there to pin: more than
