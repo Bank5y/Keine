@@ -46,20 +46,27 @@ func isTerm(quote string) bool {
 	return !strings.HasSuffix(q, ".") && !strings.Contains(q, ". ")
 }
 
+// legacyTags reads an analysis kept before the concept explanation (#157)
+// in the tags of now: its intro was the concept, its meaning ("body") the
+// concept explanation.
+var legacyTags = strings.NewReplacer(
+	"<exp_intro>", openTag(PartConcept), "</exp_intro>", closeTag(PartConcept),
+	"<exp_body>", openTag(PartExplanation), "</exp_body>", closeTag(PartExplanation))
+
 // analysisMarkdown is the analysis's reply as the reader saw it: its tags
 // taken out (ADR 0011). A reply without them stays as it is.
 func analysisMarkdown(reply string) string {
 	p := newTagParser(func(Part, string) error { return nil })
-	_ = p.feed(reply)
+	_ = p.feed(legacyTags.Replace(reply))
 	a := p.parts()
-	if a.Title == "" && a.Intro == "" && a.Body == "" {
+	if a.Title == "" && a.Concept == "" && a.Explanation == "" {
 		return strings.TrimSpace(reply)
 	}
 	var parts []string
 	if a.Title != "" {
 		parts = append(parts, "# "+a.Title)
 	}
-	for _, s := range []string{a.Intro, a.Body} {
+	for _, s := range []string{a.Concept, a.Explanation} {
 		if s = strings.TrimSpace(s); s != "" {
 			parts = append(parts, s)
 		}

@@ -52,7 +52,7 @@ var analysisSystem string
 
 // AnalysisPrompt is the prompt of an analysis. The sources that change
 // least come first, so the start of the request can be cached.
-var AnalysisPrompt = newPrompt("analysis-3", analysisSystem, DefaultStyle, SourceCourseInfo, SourceOutline, SourceSelection, SourceLesson)
+var AnalysisPrompt = newPrompt("analysis-4", analysisSystem, DefaultStyle, SourceCourseInfo, SourceOutline, SourceSelection, SourceLesson)
 
 // Selected marks the selected place in the lesson text.
 const (

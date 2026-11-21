@@ -25,23 +25,12 @@ type ExplorationDetail struct {
 	// LessonTitle is the title of the lesson it was made on, "" once that
 	// lesson is gone
 	LessonTitle string `json:"lessonTitle"`
-	Title       string `json:"title"`
-	Intro       string `json:"intro"`
-	Meaning     string `json:"meaning"`
-	DocVersion  int    `json:"docVersion"`
-	// the sections a sync fills, in order; empty until then (#138)
-	Footnotes  []DocItem `json:"footnotes"`
-	Extensions []DocItem `json:"extensions"`
-	Expansions []DocItem `json:"expansions"`
-	References []DocItem `json:"references"`
-	Nodes      []Node    `json:"nodes"`
-	CreatedAt  time.Time `json:"createdAt"`
-}
-
-// DocItem is one item of a section after the meaning.
-type DocItem struct {
-	ID   int64  `json:"id"`
-	Text string `json:"text"`
+	// the document (ADR 0012): title, concept and concept explanation
+	Title       string    `json:"title"`
+	Concept     string    `json:"concept"`
+	Explanation string    `json:"explanation"`
+	Nodes       []Node    `json:"nodes"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // NodeKind is a node's type (ADR 0009); only the main node has no parent.
@@ -140,11 +129,11 @@ type TurnMeta struct {
 
 // ExplorationDetail is one of the viewer's explorations, whatever its state.
 func (s *Service) ExplorationDetail(ctx context.Context, viewer auth.User, id int64) (ExplorationDetail, error) {
-	d := ExplorationDetail{Footnotes: []DocItem{}, Extensions: []DocItem{}, Expansions: []DocItem{}, References: []DocItem{}, Nodes: []Node{}}
-	err := s.db.QueryRow(ctx, `SELECT e.id, e.course_id, e.quote, e.state, coalesce(l.title, ''), e.title, e.intro, e.meaning, e.doc_version, e.created_at
+	d := ExplorationDetail{Nodes: []Node{}}
+	err := s.db.QueryRow(ctx, `SELECT e.id, e.course_id, e.quote, e.state, coalesce(l.title, ''), e.title, e.concept, e.explanation, e.created_at
 		FROM explorations e LEFT JOIN lessons l ON l.course_id = e.course_id AND l.key = e.lesson_key
 		WHERE e.id = $1 AND e.user_id = $2`, id, viewer.ID).
-		Scan(&d.ID, &d.CourseID, &d.Quote, &d.State, &d.LessonTitle, &d.Title, &d.Intro, &d.Meaning, &d.DocVersion, &d.CreatedAt)
+		Scan(&d.ID, &d.CourseID, &d.Quote, &d.State, &d.LessonTitle, &d.Title, &d.Concept, &d.Explanation, &d.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, ErrExplorationNotFound
 	}

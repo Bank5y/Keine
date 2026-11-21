@@ -13,9 +13,9 @@ import (
 // Analysis is a valid answer: the three allParts of an exploration
 // document that an analysis writes.
 type Analysis struct {
-	Title string `json:"title"`
-	Intro string `json:"intro"`
-	Body  string `json:"body"`
+	Title       string `json:"title"`
+	Concept     string `json:"concept"`
+	Explanation string `json:"explanation"`
 }
 
 // Delta is a piece of a section as it streams in. One with Reset (and no
@@ -127,7 +127,7 @@ var (
 
 // What the run tells the model along the way.
 const (
-	remedyFormat  = "上一次答复不合格：%s。请只按 <exp_title>/<exp_intro>/<exp_body> 格式重新作答，标签外不要写任何文字。"
+	remedyFormat  = "上一次答复不合格：%s。请只按 <exp_title>/<exp_concept>/<exp_explanation> 格式重新作答，标签外不要写任何文字。"
 	lastStepNote  = "还剩 1 次查询。之后必须直接作答。"
 	stepsUsedNote = "查询次数已用完。请不要再调用工具，根据已有资料直接作答。"
 	softNote      = "时间快到了。请不要再调用工具，根据已有资料直接作答。"

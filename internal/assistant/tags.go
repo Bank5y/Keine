@@ -5,17 +5,17 @@ import (
 	"strings"
 )
 
-// Part is one of the three parts of an analysis: title, intro and
-// meaning ("body" on the wire, ADR 0008).
+// Part is one of the three parts of an analysis (ADR 0012): title,
+// concept and concept explanation.
 type Part string
 
 const (
-	PartTitle Part = "title"
-	PartIntro Part = "intro"
-	PartBody  Part = "body"
+	PartTitle       Part = "title"
+	PartConcept     Part = "concept"
+	PartExplanation Part = "explanation"
 )
 
-var allParts = []Part{PartTitle, PartIntro, PartBody}
+var allParts = []Part{PartTitle, PartConcept, PartExplanation}
 
 func openTag(s Part) string  { return "<exp_" + string(s) + ">" }
 func closeTag(s Part) string { return "</exp_" + string(s) + ">" }
@@ -158,7 +158,7 @@ func (p *tagParser) parts() Analysis {
 		}
 		return ""
 	}
-	return Analysis{Title: get(PartTitle), Intro: get(PartIntro), Body: get(PartBody)}
+	return Analysis{Title: get(PartTitle), Concept: get(PartConcept), Explanation: get(PartExplanation)}
 }
 
 // ErrAnalysisExpired: the analysis to pin is not there to pin: more than
@@ -170,6 +170,6 @@ var ErrAnalysisExpired = errors.New("analysis expired or replaced")
 // parts in their tags, which is how a later turn reads the first one.
 func (a Analysis) Reply() string {
 	return openTag(PartTitle) + a.Title + closeTag(PartTitle) + "\n" +
-		openTag(PartIntro) + a.Intro + closeTag(PartIntro) + "\n" +
-		openTag(PartBody) + "\n" + a.Body + "\n" + closeTag(PartBody)
+		openTag(PartConcept) + a.Concept + closeTag(PartConcept) + "\n" +
+		openTag(PartExplanation) + "\n" + a.Explanation + "\n" + closeTag(PartExplanation)
 }

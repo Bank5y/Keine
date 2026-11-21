@@ -494,14 +494,14 @@ function NoteCard({ a, active, onPick, onEdit, onDelete }: { a: Annotation; acti
 }
 
 // ExplorationCard is an exploration in the rail: its title on one line,
-// its intro on two.
+// its concept on two, cut off with an ellipsis when longer.
 function ExplorationCard({ e, active, onPick }: { e: Exploration; active: boolean; onPick: () => void }) {
   return (
     <div className={cn('exp-card', active && 'active')} data-exploration={e.id} role="button" tabIndex={0}
       aria-pressed={active} aria-label={`探索：${e.title}`}
       onClick={onPick} onKeyDown={(ev) => { if (ev.key === 'Enter' && ev.target === ev.currentTarget) onPick(); }}>
       <div className="exp-card-title"><Sparkles aria-hidden /><span>{e.title}</span>{e.nodes > 0 ? <span className="exp-card-nodes" title="节点数（不含主节点）">节点 {e.nodes}</span> : null}</div>
-      <p className="exp-card-intro">{e.intro}</p>
+      <p className="exp-card-concept">{e.concept}</p>
     </div>
   );
 }
