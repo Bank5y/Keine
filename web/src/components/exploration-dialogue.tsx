@@ -306,7 +306,7 @@ function ForkHead({ d, node }: { d: ExplorationDetail; node: DialogueNode }) {
       <div className="dlg-forkhead-title"><Dot kind={node.kind} /><b>{node.name}</b><span>{KINDS[node.kind].label} · 从{from}第 {at.index + 1} 轮岔出</span></div>
       <div className="dlg-forkhead-turn">
         <small>岔出的那一轮</small>
-        <p>{plain(at.node.kind === 'main' && at.index === 0 ? `${d.title}：${d.intro}` : turn.reply)}</p>
+        <p>{plain(at.node.kind === 'main' && at.index === 0 ? `${d.title}：${d.concept}` : turn.reply)}</p>
       </div>
       <div className="dlg-rule"><span>继承到这一轮为止 · 共 {seen} 轮 · 之后的内容和其他节点不带进来</span></div>
     </div>
@@ -351,7 +351,7 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
           <div className="dlg-analysis">
             <blockquote><span>{d.quote}</span>{d.lessonTitle ? <small>出自 {d.lessonTitle}</small> : null}</blockquote>
             <div className="dlg-analysis-head">
-              <div><b>{d.title}</b><p>{d.intro}</p></div>
+              <div><b>{d.title}</b><p>{d.concept}</p></div>
               {onDocument ? <button type="button" onClick={onDocument}>查看探索文档</button> : null}
             </div>
           </div>
@@ -427,7 +427,7 @@ function Asking({ question, run, kind }: { question: Question; run: Run; kind: N
       {run.text ? <Lookups activities={run.activities} /> : run.activities.length ? <Progress activities={run.activities} /> : null}
       {run.thinking && !run.text ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p> : null}
       {!run.text && !run.thinking && !run.activities.length ? <p className="analysis-wait">正在回答…</p> : null}
-      {run.text ? <div className="dlg-reply analysis-meaning caret"><LazyMarkdown text={run.text} /></div> : null}
+      {run.text ? <div className="dlg-reply analysis-explanation caret"><LazyMarkdown text={run.text} /></div> : null}
     </div>
   );
 }

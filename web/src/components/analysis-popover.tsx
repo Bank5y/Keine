@@ -180,7 +180,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
 function writing(state: AnalysisState): Part | null {
   if (state.status !== 'streaming') return null;
   const p = state.parts;
-  return p.body ? 'body' : p.intro ? 'intro' : 'title';
+  return p.explanation ? 'explanation' : p.concept ? 'concept' : 'title';
 }
 
 // Progress lists the run's lookups, a running one with a pulsing dot and a
@@ -236,12 +236,12 @@ function Body({ state }: { state: Exclude<AnalysisState, { status: 'choose' }> }
     <div className="analysis-body" aria-live="polite" aria-busy={state.status === 'streaming'}>
       <Lookups activities={state.activities} />
       {p.title ? <h3 className={cn('analysis-title', at === 'title' && 'caret')}>{p.title}</h3> : null}
-      {p.intro ? <p className={cn('analysis-intro', at === 'intro' && 'caret')}>{p.intro}</p> : null}
-      {p.body ? (
+      {p.concept ? <p className={cn('analysis-concept', at === 'concept' && 'caret')}>{p.concept}</p> : null}
+      {p.explanation ? (
         <>
-          <div className="analysis-label">含义</div>
-          <div className={cn('analysis-meaning', at === 'body' && 'caret')}>
-            <LazyMarkdown text={p.body} components={state.status === 'done' ? finishedParts : streamingParts} />
+          <div className="analysis-label">概念解释</div>
+          <div className={cn('analysis-explanation', at === 'explanation' && 'caret')}>
+            <LazyMarkdown text={p.explanation} components={state.status === 'done' ? finishedParts : streamingParts} />
           </div>
         </>
       ) : null}

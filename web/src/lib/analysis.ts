@@ -4,8 +4,9 @@
 
 import { track, type ToolActivity } from '@/lib/progress';
 
-// the three parts of an analysis: title, intro and meaning ("body")
-export type Part = 'title' | 'intro' | 'body';
+// the three parts of an analysis (ADR 0012): title, concept and concept
+// explanation
+export type Part = 'title' | 'concept' | 'explanation';
 export type Parts = Record<Part, string>;
 
 export type AnalysisEvent =
@@ -16,7 +17,7 @@ export type AnalysisEvent =
   // degraded: the web capabilities that went off during the run; sources
   // are the turn's metadata, which the popover does not show, only whether
   // there are any; analysisId names the analysis to pin it by
-  | { type: 'done'; analysisId?: string; title: string; intro: string; body: string; degraded?: string[]; sources?: unknown[] }
+  | { type: 'done'; analysisId?: string; title: string; concept: string; explanation: string; degraded?: string[]; sources?: unknown[] }
   // message is the server's, in the reader's words; length comes with
   // length_choice_required
   | { type: 'error'; code: string; message?: string; kept: boolean; length?: LessonLength }
@@ -58,7 +59,7 @@ export type AnalysisState =
   | { status: 'error'; message: string; parts: Parts; activities: ToolActivity[]; refusal?: Refusal };
 
 export const initial: AnalysisState = { status: 'loading', activities: [] };
-const empty: Parts = { title: '', intro: '', body: '' };
+const empty: Parts = { title: '', concept: '', explanation: '' };
 
 const partsOf = (s: AnalysisState): Parts => ('parts' in s ? s.parts : empty);
 
@@ -81,7 +82,7 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
       return { status: 'streaming', parts: { ...parts, [e.section]: parts[e.section] + e.text }, activities };
     }
     case 'done': {
-      const done: AnalysisState = { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body }, activities, ...(e.analysisId ? { analysisId: e.analysisId } : {}) };
+      const done: AnalysisState = { status: 'done', parts: { title: e.title, concept: e.concept, explanation: e.explanation }, activities, ...(e.analysisId ? { analysisId: e.analysisId } : {}) };
       // a capability went off and the run found nothing on the web
       return e.degraded?.length && !e.sources?.length ? { ...done, noWeb: true } : done;
     }
@@ -109,7 +110,7 @@ export const pinRefusals: Record<string, Refusal> = {
 // closing it would throw away.
 export const hasContent = (s: AnalysisState) => {
   const p = partsOf(s);
-  return !!(p.title || p.intro || p.body);
+  return !!(p.title || p.concept || p.explanation);
 };
 
 // what went wrong is the server's to say; these cover the server saying
