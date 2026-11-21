@@ -73,8 +73,90 @@ export function VariantC({ s }: { s: Store }) {
           );
         })}
       </div>
+      <NodeMap s={s} />
     </Zoom>
   );
+}
+
+// ---------- the node map: read-only, collapsible, on the right ----------
+// where the reader is in the whole tree; it never switches nodes (the chips
+// and the back link do that), so nothing on it is clickable but its toggle.
+const MAP_W = 260;
+const COL = 60; // a column per leaf
+const ROW = 62; // a row per depth
+
+function NodeMap({ s }: { s: Store }) {
+  const [open, setOpen] = useState(true);
+  const g = tidy(s.nodes);
+  const onPath = new Set(path(s.nodes, s.current).map((n) => n.id));
+  const ease = 'cubic-bezier(.2,.8,.2,1)';
+  return (
+    <aside style={{ width: open ? MAP_W : 36, flex: 'none', borderLeft: '1px solid var(--line)', background: 'var(--bg)', transition: `width ${MS}ms ${ease}`, overflow: 'hidden', position: 'relative' }}>
+      <button type="button" onClick={() => setOpen((v) => !v)} title={open ? '收起节点图' : '展开节点图'} style={{
+        position: 'absolute', top: 10, left: 6, zIndex: 2, width: 24, height: 24, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--surface)', cursor: 'pointer', color: 'var(--text-3)', fontSize: 12, lineHeight: 1,
+      }}>{open ? '›' : '‹'}</button>
+      {!open ? <div style={{ position: 'absolute', top: 46, left: 0, width: 36, writingMode: 'vertical-rl', display: 'flex', alignItems: 'center', fontSize: 12, color: 'var(--text-3)', letterSpacing: 2, opacity: open ? 0 : 1, transition: `opacity ${MS}ms` }}>节点图</div> : null}
+      <div style={{ width: MAP_W, height: '100%', opacity: open ? 1 : 0, transition: `opacity ${MS * 0.7}ms ${ease} ${open ? MS * 0.4 : 0}ms`, display: 'flex', flexDirection: 'column', pointerEvents: 'none', userSelect: 'none' }}>
+        <div style={{ padding: '13px 0 8px 40px', fontSize: 12, color: 'var(--text-3)' }}>节点图 · {s.nodes.length - 1} 个节点</div>
+        <div style={{ flex: 1, overflow: 'auto', position: 'relative', pointerEvents: 'auto' }}>
+          <svg width={Math.max(MAP_W, g.w)} height={g.h} style={{ display: 'block' }}>
+            {g.nodes.filter((r) => r.n.parent).map((r) => {
+              const p = g.at.get(r.n.parent!)!;
+              const hot = onPath.has(r.n.id);
+              const my = (p.y + r.y) / 2;
+              return (
+                <g key={r.n.id}>
+                  <path d={`M${p.x},${p.y + 6} C${p.x},${my} ${r.x},${my} ${r.x},${r.y - 6}`} fill="none"
+                    stroke={hot ? TYPES[r.n.type].color : 'var(--rule)'} strokeWidth={hot ? 2 : 1.2}
+                    strokeDasharray={r.n.type === 'divergent' ? '3 3' : undefined} style={{ transition: `stroke ${MS}ms` }} />
+                  <text x={r.x + 5} y={r.y - 12} fontSize={9} fill="var(--text-3)">{r.at}</text>
+                </g>
+              );
+            })}
+            {g.nodes.map((r) => {
+              const cur = r.n.id === s.current; const hot = onPath.has(r.n.id);
+              const name = r.n.name.length > 5 ? r.n.name.slice(0, 4) + '…' : r.n.name;
+              return (
+                <g key={r.n.id} opacity={hot ? 1 : 0.5} style={{ transition: `opacity ${MS}ms` }}>
+                  <title>{r.n.name}</title>
+                  {cur ? <circle cx={r.x} cy={r.y} r={10} fill={TYPES[r.n.type].soft} stroke={TYPES[r.n.type].color} strokeWidth={1.5}>
+                    <animate attributeName="r" values="9;11.5;9" dur="2.4s" repeatCount="indefinite" />
+                  </circle> : null}
+                  <circle cx={r.x} cy={r.y} r={cur ? 4.5 : 4} fill={TYPES[r.n.type].color} />
+                  <text x={r.x} y={r.n.parent ? r.y + 22 : r.y - 12} textAnchor="middle" fontSize={11} fontWeight={cur ? 600 : 400} fill={cur ? TYPES[r.n.type].color : hot ? 'var(--text)' : 'var(--text-2)'}>{name}</text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        <div style={{ padding: '8px 14px 12px', borderTop: '1px solid var(--line)', fontSize: 11, color: 'var(--text-3)', display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+          {(['main', 'child', 'branch', 'divergent'] as const).map((k) => <span key={k} style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}><TypeDot type={k} size={7} />{TYPES[k].label}</span>)}
+          <span>线上数字：岔出的那一轮</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// a top-down tidy tree: leaves take columns left to right in the order
+// of the turns they forked from, a parent sits over the middle of its
+// children, depth is the row
+function tidy(nodes: DNode[]) {
+  type P = { n: DNode; d: number; at?: number; x: number; y: number };
+  const all: P[] = [];
+  let col = 0;
+  const walk = (n: DNode, d: number, at?: number): P => {
+    const me: P = { n, d, at, x: 0, y: 40 + d * ROW };
+    all.push(me);
+    const kids = n.turns.flatMap((t, i) => nodes.filter((x) => x.forkTurn === t.id).map((k) => walk(k, d + 1, i + 1)));
+    me.x = kids.length ? (kids[0].x + kids[kids.length - 1].x) / 2 : 30 + col++ * COL;
+    return me;
+  };
+  walk(byId(nodes, 'main'), 0);
+  const w = col * COL + 24;
+  const shift = Math.max(0, (MAP_W - w) / 2);
+  all.forEach((p) => { p.x += shift; });
+  return { nodes: all, at: new Map(all.map((p) => [p.n.id, p])), w, h: Math.max(...all.map((p) => p.y)) + 40 };
 }
 
 const mk = (key: string, s: Store, phase: Layer['phase']): Layer => (key === 'draft' ? { key, draft: true, phase } : { key, node: byId(s.nodes, key), phase });
@@ -130,12 +212,12 @@ function Body({ l, s, onBack }: { l: Layer; s: Store; onBack: () => void }) {
         </div>
       ) : null}
       <div ref={ref} style={{ flex: 1, overflow: 'auto', paddingTop: parent ? 8 : 20 }}>
-        <div style={{ maxWidth: 820, margin: '0 auto' }}>
+        <div style={{ maxWidth: 680, margin: '0 auto' }}>
           <ForkHead nodes={s.nodes} id={node.id} onOpen={() => onBack()} />
           <Turns node={node} nodes={s.nodes} onFork={s.setFork} chips onOpen={s.open} />
         </div>
       </div>
-      <div style={{ maxWidth: 820, width: '100%', margin: '0 auto' }}><Composer /></div>
+      <div style={{ maxWidth: 680, width: '100%', margin: '0 auto' }}><Composer /></div>
     </div>
   );
 }
