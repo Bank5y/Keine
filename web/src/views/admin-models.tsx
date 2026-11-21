@@ -6,7 +6,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Empty, ErrorBox } from '@/components/common';
 import { api, ApiError, type Problem } from '@/lib/api';
-import { chooseFormat, chooseProvider, keepRoute, searchLabel, searchRoutes, type Format, type Preset, type SearchRoute } from '@/lib/provider';
+import { chooseFormat, chooseProvider, keepRoute, routeChoice, searchLabel, searchRoutes, type Format, type Preset, type SearchRoute } from '@/lib/provider';
+import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
 interface Rates { input: number; cacheRead: number; cacheWrite: number; output: number; search: number }
@@ -34,7 +35,10 @@ const contextLabel = (m: SiteModel) => `${Math.round((m.contextWindow ?? 128000)
 // the server's validation problems are plain strings
 const problemsOf = (ex: ApiError): Problem[] => ex.problems.map((p) => (typeof p === 'string' ? { message: p } : p));
 
-export function AdminModels() {
+// the three views of the models tab, each at its own address
+const VIEWS: ['models' | 'turns' | 'web', string, string][] = [['models', '/admin/models', '模型'], ['turns', '/admin/models/turns', '轮次'], ['web', '/admin/models/web', '联网']];
+
+export function AdminModels({ path }: { path: string }) {
   const [st, setSt] = useState<State | null>(null);
   const [err, setErr] = useState('');
   const [editing, setEditing] = useState<SiteModel | 'new' | null>(null);
@@ -67,14 +71,20 @@ export function AdminModels() {
   const unrouted = st ? st.models.filter((m) => !m.searchReady && TURNS.some(([k]) => st.turns[k]?.modelId === m.id)) : [];
   const why = missing.length
     ? `${missing.join('、')}还没选模型, 读者看不到 AI 功能`
-    : `${unrouted.map((m) => m.displayName).join('、')}没有联网搜索路线: 配置 Tavily key, 或在模型里选「不联网」`;
+    : `${unrouted.map((m) => m.displayName).join('、')}没有联网搜索路线: 在「联网」里配置 Tavily key, 或在模型里选「不联网」`;
 
+  const view = path.startsWith('/admin/models/turns') ? 'turns' : path.startsWith('/admin/models/web') ? 'web' : 'models';
   return (
-    <div className="sections">
+    <>
+      <nav className="seg models-seg" aria-label="模型设置">
+        {VIEWS.map(([v, href, label]) => (
+          <Link key={v} href={href} keepScroll className={cn(view === v && 'on')} aria-current={view === v ? 'page' : undefined}>{label}</Link>
+        ))}
+      </nav>
       {err ? <ErrorBox message={err} /> : null}
-      <section className="section">
-        <div className="section-head"><div className="no">01</div><h2>站点模型</h2><p>分析、探索对话和同步都用这里的模型。改费率只影响之后的运行, 已记下的用量不变。</p></div>
-        <div className="min-w-0">
+      {view === 'models' ? (
+        <>
+          <p className="tab-intro">分析、探索对话和同步都用这里的模型。改费率只影响之后的运行, 已记下的用量不变。</p>
           <div className="result-bar" style={{ marginTop: 0, marginBottom: 14 }}>
             <span className="count">{st ? <><b>{st.models.length}</b>个模型</> : '正在加载…'}</span>
             <Button size="sm" variant="default" onClick={() => setEditing('new')}>添加模型</Button>
@@ -106,47 +116,69 @@ export function AdminModels() {
               ))}
             </div>
           ) : null}
+        </>
+      ) : null}
+      {view === 'turns' && st ? (
+        <>
+          <p className="tab-intro">三种轮次都选好模型后, AI 功能才对所有人出现。没配费率的模型不能选。</p>
+          <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1">
+            <span className={cn('st', st.aiAvailable ? 'ok' : 'warn')} style={{ fontSize: 13, fontWeight: 600 }}>{st.aiAvailable ? 'AI 已启用' : 'AI 未启用'}</span>
+            <span className="text-[13px] text-ink-3">{st.aiAvailable ? '读者能在阅读页使用分析和探索' : why}</span>
+          </div>
+          <div className="ledger">
+            {TURNS.map(([kind, label, desc]) => {
+              const t = st.turns[kind];
+              return (
+                <div className="turn-row" key={kind}>
+                  <div><div className="text-sm font-semibold">{label}</div><div className="text-xs text-ink-3">{desc}</div></div>
+                  <select
+                    className="select" aria-label={`${label}用的模型`} value={t?.modelId ?? ''}
+                    onChange={(e) => setTurn(kind, e.target.value ? Number(e.target.value) : null, t?.thinking ?? false)}
+                  >
+                    <option value="">未选择</option>
+                    {st.models.map((m) => <option key={m.id} value={m.id} disabled={!m.rates}>{m.displayName}{m.rates ? '' : '（未配费率, 不能选用）'}</option>)}
+                  </select>
+                  <label className="flex items-center gap-2.5 text-[13px]">
+                    <Switch.Root className="switch" checked={t?.thinking ?? false} disabled={!t} onCheckedChange={(v) => t && setTurn(kind, t.modelId, v)}>
+                      <Switch.Thumb className="switch-thumb" />
+                    </Switch.Root>
+                    思考
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+      {view === 'web' && st ? (
+        <>
+          <TavilyKey state={st.tavily} masterKey={st.masterKey} onSaved={setSt} />
+          <h3 className="usage-h">各模型的联网路线</h3>
+          {st.models.length ? (
+            <div className="usage-table-wrap">
+              <table className="usage-table routes-table">
+                <thead><tr><th scope="col">模型</th><th scope="col">设置</th><th scope="col">实际路线</th><th scope="col">状态</th></tr></thead>
+                <tbody>
+                  {st.models.map((m) => (
+                    <tr key={m.id}>
+                      <td className="who">{m.displayName}</td>
+                      <td className="plan">{routeChoice(m.searchRoute)}</td>
+                      <td className="plan">{m.searchReady ? searchLabel(m) : '—'}</td>
+                      <td className="plan">{m.searchReady
+                        ? <span className="st ok">可用</span>
+                        : <span className="st warn">没有可用路线: 配置 Tavily key, 或在模型里选「不联网」</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <Empty title="还没有模型" />}
           <div className="server-note">
             <b>抓取网页从服务器发出</b>
             <p>模型需要读网页时, 由 Keine 的服务器主动访问外部网站, 而不是读者的浏览器。</p>
           </div>
-          {st ? <TavilyKey state={st.tavily} masterKey={st.masterKey} onSaved={setSt} /> : null}
-        </div>
-      </section>
-      <section className="section">
-        <div className="section-head"><div className="no">02</div><h2>轮次类型</h2><p>三种轮次都选好模型后, AI 功能才对所有人出现。没配费率的模型不能选。</p></div>
-        {st ? (
-          <div className="min-w-0">
-            <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1">
-              <span className={cn('st', st.aiAvailable ? 'ok' : 'warn')} style={{ fontSize: 13, fontWeight: 600 }}>{st.aiAvailable ? 'AI 已启用' : 'AI 未启用'}</span>
-              <span className="text-[13px] text-ink-3">{st.aiAvailable ? '读者能在阅读页使用分析和探索' : why}</span>
-            </div>
-            <div className="ledger">
-              {TURNS.map(([kind, label, desc]) => {
-                const t = st.turns[kind];
-                return (
-                  <div className="turn-row" key={kind}>
-                    <div><div className="text-sm font-semibold">{label}</div><div className="text-xs text-ink-3">{desc}</div></div>
-                    <select
-                      className="select" aria-label={`${label}用的模型`} value={t?.modelId ?? ''}
-                      onChange={(e) => setTurn(kind, e.target.value ? Number(e.target.value) : null, t?.thinking ?? false)}
-                    >
-                      <option value="">未选择</option>
-                      {st.models.map((m) => <option key={m.id} value={m.id} disabled={!m.rates}>{m.displayName}{m.rates ? '' : '（未配费率, 不能选用）'}</option>)}
-                    </select>
-                    <label className="flex items-center gap-2.5 text-[13px]">
-                      <Switch.Root className="switch" checked={t?.thinking ?? false} disabled={!t} onCheckedChange={(v) => t && setTurn(kind, t.modelId, v)}>
-                        <Switch.Thumb className="switch-thumb" />
-                      </Switch.Root>
-                      思考
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </section>
+        </>
+      ) : null}
       <ModelDialog
         target={editing} masterKey={st?.masterKey ?? false} presets={st?.providers ?? []} formats={st?.formats ?? []}
         onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load(); }}
@@ -158,7 +190,7 @@ export function AdminModels() {
           <Button variant="default" onClick={() => deleting && remove(deleting)}>删除</Button>
         </div>
       </Dialog>
-    </div>
+    </>
   );
 }
 

@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, NotebookPen, Pencil, Sparkles, Trash2, Underline } from 'lucide-react';
+import { NotebookPen, Pencil, Sparkles, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
 import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
+import { unavailableText } from '@/lib/ai';
 import { useUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -28,15 +29,6 @@ export const NOTE_RAIL_MEDIA = '(min-width: 1440px)';
 const CARD_GAP = 8;
 
 const failed = (ex: unknown) => toast.error(ex instanceof ApiError ? ex.message : '操作失败');
-
-async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success('已复制');
-  } catch {
-    toast.error('复制失败');
-  }
-}
 
 function useMedia(query: string) {
   const [on, setOn] = useState(() => matchMedia(query).matches);
@@ -114,9 +106,10 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   const bar = useRef<HTMLDivElement>(null);
   const wide = useMedia(NOTE_RAIL_MEDIA);
   const railed = wide && !!rail;
-  // wide screens offer 分析 in place of 复制, once the assistant is set up
+  // wide screens offer 分析, greyed out with the reason until the
+  // assistant is set up ('' once it is)
   const user = useUser();
-  const canAnalyze = wide && !!user?.aiAvailable;
+  const unavailable = user?.aiAvailable ? '' : unavailableText(user?.aiProblem, user?.role === 'admin');
   const [analysis, setAnalysis] = useState<{ quote: Quote; ranges: Range[]; at: Anchor } | null>(null);
   const analyzing = useRef(false);
   analyzing.current = !!analysis;
@@ -333,7 +326,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         <span className="ann-sep" />
         <span className="ann-acts">
           <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
-          <AnalyzeOrCopy analyzable={canAnalyze} onAnalyze={() => analyze(pick.quote, [pick.range])} onCopy={() => copy(pick.quote.quote)} />
+          {wide ? <AnalyzeButton unavailable={unavailable} onAnalyze={() => analyze(pick.quote, [pick.range])} /> : null}
         </span>
       </Floating>
     );
@@ -351,7 +344,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
               <span className="ann-sep" />
               <span className="ann-acts">
                 {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
-                <AnalyzeOrCopy analyzable={canAnalyze} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} onCopy={() => copy(a.quote)} />
+                {wide ? <AnalyzeButton unavailable={unavailable} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} /> : null}
                 <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>
               </span>
             </div>
@@ -453,12 +446,17 @@ function NoteEditor({ draft, onDraft, canClear, onSave, onCancel }: { draft: str
   );
 }
 
-// AnalyzeOrCopy is 分析 where the reader can analyze the text (a wide
-// screen, the assistant set up), and 复制 elsewhere, in the same place.
-function AnalyzeOrCopy({ analyzable, onAnalyze, onCopy }: { analyzable: boolean; onAnalyze: () => void; onCopy: () => Promise<void> }) {
-  return analyzable
-    ? <button type="button" className="ann-btn analyze" onClick={onAnalyze}><Sparkles />分析</button>
-    : <button type="button" className="ann-btn" onClick={() => { void onCopy(); }}><Copy />复制</button>;
+// AnalyzeButton is 分析 on a wide screen. While the assistant is not set
+// up it stays, greyed out, and says why when pointed at or focused; it is
+// aria-disabled rather than disabled, which would take the pointer away.
+function AnalyzeButton({ unavailable, onAnalyze }: { unavailable: string; onAnalyze: () => void }) {
+  if (!unavailable) return <button type="button" className="ann-btn analyze" onClick={onAnalyze}><Sparkles />分析</button>;
+  return (
+    <span className="ann-tip-host">
+      <button type="button" className="ann-btn analyze" aria-disabled="true" aria-describedby="ann-analyze-tip"><Sparkles />分析</button>
+      <span className="ann-tip" id="ann-analyze-tip" role="tooltip">{unavailable}</span>
+    </span>
+  );
 }
 
 function Looks({ current, onPick }: { current?: string; onPick: (look: Look) => void }) {

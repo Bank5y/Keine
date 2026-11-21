@@ -217,33 +217,74 @@ func (s *Models) Turns(ctx context.Context) (map[TurnKind]TurnModel, error) {
 	return out, rows.Err()
 }
 
+// Problem is why the assistant is unavailable: turns_unmapped (Turns are
+// the turn kinds without a model), or search_unrouted (Model's search
+// route resolves to no search service).
+type Problem struct {
+	Reason string     `json:"reason"`
+	Turns  []TurnKind `json:"turns,omitempty"`
+	Model  string     `json:"model,omitempty"`
+}
+
+const (
+	ProblemTurnsUnmapped  = "turns_unmapped"
+	ProblemSearchUnrouted = "search_unrouted"
+)
+
+// Problem says why the assistant is unavailable, nil when every turn kind
+// has a model whose search route resolves (ADR 0008).
+func (s *Models) Problem(ctx context.Context) (*Problem, error) {
+	tv, err := s.Tavily(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(ctx, "SELECT t.kind, m.display_name, m.search_route, m.format, m.provider FROM turn_models t JOIN site_models m ON m.id = t.model_id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	mapped := map[TurnKind]bool{}
+	unrouted := ""
+	for rows.Next() {
+		var (
+			kind   TurnKind
+			name   string
+			route  SearchRoute
+			format string
+			p      Provider
+		)
+		if err := rows.Scan(&kind, &name, &route, &format, &p); err != nil {
+			return nil, err
+		}
+		mapped[kind] = true
+		if _, ok := Resolve(route, format, p, tv.Set); !ok && unrouted == "" {
+			unrouted = name
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var missing []TurnKind
+	for _, k := range TurnKinds {
+		if !mapped[k] {
+			missing = append(missing, k)
+		}
+	}
+	switch {
+	case len(missing) > 0:
+		return &Problem{Reason: ProblemTurnsUnmapped, Turns: missing}, nil
+	case unrouted != "":
+		return &Problem{Reason: ProblemSearchUnrouted, Model: unrouted}, nil
+	}
+	return nil, nil
+}
+
 // Available tells whether every turn kind has a model and every such
 // model a search route (or the deployer's choice of none), which is when
 // the assistant shows up for readers.
 func (s *Models) Available(ctx context.Context) (bool, error) {
-	tv, err := s.Tavily(ctx)
-	if err != nil {
-		return false, err
-	}
-	rows, err := s.db.Query(ctx, "SELECT m.search_route, m.format, m.provider FROM turn_models t JOIN site_models m ON m.id = t.model_id")
-	if err != nil {
-		return false, err
-	}
-	defer rows.Close()
-	n := 0
-	for rows.Next() {
-		var route SearchRoute
-		var format string
-		var p Provider
-		if err := rows.Scan(&route, &format, &p); err != nil {
-			return false, err
-		}
-		if _, ok := Resolve(route, format, p, tv.Set); !ok {
-			return false, nil
-		}
-		n++
-	}
-	return n == len(TurnKinds), rows.Err()
+	p, err := s.Problem(ctx)
+	return p == nil && err == nil, err
 }
 
 // validated is a ModelInput that passed validation.

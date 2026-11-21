@@ -74,7 +74,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	ai, err := s.models.Available(r.Context())
+	problem, err := s.models.Problem(r.Context())
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -94,10 +94,12 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		// AIAvailable: the assistant has a model for every turn kind, so
 		// readers get analysis and exploration.
 		AIAvailable bool `json:"aiAvailable"`
+		// AIProblem says why not, so the reader is told (nil when it is).
+		AIProblem *assistant.Problem `json:"aiProblem"`
 		assistant.Notice
 		// Credits are the reader's credits today (ADR 0010).
 		Credits credits.Account `json:"credits"`
-	}{u, ai, notice, account})
+	}{u, problem == nil, problem, notice, account})
 }
 
 // readNotice notes that the reader read the notice of what goes to

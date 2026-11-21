@@ -1,11 +1,14 @@
 import { useSyncExternalStore } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from '@/lib/api';
+import type { AIProblem } from '@/lib/ai';
 import type { Account } from '@/lib/credits';
 
 export interface User {
   id: number; username: string; role: 'user' | 'admin'; disabled: boolean; createdAt: string;
   // the assistant has a model for every turn kind (only /api/me says so)
   aiAvailable?: boolean;
+  // why not, when it is not
+  aiProblem?: AIProblem | null;
   // the reader has read what goes to third-party services (#132), and the
   // services by name: the analysis model, and where its searches go ('' for
   // none)
