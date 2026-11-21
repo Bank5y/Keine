@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react';
-import { ChevronLeft, Copy, Menu, Plus, RotateCcw, Square, Telescope, Trash2, X, ArrowUp } from 'lucide-react';
+import { ChevronLeft, Copy, FileText, Menu, Plus, RotateCcw, Square, Telescope, Trash2, X, ArrowUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Credit, documentParts, Lookups, Notice, Progress } from '@/components/analysis-popover';
 import { Confirm } from '@/components/confirm';
+import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError, api } from '@/lib/api';
 import {
@@ -45,12 +46,14 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken, on
   const [pending, setPending] = useState<Pending | null>(null);
   const [refused, setRefused] = useState<Refused | null>(null);
   const [deleting, setDeleting] = useState<DialogueNode | null>(null);
+  // the report's drawer is open over the node (#160)
+  const [reporting, setReporting] = useState(false);
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
   // the node shown may be gone (deleted with its parent)
   const node = d.nodes.find((n) => n.id === current) ?? main;
-  const want = [...pathTo(d.nodes, node.id).map((n) => String(n.id)), ...(draft ? ['draft'] : [])];
+  const want = [...pathTo(d.nodes, node.id).map((n) => String(n.id)), ...(draft ? ['draft'] : []), ...(reporting ? ['report'] : [])];
   const [layers, setLayers] = useState<Layer[]>(() => want.map((key) => ({ key, phase: 'in' })));
   const key = want.join('/');
   useEffect(() => {
@@ -61,8 +64,9 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken, on
     return () => { cancelAnimationFrame(raf); window.clearTimeout(t); };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const open = (id: number) => { setDraft(null); setRefused(null); setCurrent(id); };
+  const open = (id: number) => { setDraft(null); setReporting(false); setRefused(null); setCurrent(id); };
   const pop = () => {
+    if (reporting) { setReporting(false); return true; }
     if (draft) { setDraft(null); return true; }
     if (node.parentId != null) { open(node.parentId); return true; }
     return false;
@@ -135,6 +139,9 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken, on
         <span className="dlg-head-sub">· {d.title}</span>
         <Crumbs nodes={d.nodes} current={node.id} draft={draft} onOpen={open} />
         <span className="dlg-head-count">节点 {count}</span>
+        <button type="button" className={cn('dlg-head-report', reporting && 'on')} disabled={!!pending} aria-pressed={reporting}
+          title={pending ? '这一轮回答完以后才能生成' : '把整棵对话树整理成一份文档'}
+          aria-label="生成探索报告" onClick={() => { setDraft(null); setRefused(null); setReporting(true); }}><FileText /><span>生成探索报告</span></button>
         <button type="button" className="dlg-close" aria-label="关闭" onClick={onClose}><X /></button>
       </header>
       <div className="dlg-body">
@@ -142,8 +149,8 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken, on
           {layers.map((l) => {
             const i = live.indexOf(l);
             const at = l.phase === 'leave' ? { left: Math.min(live.length - 1, SHOWN) * SPINE, covered: false, gone: false } : spine(i, live.length, SPINE, SHOWN);
-            const n = l.key === 'draft' ? null : d.nodes.find((x) => String(x.id) === l.key) ?? null;
-            if (l.key !== 'draft' && !n) return null;
+            const n = l.key === 'draft' || l.key === 'report' ? null : d.nodes.find((x) => String(x.id) === l.key) ?? null;
+            if (l.key !== 'draft' && l.key !== 'report' && !n) return null;
             const placed = { left: at.left, zIndex: l.phase === 'leave' ? 99 : i, ['--gone' as string]: `${-SPINE * Math.max(live.length - 1 - i - SHOWN, 0)}px` };
             return (
               <Fragment key={l.key}>
@@ -151,7 +158,9 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken, on
                 <section className={cn('dlg-layer', i > 0 || l.phase === 'leave' ? 'drawer' : 'base', `phase-${l.phase}`, at.gone && 'gone')}
                   style={placed} inert={at.covered || l.phase === 'leave' || undefined}>
                   <div className={cn('dlg-layer-inner', at.covered && 'covered')}>
-                    {n ? (
+                    {l.key === 'report' ? (
+                      <ReportView exp={d.id} onBack={() => setReporting(false)} />
+                    ) : n ? (
                       <NodeView d={d} node={n} pending={pending?.layer === l.key ? pending : null} refused={refused?.layer === l.key ? refused : null}
                         busy={!!pending} onOpen={open} onFork={(f) => { setRefused(null); setDraft(f); }} onAsk={ask} onRetry={retry}
                         onBack={pop} onDelete={() => setDeleting(n)} onDocument={onDocument} />

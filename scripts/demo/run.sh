@@ -10,7 +10,7 @@
 # DEMO_MODEL_PORT, DEMO_PG_NAME and DEMO_DIR, and pass the same variables to stop.
 #
 # AI: a stand-in model endpoint (scripts/demo/fake_model.py, on DEMO_MODEL_PORT)
-# is the site model "演示模型", serving all three turn kinds, so the assistant is
+# is the site model "演示模型", serving every run kind, so the assistant is
 # available; the admin's 模型 tab shows it. Its key "bad" fails the connection test.
 #
 # Sample data (scripts/demo/seed.py): six public courses, one private course
