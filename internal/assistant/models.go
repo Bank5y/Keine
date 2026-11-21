@@ -604,6 +604,9 @@ type Turn struct {
 	Adapter  Adapter
 	Model    string
 	Thinking bool
+	// ContextWindow is the model's, in tokens (DefaultContextWindow when
+	// the admin left it unset).
+	ContextWindow int
 	// Web is the run's way to the web on the Keine tool route; nil when the
 	// deployer chose none, or on the provider route.
 	Web *WebRoute
@@ -621,16 +624,21 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 		provider        Provider
 		route           SearchRoute
 		sealed          []byte
+		window          *int
 	)
 	err := s.db.QueryRow(ctx, `
-		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking, m.search_route
+		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking, m.search_route, m.context_window
 		FROM turn_models t JOIN site_models m ON m.id = t.model_id WHERE t.kind = $1`, kind).
-		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking, &route)
+		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking, &route, &window)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Turn{}, fmt.Errorf("%w: %s is not mapped", ErrAssistantUnavailable, kind)
 	}
 	if err != nil {
 		return Turn{}, err
+	}
+	t.ContextWindow = DefaultContextWindow
+	if window != nil {
+		t.ContextWindow = *window
 	}
 	key := ""
 	if len(sealed) > 0 {

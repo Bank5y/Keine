@@ -66,6 +66,20 @@ describe('step', () => {
     expect(run({ type: 'done', title: 'A', intro: 'B', body: 'C', degraded: ['web_search'], sources: found })).not.toHaveProperty('noWeb');
   });
 
+  it('asks the reader how much of a long lesson to send', () => {
+    const length = { soft: 12952, hard: 25904, lesson: 20100, chars: 20100, full: true };
+    const s = run({ type: 'error', code: 'length_choice_required', message: '这一讲比较长。', kept: false, length });
+    expect(s).toEqual({ status: 'choose', length });
+    expect(step(s, { type: 'start' })).toEqual(initial);
+  });
+
+  it('says a run that was turned away did not start, and whether trying again can help', () => {
+    expect(run({ type: 'error', code: 'busy', message: '人多。', kept: false })).toMatchObject({ status: 'error', message: '人多。', refusal: { title: '分析没能开始', retry: true } });
+    expect(run({ type: 'error', code: 'run_in_progress', kept: false })).toMatchObject({ refusal: { title: '分析没能开始', retry: true } });
+    expect(run({ type: 'error', code: 'context_too_long', kept: false })).toMatchObject({ refusal: { title: '分析没能开始', retry: false } });
+    expect(run({ type: 'error', code: 'timeout', kept: false })).not.toHaveProperty('refusal');
+  });
+
   it('keeps what streamed when an error says so, and drops it otherwise', () => {
     const kept = run({ type: 'delta', section: 'title', text: 'Agent' }, { type: 'error', code: 'provider_error', message: '连不上。', kept: true });
     expect(kept).toEqual({ status: 'error', activities: [], message: '连不上。', parts: { title: 'Agent', intro: '', body: '' } });

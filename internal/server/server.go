@@ -53,6 +53,9 @@ type Options struct {
 	// ExtraTools are offered to every run besides the course tools. Tests
 	// put tools that fail here.
 	ExtraTools []assistant.Tool
+	// MaxRuns is how many assistant runs go at once (default
+	// assistant.DefaultMaxRuns); one more is turned away as busy.
+	MaxRuns int
 }
 
 type Server struct {
@@ -62,6 +65,8 @@ type Server struct {
 	courses       *course.Service
 	notifications *notify.Service
 	models        *assistant.Models
+	// runs keeps the assistant runs within MaxRuns, one a reader
+	runs *assistant.Gate
 	// generator helps users write a course manifest
 	generator course.Generator
 	files     storage.Store
@@ -96,6 +101,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		opts.SearchFor = search.For
 	}
 	s.models = assistant.NewModels(pool, box, opts.AdapterFor, opts.SearchFor)
+	s.runs = assistant.NewGate(opts.MaxRuns)
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()

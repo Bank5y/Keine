@@ -23,6 +23,9 @@ type apiError struct {
 	Problems any `json:"problems,omitempty"`
 	// Category is the kind of a model failure (a failed connection test).
 	Category string `json:"category,omitempty"`
+	// Length is how long a lesson is against what its model takes, when
+	// the reader has to choose how much of it to send.
+	Length any `json:"length,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -50,6 +50,7 @@ func run() error {
 		Web:            webFS,
 		MasterKey:      cfg.MasterKey,
 		RunDeadline:    time.Duration(cfg.RunDeadlineSeconds) * time.Second,
+		MaxRuns:        int(cfg.MaxRuns),
 	})
 	if err != nil {
 		return err

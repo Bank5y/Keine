@@ -7,7 +7,7 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Mermaid } from '@/components/mermaid';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { analyze, hasContent, initial, step, type AnalysisState, type Part, type Parts } from '@/lib/analysis';
+import { analyze, hasContent, initial, step, type AnalysisState, type LessonLength, type Length, type Part, type Parts } from '@/lib/analysis';
 import type { Quote } from '@/lib/annotations';
 import { readNotice, useUser } from '@/lib/session';
 import { progressLines, summary, type ToolActivity } from '@/lib/progress';
@@ -57,14 +57,17 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
   // run with 分析 (#132)
   const [started, setStarted] = useState(!!user?.aiNoticeRead);
   const [noticeOpen, setNoticeOpen] = useState(false);
+  // how much of a long lesson to send, once the reader chose (#131)
+  const [length, setLength] = useState<Length>();
+  const [choice, setChoice] = useState<Length>('related');
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!started) return undefined;
     const ctl = new AbortController();
-    void analyze(courseId, lessonId, quote, dispatch, ctl.signal);
+    void analyze(courseId, lessonId, quote, length, dispatch, ctl.signal);
     return () => ctl.abort();
-  }, [courseId, lessonId, quote, attempt, started]);
+  }, [courseId, lessonId, quote, attempt, started, length]);
 
   const start = () => {
     setStarted(true);
@@ -92,6 +95,34 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
   const retry = () => { dispatch({ type: 'start' }); setAttempt((n) => n + 1); };
   const left = Math.max(16, Math.min(at.left - 3, innerWidth - WIDTH - 16) + scrollX);
 
+  const credit = <Credit provider={user?.aiProvider} open={noticeOpen} onToggle={() => setNoticeOpen((v) => !v)} />;
+  let main: ReactNode, foot: ReactNode;
+  if (!started) {
+    main = (
+      <div className="analysis-body">
+        <p className="analysis-lead">分析会把下面这些内容发给 {user?.aiProvider || '模型服务'}，由它生成解读。</p>
+        <Notice search={user?.aiSearch} className="analysis-notice" />
+      </div>
+    );
+    foot = (
+      <div className="analysis-foot">
+        <span>AI 生成 · {user?.aiProvider || '模型服务'}</span>
+        <Button size="sm" variant="default" onClick={start}><Sparkles />分析</Button>
+      </div>
+    );
+  } else if (state.status === 'choose') {
+    main = <Choose length={state.length} choice={choice} onChange={setChoice} />;
+    foot = (
+      <div className="analysis-foot">
+        {credit}
+        <Button size="sm" variant="default" onClick={() => { dispatch({ type: 'start' }); setLength(choice); setAttempt((n) => n + 1); }}><Sparkles />分析</Button>
+      </div>
+    );
+  } else {
+    main = <Body state={state} />;
+    foot = <Foot state={state} onRetry={retry}>{credit}</Foot>;
+  }
+
   return (
     <>
       {createPortal(
@@ -102,28 +133,14 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
             <span className="analysis-quote" title={quote.quote}>「{quote.quote}」</span>
             <button type="button" className="analysis-close" aria-label="关闭" onClick={requestClose}><X /></button>
           </div>
-          {started ? <Body state={state} /> : (
-            <div className="analysis-body">
-              <p className="analysis-lead">分析会把下面这些内容发给 {user?.aiProvider || '模型服务'}，由它生成解读。</p>
-              <Notice search={user?.aiSearch} className="analysis-notice" />
-            </div>
-          )}
+          {main}
           {started && noticeOpen ? (
             <div className="analysis-notice-panel" id="analysis-notice">
               <div className="analysis-notice-title">发给第三方服务的内容</div>
               <Notice search={user?.aiSearch} />
             </div>
           ) : null}
-          {started ? (
-            <Foot state={state} onRetry={retry}>
-              <Credit provider={user?.aiProvider} open={noticeOpen} onToggle={() => setNoticeOpen((v) => !v)} />
-            </Foot>
-          ) : (
-            <div className="analysis-foot">
-              <span>AI 生成 · {user?.aiProvider || '模型服务'}</span>
-              <Button size="sm" variant="default" onClick={start}><Sparkles />分析</Button>
-            </div>
-          )}
+          {foot}
         </div>,
         document.body,
       )}
@@ -174,7 +191,7 @@ function Lookups({ activities }: { activities: ToolActivity[] }) {
   );
 }
 
-function Body({ state }: { state: AnalysisState }) {
+function Body({ state }: { state: Exclude<AnalysisState, { status: 'choose' }> }) {
   if (state.status === 'loading') {
     const looking = state.activities.length > 0;
     return (
@@ -211,6 +228,31 @@ function Body({ state }: { state: AnalysisState }) {
   );
 }
 
+// Choose asks how much of a long lesson to send (#131): the sections
+// around the selection by default, or the whole lesson while it fits.
+function Choose({ length, choice, onChange }: { length: LessonLength; choice: Length; onChange: (l: Length) => void }) {
+  const options: { id: Length; title: string; note: string; disabled?: boolean }[] = [
+    { id: 'related', title: '只看相关小节', note: '选区所在小节、相邻小节和本讲小节目录' },
+    length.full
+      ? { id: 'full', title: '完整正文', note: '分析更完整，但更慢、更耗积分' }
+      : { id: 'full', title: '完整正文', note: '超过了模型能读的长度，不能选', disabled: true },
+  ];
+  return (
+    <div className="analysis-body">
+      <p className="analysis-lead">这一讲比较长（约 {length.chars >= 10000 ? `${(length.chars / 10000).toFixed(1)} 万` : Math.round(length.chars / 100) * 100} 字）。选择这次分析要放入多少正文：</p>
+      <div className="length-options" role="radiogroup" aria-label="正文长度">
+        {options.map((o) => (
+          <label key={o.id} className={cn('length-option', choice === o.id && 'checked', o.disabled && 'disabled')}>
+            <input type="radio" name="length" value={o.id} checked={choice === o.id} disabled={o.disabled} onChange={() => onChange(o.id)} />
+            <span className="length-option-title">{o.title}{o.id === 'related' ? <small>默认</small> : null}</span>
+            <span className="length-option-note">{o.note}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Notice says what goes to third-party services and what does not (#132);
 // search is where searches go ('' or absent when the run has no web).
 function Notice({ search, className }: { search?: string; className?: string }) {
@@ -237,17 +279,18 @@ function Credit({ provider, open, onToggle }: { provider?: string; open: boolean
 
 // Foot ends the popover: credit (the service that wrote the answer) on the
 // left, what can be done on the right.
-function Foot({ state, onRetry, children: credit }: { state: AnalysisState; onRetry: () => void; children: ReactNode }) {
+function Foot({ state, onRetry, children: credit }: { state: Exclude<AnalysisState, { status: 'choose' }>; onRetry: () => void; children: ReactNode }) {
   if (state.status === 'error') {
+    const { title, retry } = state.refusal ?? { title: '分析没能完成', retry: true };
     return (
       <>
         <div className={cn('analysis-error', hasContent(state) && 'after-content')} role="alert">
-          <div className="analysis-error-title">分析没能完成</div>
+          <div className="analysis-error-title">{title}</div>
           <div className="analysis-error-text">{state.message}</div>
         </div>
         <div className="analysis-foot">
           {credit}
-          <button type="button" className="analysis-retry" onClick={onRetry}><RotateCcw />重试</button>
+          {retry ? <button type="button" className="analysis-retry" onClick={onRetry}><RotateCcw />重试</button> : null}
         </div>
       </>
     );

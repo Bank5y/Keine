@@ -6,6 +6,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/assistant"
@@ -18,6 +21,18 @@ type analysisRequest struct {
 	Quote  string `json:"quote"`
 	Prefix string `json:"prefix"`
 	Suffix string `json:"suffix"`
+	// Length is the reader's choice of how much of a long lesson to send.
+	Length assistant.Length `json:"length"`
+}
+
+// lessonLength is a lesson past the soft limit, as the reader chooses how
+// much of it to send: the limits and the lesson in tokens, its length in
+// characters, and whether the whole of it still fits.
+type lessonLength struct {
+	assistant.Limits
+	Lesson int  `json:"lesson"`
+	Chars  int  `json:"chars"`
+	Full   bool `json:"full"`
 }
 
 // analyze runs an analysis of a selection (ADR 0008). Whatever stops it
@@ -31,6 +46,10 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 	var in analysisRequest
 	if !readJSON(w, r, &in) {
+		return
+	}
+	if !assistant.ValidLength(in.Length) {
+		writeError(w, http.StatusBadRequest, "bad_request", "请求格式不正确")
 		return
 	}
 	ctx := r.Context()
@@ -47,6 +66,41 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("selection not marked in the lesson source", "course", id, "lesson", lessonID)
 	}
 
+	limits := assistant.LimitsOf(turn)
+	in2 := passage(p, in.Quote)
+	if size := assistant.EstimateTokens(p.Lesson.Markdown); size > limits.Soft {
+		switch in.Length {
+		case assistant.LengthUnset:
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"error": apiError{
+				Code: "length_choice_required", Message: "这一讲比较长，请选择要放入多少正文。",
+				Length: lessonLength{Limits: limits, Lesson: size, Chars: utf8.RuneCountInString(p.Lesson.Markdown), Full: size <= limits.Hard},
+			}})
+			return
+		case assistant.LengthFull:
+			if size > limits.Hard {
+				writeContextTooLong(w)
+				return
+			}
+		case assistant.LengthRelated:
+			in2 = related(p, in2)
+		}
+	}
+	msgs := assistant.AnalysisPrompt.Messages(in2)
+	if assistant.EstimateMessages(msgs) > limits.Input {
+		writeContextTooLong(w)
+		return
+	}
+	leave, err := s.runs.Enter(currentUser(r).ID)
+	switch {
+	case errors.Is(err, assistant.ErrBusy):
+		writeError(w, http.StatusServiceUnavailable, "busy", "现在使用的人比较多，请稍后再试。")
+		return
+	case errors.Is(err, assistant.ErrRunInProgress):
+		writeError(w, http.StatusConflict, "run_in_progress", "你有一个分析还在进行，结束后再试。")
+		return
+	}
+	defer leave()
+
 	sse, ok := startEvents(w)
 	if !ok {
 		writeInternal(w, r, errors.New("response cannot stream"))
@@ -59,7 +113,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		Now:      s.opts.Now,
 		Deadline: s.opts.RunDeadline,
 	}
-	a, meta, err := assistant.Analyze(ctx, run, assistant.AnalysisPrompt.Messages(passage(p, in.Quote)), assistant.Sink{
+	a, meta, err := assistant.Analyze(ctx, run, msgs, assistant.Sink{
 		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
 		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
 	})
@@ -131,6 +185,55 @@ func passage(p course.Passage, quote string) assistant.Passage {
 		out.Outline = append(out.Outline, oc)
 	}
 	return out
+}
+
+func writeContextTooLong(w http.ResponseWriter) {
+	writeError(w, http.StatusUnprocessableEntity, "context_too_long", "这次要发送的内容超过了模型能读的长度，可以改选「只看相关小节」或缩短选区。")
+}
+
+// related narrows a passage to the section of the selection and the ones
+// next to it at its level, with the lesson's outline of sections (#131).
+// Without a section around the selection, the passage stays whole.
+func related(p course.Passage, in assistant.Passage) assistant.Passage {
+	md := p.Lesson.Markdown
+	all := anchor.Sections(md)
+	// the lesson's own title heads no section of it
+	var sections []anchor.Section
+	for _, s := range all {
+		if strings.TrimSpace(s.Title) != strings.TrimSpace(p.Lesson.Title) {
+			sections = append(sections, s)
+		}
+	}
+	at := -1
+	if p.Marked {
+		for i, s := range sections {
+			if s.Start <= p.Start && p.Start < s.End {
+				at = i // the innermost comes last
+			}
+		}
+	}
+	if at < 0 {
+		return in
+	}
+	top := sections[0].Level
+	for _, s := range sections {
+		top = min(top, s.Level)
+	}
+	var level []int
+	for i, s := range sections {
+		if s.Level == sections[at].Level {
+			level = append(level, i)
+		}
+	}
+	pos := slices.Index(level, at)
+	from, to := sections[level[max(pos-1, 0)]].Start, sections[level[min(pos+1, len(level)-1)]].End
+	text := md[from:p.Start] + assistant.SelectedOpen + md[p.Start:p.End] + assistant.SelectedClose + md[p.End:to]
+	outline := make([]string, len(sections))
+	for i, s := range sections {
+		outline[i] = strings.Repeat("  ", s.Level-top) + "- " + s.Title
+	}
+	in.Lesson, in.Sections = text, outline
+	return in
 }
 
 // courseLibrary is a course as its reader sees it, for the course tools:
