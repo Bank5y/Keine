@@ -92,7 +92,7 @@ func TestAPinnedAnalysisBecomesAnExplorationOfTheLesson(t *testing.T) {
 	r := pin(bob, id, lesson, analysisID(t, bob, id, lesson, agentQuote))
 	expectStatus(t, r, http.StatusCreated)
 	created := r.json()
-	if created["title"] != "Agent（智能体）" || created["intro"] != "能自主规划步骤、调用工具的大模型应用。" || created["quote"] != "Agent" {
+	if created["title"] != "Agent（智能体）" || created["concept"] != "能自主规划步骤、调用工具的大模型应用。" || created["quote"] != "Agent" {
 		t.Fatalf("created %+v", created)
 	}
 
@@ -101,7 +101,7 @@ func TestAPinnedAnalysisBecomesAnExplorationOfTheLesson(t *testing.T) {
 		t.Fatalf("expected the pinned exploration in the list, got %+v", list)
 	}
 	e := list[0]
-	if e["id"] != created["id"] || e["title"] != "Agent（智能体）" || e["intro"] != created["intro"] {
+	if e["id"] != created["id"] || e["title"] != "Agent（智能体）" || e["concept"] != created["concept"] {
 		t.Fatalf("listed %+v", e)
 	}
 	rg, _ := e["range"].(map[string]any)
@@ -192,7 +192,7 @@ func TestAnAnalysisOverlappingAnExplorationMadeMeanwhileIsNotPinned(t *testing.T
 			panic(err)
 		}
 		defer conn.Close(ctx)
-		if _, err := conn.Exec(ctx, `INSERT INTO explorations (user_id, course_id, lesson_key, quote, prefix, suffix, title, intro, meaning, snapshot)
+		if _, err := conn.Exec(ctx, `INSERT INTO explorations (user_id, course_id, lesson_key, quote, prefix, suffix, title, concept, explanation, snapshot)
 			SELECT u.id, c.id, 'l01', '这里的 Agent', '', '', '别处', '别处固定的。', '', '{}' FROM users u, courses c WHERE u.username = 'bob'`); err != nil {
 			panic(err)
 		}

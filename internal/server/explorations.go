@@ -169,7 +169,7 @@ func (s *Server) pinExploration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e, err := s.courses.Pin(r.Context(), user, id, lessonID, course.Pin{
-		Quote: a.quote, Title: a.analysis.Title, Intro: a.analysis.Intro, Meaning: a.analysis.Body,
+		Quote: a.quote, Title: a.analysis.Title, Concept: a.analysis.Concept, Explanation: a.analysis.Explanation,
 		Snapshot: a.snapshot, Reply: a.analysis.Reply(), Meta: a.meta,
 	})
 	if !writeExplorationError(w, r, err) {

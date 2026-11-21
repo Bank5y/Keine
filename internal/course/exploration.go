@@ -38,7 +38,8 @@ type Exploration struct {
 	Suffix string           `json:"suffix"`
 	State  ExplorationState `json:"state"`
 	Title  string           `json:"title"`
-	Intro  string           `json:"intro"`
+	// Concept is the document's one sentence the card shows
+	Concept string `json:"concept"`
 	// Range is where the quote sits in the lesson text as it is now.
 	Range *anchor.Range `json:"range"`
 	// Nodes is how many nodes its dialogue has besides the main one (#137)
@@ -64,7 +65,7 @@ func (s *Service) Explorations(ctx context.Context, viewer auth.User, courseID, 
 }
 
 func placedExplorations(ctx context.Context, q querier, userID, courseID int64, lessonKey string, text anchor.Text) ([]Exploration, error) {
-	rows, err := q.Query(ctx, `SELECT id, quote, prefix, suffix, state, title, intro, created_at,
+	rows, err := q.Query(ctx, `SELECT id, quote, prefix, suffix, state, title, concept, created_at,
 			(SELECT count(*) FROM exploration_nodes n WHERE n.exploration_id = e.id AND n.kind <> 'main')
 		FROM explorations e
 		WHERE user_id = $1 AND course_id = $2 AND lesson_key = $3 AND state = 'attached' ORDER BY created_at, id`, userID, courseID, lessonKey)
@@ -75,7 +76,7 @@ func placedExplorations(ctx context.Context, q querier, userID, courseID int64, 
 	out := []Exploration{}
 	for rows.Next() {
 		var e Exploration
-		if err := rows.Scan(&e.ID, &e.Quote, &e.Prefix, &e.Suffix, &e.State, &e.Title, &e.Intro, &e.CreatedAt, &e.Nodes); err != nil {
+		if err := rows.Scan(&e.ID, &e.Quote, &e.Prefix, &e.Suffix, &e.State, &e.Title, &e.Concept, &e.CreatedAt, &e.Nodes); err != nil {
 			return nil, err
 		}
 		if r, ok := text.Locate(anchor.Quote{Exact: e.Quote, Prefix: e.Prefix, Suffix: e.Suffix}); ok {
@@ -109,8 +110,8 @@ func (s *Service) CheckOverlap(ctx context.Context, viewer auth.User, p Passage)
 
 // limits on an exploration document's head, in characters (#123)
 const (
-	maxTitle = 100
-	maxIntro = 300
+	maxTitle   = 100
+	maxConcept = 300
 	// the main node is named after the start of the selection
 	maxNodeName = 40
 )
@@ -119,11 +120,11 @@ const (
 // made on, its three parts, the request it ran on and its reply, and the
 // turn's metadata. Snapshot and Meta are stored as JSON.
 type Pin struct {
-	Quote                 anchor.Quote
-	Title, Intro, Meaning string
-	Snapshot              any
-	Reply                 string
-	Meta                  any
+	Quote                       anchor.Quote
+	Title, Concept, Explanation string
+	Snapshot                    any
+	Reply                       string
+	Meta                        any
 }
 
 // Pin keeps an analysis as one of the viewer's explorations: in one
@@ -132,8 +133,8 @@ type Pin struct {
 // lesson text and overlap none of the viewer's explorations, whatever was
 // made there since the analysis.
 func (s *Service) Pin(ctx context.Context, viewer auth.User, courseID, lessonID int64, in Pin) (Exploration, error) {
-	if in.Title == "" || in.Intro == "" || utf8.RuneCountInString(in.Title) > maxTitle || utf8.RuneCountInString(in.Intro) > maxIntro ||
-		utf8.RuneCountInString(in.Meaning) > maxNote || !validQuote(in.Quote.Exact, in.Quote.Prefix, in.Quote.Suffix) {
+	if in.Title == "" || in.Concept == "" || utf8.RuneCountInString(in.Title) > maxTitle || utf8.RuneCountInString(in.Concept) > maxConcept ||
+		utf8.RuneCountInString(in.Explanation) > maxNote || !validQuote(in.Quote.Exact, in.Quote.Prefix, in.Quote.Suffix) {
 		return Exploration{}, ErrBadInput
 	}
 	snapshot, err := json.Marshal(in.Snapshot)
@@ -153,7 +154,7 @@ func (s *Service) Pin(ctx context.Context, viewer auth.User, courseID, lessonID 
 	if !ok {
 		return Exploration{}, ErrQuoteNotFound
 	}
-	e := Exploration{Quote: in.Quote.Exact, Prefix: in.Quote.Prefix, Suffix: in.Quote.Suffix, State: ExplorationAttached, Title: in.Title, Intro: in.Intro, Range: &r}
+	e := Exploration{Quote: in.Quote.Exact, Prefix: in.Quote.Prefix, Suffix: in.Quote.Suffix, State: ExplorationAttached, Title: in.Title, Concept: in.Concept, Range: &r}
 	err = s.tx(ctx, func(tx pgx.Tx) error {
 		// one pin of the viewer's at a time, so two never overlap
 		if _, err := tx.Exec(ctx, "SELECT 1 FROM users WHERE id = $1 FOR UPDATE", viewer.ID); err != nil {
@@ -162,9 +163,9 @@ func (s *Service) Pin(ctx context.Context, viewer auth.User, courseID, lessonID 
 		if err := overlapping(ctx, tx, viewer.ID, courseID, l.Key, text, r); err != nil {
 			return err
 		}
-		if err := tx.QueryRow(ctx, `INSERT INTO explorations (user_id, course_id, lesson_key, quote, prefix, suffix, title, intro, meaning, snapshot)
+		if err := tx.QueryRow(ctx, `INSERT INTO explorations (user_id, course_id, lesson_key, quote, prefix, suffix, title, concept, explanation, snapshot)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at`,
-			viewer.ID, courseID, l.Key, in.Quote.Exact, in.Quote.Prefix, in.Quote.Suffix, in.Title, in.Intro, in.Meaning, snapshot).Scan(&e.ID, &e.CreatedAt); err != nil {
+			viewer.ID, courseID, l.Key, in.Quote.Exact, in.Quote.Prefix, in.Quote.Suffix, in.Title, in.Concept, in.Explanation, snapshot).Scan(&e.ID, &e.CreatedAt); err != nil {
 			return err
 		}
 		var node int64
