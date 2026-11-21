@@ -39,7 +39,7 @@ func (s *Server) modelsState(w http.ResponseWriter, r *http.Request) (map[string
 		writeInternal(w, r, err)
 		return nil, false
 	}
-	available, err := s.models.Available(ctx)
+	problem, err := s.models.Problem(ctx)
 	if err != nil {
 		writeInternal(w, r, err)
 		return nil, false
@@ -55,7 +55,8 @@ func (s *Server) modelsState(w http.ResponseWriter, r *http.Request) (map[string
 	return map[string]any{
 		"models":      models,
 		"turns":       out,
-		"aiAvailable": available,
+		"aiAvailable": problem == nil,
+		"problem":     problem,
 		"tavily":      tavily,
 		"masterKey":   s.models.CanStoreKeys(),
 		"providers":   assistant.ProviderPresets,

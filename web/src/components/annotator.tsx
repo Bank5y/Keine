@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { NotebookPen, Pencil, Sparkles, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
@@ -109,7 +109,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   // wide screens offer 分析, greyed out with the reason until the
   // assistant is set up ('' once it is)
   const user = useUser();
-  const unavailable = user?.aiAvailable ? '' : unavailableText(user?.aiProblem, user?.role === 'admin');
+  const unavailable = !user || user.aiAvailable ? '' : unavailableText(user.aiProblem, user.role === 'admin');
   const [analysis, setAnalysis] = useState<{ quote: Quote; ranges: Range[]; at: Anchor } | null>(null);
   const analyzing = useRef(false);
   analyzing.current = !!analysis;
@@ -450,11 +450,12 @@ function NoteEditor({ draft, onDraft, canClear, onSave, onCancel }: { draft: str
 // up it stays, greyed out, and says why when pointed at or focused; it is
 // aria-disabled rather than disabled, which would take the pointer away.
 function AnalyzeButton({ unavailable, onAnalyze }: { unavailable: string; onAnalyze: () => void }) {
+  const tip = useId();
   if (!unavailable) return <button type="button" className="ann-btn analyze" onClick={onAnalyze}><Sparkles />分析</button>;
   return (
     <span className="ann-tip-host">
-      <button type="button" className="ann-btn analyze" aria-disabled="true" aria-describedby="ann-analyze-tip"><Sparkles />分析</button>
-      <span className="ann-tip" id="ann-analyze-tip" role="tooltip">{unavailable}</span>
+      <button type="button" className="ann-btn analyze" aria-disabled="true" aria-describedby={tip}><Sparkles />分析</button>
+      <span className="ann-tip" id={tip} role="tooltip">{unavailable}</span>
     </span>
   );
 }

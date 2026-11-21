@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Empty, ErrorBox } from '@/components/common';
 import { api, ApiError, type Problem } from '@/lib/api';
 import { chooseFormat, chooseProvider, keepRoute, routeChoice, searchLabel, searchRoutes, type Format, type Preset, type SearchRoute } from '@/lib/provider';
+import { problemText, TURN_NAMES, type AIProblem, type TurnKind } from '@/lib/ai';
 import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
@@ -16,17 +17,16 @@ interface SiteModel {
   contextWindow: number | null; rates: Rates | null; keyLast4: string;
   searchRoute: SearchRoute; search: SearchRoute; searchReady: boolean;
 }
-type TurnKind = 'analysis' | 'followup' | 'sync';
 interface TurnModel { modelId: number; thinking: boolean }
 interface State {
-  models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; masterKey: boolean; providers: Preset[]; formats: Format[];
+  models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; problem: AIProblem | null; masterKey: boolean; providers: Preset[]; formats: Format[];
   tavily: { set: boolean; keyLast4: string };
 }
 
 const TURNS: [TurnKind, string, string][] = [
-  ['analysis', '分析', '读者选中原文点「分析」'],
-  ['followup', '后续轮', '在探索对话里接着问'],
-  ['sync', '同步', '把讨论整理进探索文档'],
+  ['analysis', TURN_NAMES.analysis, '读者选中原文点「分析」'],
+  ['followup', TURN_NAMES.followup, '在探索对话里接着问'],
+  ['sync', TURN_NAMES.sync, '把讨论整理进探索文档'],
 ];
 const RATE_FIELDS: [keyof Rates, string][] = [['input', '输入'], ['cacheRead', '缓存命中'], ['cacheWrite', '缓存写入'], ['output', '输出'], ['search', '搜索']];
 
@@ -66,12 +66,6 @@ export function AdminModels({ path }: { path: string }) {
     }
   }
 
-  const missing = st ? TURNS.filter(([k]) => !st.turns[k]).map(([, label]) => label) : [];
-  // mapped models whose search route resolves to nothing
-  const unrouted = st ? st.models.filter((m) => !m.searchReady && TURNS.some(([k]) => st.turns[k]?.modelId === m.id)) : [];
-  const why = missing.length
-    ? `${missing.join('、')}还没选模型, 读者看不到 AI 功能`
-    : `${unrouted.map((m) => m.displayName).join('、')}没有联网搜索路线: 在「联网」里配置 Tavily key, 或在模型里选「不联网」`;
 
   const view = path.startsWith('/admin/models/turns') ? 'turns' : path.startsWith('/admin/models/web') ? 'web' : 'models';
   return (
@@ -123,7 +117,7 @@ export function AdminModels({ path }: { path: string }) {
           <p className="tab-intro">三种轮次都选好模型后, AI 功能才对所有人出现。没配费率的模型不能选。</p>
           <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1">
             <span className={cn('st', st.aiAvailable ? 'ok' : 'warn')} style={{ fontSize: 13, fontWeight: 600 }}>{st.aiAvailable ? 'AI 已启用' : 'AI 未启用'}</span>
-            <span className="text-[13px] text-ink-3">{st.aiAvailable ? '读者能在阅读页使用分析和探索' : why}</span>
+            <span className="text-[13px] text-ink-3">{st.aiAvailable ? '读者能在阅读页使用分析和探索' : problemText(st.problem) ?? '在这里检查配置。'}</span>
           </div>
           <div className="ledger">
             {TURNS.map(([kind, label, desc]) => {

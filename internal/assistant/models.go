@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -217,18 +218,20 @@ func (s *Models) Turns(ctx context.Context) (map[TurnKind]TurnModel, error) {
 	return out, rows.Err()
 }
 
-// Problem is why the assistant is unavailable: turns_unmapped (Turns are
-// the turn kinds without a model), or search_unrouted (Model's search
-// route resolves to no search service).
+// Problem is why the assistant is unavailable: some turn kinds have no
+// model (Turns), or some mapped models' search routes resolve to no
+// search service (Models, by display name).
 type Problem struct {
-	Reason string     `json:"reason"`
-	Turns  []TurnKind `json:"turns,omitempty"`
-	Model  string     `json:"model,omitempty"`
+	Reason ProblemReason `json:"reason"`
+	Turns  []TurnKind    `json:"turns,omitempty"`
+	Models []string      `json:"models,omitempty"`
 }
 
+type ProblemReason string
+
 const (
-	ProblemTurnsUnmapped  = "turns_unmapped"
-	ProblemSearchUnrouted = "search_unrouted"
+	ProblemTurnsUnmapped  ProblemReason = "turns_unmapped"
+	ProblemSearchUnrouted ProblemReason = "search_unrouted"
 )
 
 // Problem says why the assistant is unavailable, nil when every turn kind
@@ -244,7 +247,7 @@ func (s *Models) Problem(ctx context.Context) (*Problem, error) {
 	}
 	defer rows.Close()
 	mapped := map[TurnKind]bool{}
-	unrouted := ""
+	var unrouted []string
 	for rows.Next() {
 		var (
 			kind   TurnKind
@@ -257,8 +260,8 @@ func (s *Models) Problem(ctx context.Context) (*Problem, error) {
 			return nil, err
 		}
 		mapped[kind] = true
-		if _, ok := Resolve(route, format, p, tv.Set); !ok && unrouted == "" {
-			unrouted = name
+		if _, ok := Resolve(route, format, p, tv.Set); !ok && !slices.Contains(unrouted, name) {
+			unrouted = append(unrouted, name)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -273,8 +276,9 @@ func (s *Models) Problem(ctx context.Context) (*Problem, error) {
 	switch {
 	case len(missing) > 0:
 		return &Problem{Reason: ProblemTurnsUnmapped, Turns: missing}, nil
-	case unrouted != "":
-		return &Problem{Reason: ProblemSearchUnrouted, Model: unrouted}, nil
+	case len(unrouted) > 0:
+		slices.Sort(unrouted)
+		return &Problem{Reason: ProblemSearchUnrouted, Models: unrouted}, nil
 	}
 	return nil, nil
 }

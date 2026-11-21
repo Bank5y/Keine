@@ -91,15 +91,24 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, struct {
 		auth.User
-		// AIAvailable: the assistant has a model for every turn kind, so
-		// readers get analysis and exploration.
+		// AIAvailable: every turn kind has a model whose search route
+		// resolves, so readers get analysis and exploration.
 		AIAvailable bool `json:"aiAvailable"`
-		// AIProblem says why not, so the reader is told (nil when it is).
+		// AIProblem says why not, to the admin only, who can fix it; a
+		// reader is only told it is not set up.
 		AIProblem *assistant.Problem `json:"aiProblem"`
 		assistant.Notice
 		// Credits are the reader's credits today (ADR 0010).
 		Credits credits.Account `json:"credits"`
-	}{u, problem == nil, problem, notice, account})
+	}{u, problem == nil, adminOnly(u, problem), notice, account})
+}
+
+// adminOnly is p for the admin, nil for anyone else.
+func adminOnly(u auth.User, p *assistant.Problem) *assistant.Problem {
+	if u.IsAdmin() {
+		return p
+	}
+	return nil
 }
 
 // readNotice notes that the reader read the notice of what goes to
