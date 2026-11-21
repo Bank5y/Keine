@@ -79,6 +79,9 @@ type Turn struct {
 	Reply     string    `json:"reply"`
 	Meta      TurnMeta  `json:"meta"`
 	CreatedAt time.Time `json:"createdAt"`
+	// NodeKind is the kind of the turn's node, so a chain of turns tells
+	// which turn forked which kind of node
+	NodeKind NodeKind `json:"-"`
 }
 
 // Question is what the reader asked, with what they attached to it.
@@ -198,6 +201,7 @@ func dialogue(ctx context.Context, q querier, explorationID int64) ([]Node, erro
 		if t.Meta.Sources == nil {
 			t.Meta.Sources = []json.RawMessage{}
 		}
+		t.NodeKind = nodes[at[node]].Kind
 		nodes[at[node]].Turns = append(nodes[at[node]].Turns, t)
 	}
 	return nodes, rows.Err()
