@@ -26,7 +26,8 @@ interface State {
 const TURNS: [TurnKind, string, string][] = [
   ['analysis', TURN_NAMES.analysis, '读者选中原文点「分析」'],
   ['followup', TURN_NAMES.followup, '在探索对话里接着问'],
-  ['sync', TURN_NAMES.sync, '把讨论整理进探索文档'],
+  ['report', TURN_NAMES.report, '在探索对话里生成探索报告'],
+  ['concept_index', TURN_NAMES.concept_index, '为课程版本建立概念索引'],
 ];
 const RATE_FIELDS: [keyof Rates, string][] = [['input', '输入'], ['cacheRead', '缓存命中'], ['cacheWrite', '缓存写入'], ['output', '输出'], ['search', '搜索']];
 
@@ -78,12 +79,12 @@ export function AdminModels({ path }: { path: string }) {
       {err ? <ErrorBox message={err} /> : null}
       {view === 'models' ? (
         <>
-          <p className="tab-intro">分析、探索对话和同步都用这里的模型。改费率只影响之后的运行, 已记下的用量不变。</p>
+          <p className="tab-intro">分析、探索对话、探索报告和概念索引都用这里的模型。改费率只影响之后的运行, 已记下的用量不变。</p>
           <div className="result-bar" style={{ marginTop: 0, marginBottom: 14 }}>
             <span className="count">{st ? <><b>{st.models.length}</b>个模型</> : '正在加载…'}</span>
             <Button size="sm" variant="default" onClick={() => setEditing('new')}>添加模型</Button>
           </div>
-          {st && !st.models.length ? <Empty title="还没有模型">添加一个 OpenAI 兼容或 Anthropic Messages 格式的模型, 再给三种轮次选上它。</Empty> : null}
+          {st && !st.models.length ? <Empty title="还没有模型">添加一个 OpenAI 兼容或 Anthropic Messages 格式的模型, 再给四种轮次选上它。</Empty> : null}
           {st?.models.length ? (
             <div className="ledger">
               {st.models.map((m) => (
@@ -114,7 +115,7 @@ export function AdminModels({ path }: { path: string }) {
       ) : null}
       {view === 'turns' && st ? (
         <>
-          <p className="tab-intro">三种轮次都选好模型后, AI 功能才对所有人出现。没配费率的模型不能选。</p>
+          <p className="tab-intro">四种轮次都选好模型后, AI 功能才对所有人出现。没配费率的模型不能选。</p>
           <div className="mb-4 flex flex-wrap items-baseline gap-x-5 gap-y-1">
             <span className={cn('st', st.aiAvailable ? 'ok' : 'warn')} style={{ fontSize: 13, fontWeight: 600 }}>{st.aiAvailable ? 'AI 已启用' : 'AI 未启用'}</span>
             <span className="text-[13px] text-ink-3">{st.aiAvailable ? '读者能在阅读页使用分析和探索' : problemText(st.problem) ?? '在这里检查配置。'}</span>
