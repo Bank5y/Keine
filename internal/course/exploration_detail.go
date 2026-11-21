@@ -54,6 +54,10 @@ const (
 	NodeDivergent NodeKind = "divergent"
 )
 
+// Openable tells whether a reader can open a node of this kind: any but
+// the main one, which pinning makes.
+func (k NodeKind) Openable() bool { return k == NodeChild || k == NodeBranch || k == NodeDivergent }
+
 // Node is a line of turns in an exploration dialogue. Every node but the
 // main one forks from a turn of its parent.
 type Node struct {
@@ -83,22 +87,52 @@ type Question struct {
 	Attachments []Attachment `json:"attachments"`
 }
 
-// Attachment is a typed part of a question: "selection" (a passage of the
-// lesson, or of a reply a node forked from) is the only kind so far.
+// Attachment is a typed part of a question (ADR 0009).
 type Attachment struct {
-	Kind string `json:"kind"`
-	Text string `json:"text"`
+	Kind AttachmentKind `json:"kind"`
+	Text string         `json:"text"`
 }
+
+// AttachmentKind is what an attachment is.
+type AttachmentKind string
+
+// AttachSelection is a passage the reader selected: of the lesson, or of
+// the reply a node forked from.
+const AttachSelection AttachmentKind = "selection"
+
+// Selections are the passages a question attaches.
+func (q Question) Selections() []string {
+	var out []string
+	for _, a := range q.Attachments {
+		if a.Kind == AttachSelection {
+			out = append(out, a.Text)
+		}
+	}
+	return out
+}
+
+// Interruption is why a turn's reply stops short (#136); "" when it is
+// whole.
+type Interruption string
+
+const (
+	// InterruptedCredits: the reader's credits ran out during the run
+	InterruptedCredits Interruption = "credits_exhausted"
+	InterruptedTimeout Interruption = "timeout"
+	// InterruptedTruncated: the reply reached the output limit
+	InterruptedTruncated Interruption = "truncated"
+	// InterruptedFailed: the run ended in an error, before or after some
+	// of the reply
+	InterruptedFailed Interruption = "failed"
+)
 
 // TurnMeta is what the reader may see of a turn's metadata: not its usage.
 type TurnMeta struct {
-	Source   string            `json:"source"`
-	Model    string            `json:"model"`
-	Degraded []string          `json:"degraded,omitempty"`
-	Sources  []json.RawMessage `json:"sources"`
-	// Interrupted is why the reply stops short ("" when it is whole):
-	// credits_exhausted, timeout or truncated
-	Interrupted string `json:"interrupted,omitempty"`
+	Source      string            `json:"source"`
+	Model       string            `json:"model"`
+	Degraded    []string          `json:"degraded,omitempty"`
+	Sources     []json.RawMessage `json:"sources"`
+	Interrupted Interruption      `json:"interrupted,omitempty"`
 }
 
 // ExplorationDetail is one of the viewer's explorations, whatever its state.

@@ -144,7 +144,7 @@ func (s *Service) Pin(ctx context.Context, viewer auth.User, courseID, lessonID 
 	if err != nil {
 		return Exploration{}, err
 	}
-	question, _ := json.Marshal(map[string]any{"text": "", "attachments": []map[string]string{{"kind": "selection", "text": in.Quote.Exact}}})
+	question, _ := json.Marshal(Question{Attachments: []Attachment{{Kind: AttachSelection, Text: in.Quote.Exact}}})
 	l, text, err := s.annotatable(ctx, viewer, courseID, lessonID)
 	if err != nil {
 		return Exploration{}, err

@@ -14,15 +14,6 @@ import (
 	"github.com/Bank5y/keine/internal/credits"
 )
 
-// Why a turn's reply stops short, as its metadata records it (#136).
-const (
-	interruptedCredits   = "credits_exhausted"
-	interruptedTimeout   = "timeout"
-	interruptedTruncated = "truncated"
-	// failed: the run ended in an error, before or after some of the reply
-	interruptedFailed = "failed"
-)
-
 // errCreditsOut cancels a run that spent what its reader had left today.
 var errCreditsOut = errors.New("credits exhausted")
 
@@ -79,17 +70,7 @@ func (s *Server) askTurn(w http.ResponseWriter, r *http.Request) {
 	}, func() error {
 		// checked before the run too, so a question after a turn that is not
 		// the last is turned away rather than answered and dropped
-		for _, n := range d.Nodes {
-			for i, t := range n.Turns {
-				if t.ID == in.After {
-					if i != len(n.Turns)-1 {
-						return course.ErrNotLastTurn
-					}
-					return nil
-				}
-			}
-		}
-		return course.ErrTurnNotFound
+		return d.AfterLast(in.After)
 	}) {
 		return
 	}
@@ -109,7 +90,7 @@ func (s *Server) openNode(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &in) {
 		return
 	}
-	if !course.ValidQuestion(in.Question) || (in.Kind != course.NodeChild && in.Kind != course.NodeBranch && in.Kind != course.NodeDivergent) {
+	if !course.ValidQuestion(in.Question) || !in.Kind.Openable() {
 		writeError(w, http.StatusBadRequest, "bad_request", "请选择节点类型并写下第一个问题。")
 		return
 	}
@@ -271,21 +252,21 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	case err == nil:
 		// a reply that finished as the credits ran out is whole
 	case errors.Is(context.Cause(runCtx), errCreditsOut):
-		tm.Interrupted, code = interruptedCredits, interruptedCredits
+		tm.Interrupted, code = course.InterruptedCredits, string(course.InterruptedCredits)
 	case errors.As(err, &re):
 		code = re.Code
 		switch re.Code {
 		case assistant.CodeTimeout:
-			tm.Interrupted = interruptedTimeout
+			tm.Interrupted = course.InterruptedTimeout
 		case assistant.CodeOutputTruncated:
-			tm.Interrupted = interruptedTruncated
+			tm.Interrupted = course.InterruptedTruncated
 		default:
-			tm.Interrupted = interruptedFailed
+			tm.Interrupted = course.InterruptedFailed
 		}
 		slog.Info("follow-up turn stopped short", "code", re.Code, "err", re.Cause)
 	default:
 		// the reader went away, or the server failed: keep the question
-		tm.Interrupted, code = interruptedFailed, assistant.CodeProviderError
+		tm.Interrupted, code = course.InterruptedFailed, assistant.CodeProviderError
 		if ctx.Err() == nil {
 			slog.Error("follow-up turn failed", "err", err)
 		}
@@ -301,7 +282,7 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 		return true
 	}
 	ev := runError(code, reply != "")
-	if code == interruptedCredits {
+	if code == string(course.InterruptedCredits) {
 		ev["message"] = "今天的积分已经用完，回复在这里中断了。积分在每天 0 点重置。"
 	}
 	ev["result"] = kept
@@ -339,13 +320,7 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 }
 
 func asked(q course.Question) assistant.Asked {
-	a := assistant.Asked{Text: q.Text}
-	for _, at := range q.Attachments {
-		if at.Kind == "selection" {
-			a.Fragments = append(a.Fragments, at.Text)
-		}
-	}
-	return a
+	return assistant.Asked{Text: q.Text, Fragments: q.Selections()}
 }
 
 func itemTexts(items []course.DocItem) []string {

@@ -1701,6 +1701,8 @@ a.rn:hover .t { color: var(--brand); }
 .dlg-send svg { width: 16px; height: 16px; }
 .dlg-send.stop svg { width: 12px; height: 12px; fill: currentColor; }
 .dlg-composer .analysis-credit { margin-top: 6px; }
+.dlg-composer .dlg-credit { padding: 0; }
+.dlg-credit { padding-top: 0; }
 .dlg-notice { margin-top: 6px; }
 
 .dlg-draft { padding-top: 6px; }

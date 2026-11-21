@@ -55,7 +55,7 @@ type turnMeta struct {
 	Sources   []assistant.WebSource `json:"sources"`
 	Degraded  []string              `json:"degraded,omitempty"`
 	// Interrupted is why the reply stops short, "" when it is whole (#136)
-	Interrupted string `json:"interrupted,omitempty"`
+	Interrupted course.Interruption `json:"interrupted,omitempty"`
 }
 
 // stagedAnalyses keeps each reader's latest finished analysis, one each: a

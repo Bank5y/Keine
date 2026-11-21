@@ -440,8 +440,6 @@ function Refusal({ refused }: { refused: Refused }) {
 // Composer is the box to ask the next question, with the credit line.
 function Composer({ busy, disabled, onAsk }: { busy: boolean; disabled: string; onAsk: (text: string) => void }) {
   const [text, setText] = useState('');
-  const [notice, setNotice] = useState(false);
-  const user = useUser();
   const send = () => {
     const q = text.trim();
     if (!q || busy || disabled) return;
@@ -458,8 +456,7 @@ function Composer({ busy, disabled, onAsk }: { busy: boolean; disabled: string; 
           {busy ? <Square /> : <ArrowUp />}
         </button>
       </div>
-      <Credit provider={user?.aiProvider} open={notice} onToggle={() => setNotice((v) => !v)} />
-      {notice ? <Notice search={user?.aiSearch} className="dlg-notice" /> : null}
+      <CreditLine />
     </div>
   );
 }
@@ -514,6 +511,20 @@ function DraftView({ d, draft, pending, refused, onCancel, onStart }: {
           {refused?.message ? <Refusal refused={refused} /> : null}
         </div>
       </div>
+      <CreditLine />
+    </div>
+  );
+}
+
+// CreditLine names the service that writes the replies; it opens what is
+// sent to it. It stays at the foot of every drawer.
+function CreditLine() {
+  const [notice, setNotice] = useState(false);
+  const user = useUser();
+  return (
+    <div className="dlg-composer dlg-credit">
+      <Credit provider={user?.aiProvider} open={notice} onToggle={() => setNotice((v) => !v)} />
+      {notice ? <Notice search={user?.aiSearch} className="dlg-notice" /> : null}
     </div>
   );
 }

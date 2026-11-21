@@ -89,6 +89,23 @@ func (d ExplorationDetail) Chain(upTo int64) ([]Turn, bool) {
 	}
 }
 
+// AfterLast tells whether a question can go after turn `after`: it is the
+// last of its node (ErrNotLastTurn when not, ErrTurnNotFound when there is
+// no such turn).
+func (d ExplorationDetail) AfterLast(after int64) error {
+	for _, n := range d.Nodes {
+		for i, t := range n.Turns {
+			if t.ID == after {
+				if i != len(n.Turns)-1 {
+					return ErrNotLastTurn
+				}
+				return nil
+			}
+		}
+	}
+	return ErrTurnNotFound
+}
+
 // Snapshot is the request an exploration's analysis ran on, as pinned.
 func (s *Service) Snapshot(ctx context.Context, viewer auth.User, explorationID int64) (json.RawMessage, error) {
 	var b []byte
@@ -112,7 +129,7 @@ func (q Question) valid() bool {
 		return false
 	}
 	for _, a := range q.Attachments {
-		if a.Kind != "selection" || strings.TrimSpace(a.Text) == "" || utf8.RuneCountInString(a.Text) > maxFragment {
+		if a.Kind != AttachSelection || strings.TrimSpace(a.Text) == "" || utf8.RuneCountInString(a.Text) > maxFragment {
 			return false
 		}
 	}
@@ -197,38 +214,53 @@ func (d ExplorationDetail) Retriable(turnID int64) (RetryTarget, error) {
 }
 
 // ReplaceTurn writes a turn tried again over the one that failed, in
-// place: same question, same place in its node (#136).
+// place: same question, same place in its node (#136). Whether it may is
+// decided again under the node's lock, as the run took a while: the turn
+// must still have stopped short with nothing after it.
 func (s *Service) ReplaceTurn(ctx context.Context, viewer auth.User, explorationID, turnID int64, reply string, meta any) (Turn, error) {
 	b, err := json.Marshal(meta)
 	if err != nil {
 		return Turn{}, err
 	}
 	var t Turn
-	var question, stored []byte
-	err = s.db.QueryRow(ctx, `UPDATE exploration_turns t SET reply = $4, meta = $5
-		FROM exploration_nodes n, explorations e
-		WHERE t.id = $1 AND n.id = t.node_id AND e.id = n.exploration_id AND e.id = $2 AND e.user_id = $3
-		RETURNING t.id, t.parent_id, t.question, t.reply, t.meta, t.created_at`, turnID, explorationID, viewer.ID, reply, b).
-		Scan(&t.ID, &t.ParentID, &question, &t.Reply, &stored, &t.CreatedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Turn{}, ErrTurnNotFound
-	}
-	if err != nil {
-		return Turn{}, err
-	}
-	if err := json.Unmarshal(question, &t.Question); err != nil {
-		return Turn{}, err
-	}
-	return t, json.Unmarshal(stored, &t.Meta)
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		var was Interruption
+		err := tx.QueryRow(ctx, `SELECT coalesce(t.meta->>'interrupted', '') FROM exploration_turns t
+			JOIN exploration_nodes n ON n.id = t.node_id JOIN explorations e ON e.id = n.exploration_id
+			WHERE t.id = $1 AND e.id = $2 AND e.user_id = $3 FOR UPDATE OF n`, turnID, explorationID, viewer.ID).Scan(&was)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrTurnNotFound
+		}
+		if err != nil {
+			return err
+		}
+		var followed bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM exploration_turns WHERE parent_id = $1)
+			OR EXISTS (SELECT 1 FROM exploration_nodes WHERE fork_turn_id = $1)`, turnID).Scan(&followed); err != nil {
+			return err
+		}
+		if was == "" || followed {
+			return ErrNotRetriable
+		}
+		var question, stored []byte
+		if err := tx.QueryRow(ctx, `UPDATE exploration_turns SET reply = $2, meta = $3 WHERE id = $1
+			RETURNING id, parent_id, question, reply, meta, created_at`, turnID, reply, b).
+			Scan(&t.ID, &t.ParentID, &question, &t.Reply, &stored, &t.CreatedAt); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(question, &t.Question); err != nil {
+			return err
+		}
+		return json.Unmarshal(stored, &t.Meta)
+	})
+	return t, err
 }
 
 // NodeName names a node: after the passage it was opened on, or else the
 // start of its first question; no model is asked (#137).
 func NodeName(q Question) string {
-	for _, a := range q.Attachments {
-		if a.Kind == "selection" {
-			return nodeName(a.Text)
-		}
+	if s := q.Selections(); len(s) > 0 {
+		return nodeName(s[0])
 	}
 	return nodeName(q.Text)
 }
@@ -237,7 +269,7 @@ func NodeName(q Question) string {
 // viewer's explorations, and keeps its first turn. The kind is the
 // reader's and stays.
 func (s *Service) OpenNode(ctx context.Context, viewer auth.User, explorationID, fork int64, kind NodeKind, first NewTurn) (Node, error) {
-	if kind != NodeChild && kind != NodeBranch && kind != NodeDivergent {
+	if !kind.Openable() {
 		return Node{}, ErrBadInput
 	}
 	var n Node
