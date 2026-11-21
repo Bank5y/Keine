@@ -38,6 +38,38 @@ FOLLOWUP = """在文中的最小实现里，planner 的输出本身就带着工�
 这样选择权集中在规划阶段，执行阶段没有分支，整个过程可以完整重放。代价是 planner 必须在开始前就知道全部工具；下一讲的「动态规划」会让 executor 在失败后把结果交回 planner 重新规划。"""
 
 
+# an exploration report (#160) answers in four tagged parts, with no tools
+REPORT = """<rep_title>Agent 的规划与执行</rep_title>
+<rep_summary>Agent 以大模型为核心，围绕一个目标自己决定下一步。它把目标拆成步骤，由 planner 规划、executor 执行。选择权集中在规划阶段，执行过程可以完整重放。</rep_summary>
+<rep_body>
+## 原理
+
+Agent 是和「把所有逻辑塞进一个提示词」相对的做法：控制流写在代码里，每一步只做一件事，更容易调试和评估。
+
+## 机制
+
+planner 的输出本身带着工具名，每一步是 `{tool, args}`；executor 只按名字找到工具并执行，不再做选择。
+
+```mermaid
+flowchart TD
+  A["目标"] --> B["planner 规划"]
+  B --> C["executor 执行一步"]
+  C --> D{"成功？"}
+  D -- "是" --> E["下一步"]
+  D -- "否" --> B
+```
+
+## 取舍
+
+planner 必须在开始前就知道全部工具；失败后把结果交回 planner 重新规划，可以弥补这一点。
+</rep_body>
+<rep_points>
+- Agent 把目标拆成步骤，逐步执行
+- 规划和执行分开，选择权集中在规划阶段
+- 执行阶段没有分支，过程可以完整重放
+</rep_points>"""
+
+
 def chunk(delta, finish=None):
     return "data: " + json.dumps({"choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}, ensure_ascii=False) + "\n\n"
 
@@ -58,6 +90,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
         tools = [t["function"]["name"] for t in req.get("tools") or []]
+        if "<rep_title>" in (req["messages"][0].get("content") or ""):
+            time.sleep(0.4)
+            for i in range(0, len(REPORT), 4):
+                self.wfile.write(chunk({"content": REPORT[i:i + 4]}).encode())
+                self.wfile.flush()
+                time.sleep(0.03)
+            self.wfile.write((chunk({}, "stop") + "data: [DONE]\n\n").encode())
+            return
         if tools != ["connection_check"] and not any(m.get("role") == "tool" for m in req.get("messages", [])):
             self.look_up(req)
             return
