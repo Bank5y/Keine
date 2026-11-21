@@ -206,9 +206,12 @@ func (c FollowupContext) Messages(q Asked) []Message {
 
 // Followup runs a turn after the analysis on the turn's model: the same
 // loop, tools and limits as an analysis (ADR 0008), but the reply is
-// Markdown that streams to out as it is written. It returns the reply; on
-// a *RunError or a cancelled context, what of it the reader already saw.
-func Followup(ctx context.Context, run Run, msgs []Message, out Sink) (string, Meta, error) {
+// Markdown that streams to out as it is written. With link (the turn a
+// node forks with, ADR 0011), the run goes on after the answer to link it
+// to the course, and the links come with the reply; that step never takes
+// the answer away. It returns the reply; on a *RunError or a cancelled
+// context, what of it the reader already saw.
+func Followup(ctx context.Context, run Run, msgs []Message, out Sink, link Linker) (Reply, Meta, error) {
 	if run.Now == nil {
 		run.Now = time.Now
 	}
@@ -221,10 +224,10 @@ func Followup(ctx context.Context, run Run, msgs []Message, out Sink) (string, M
 		run.Tools = append(slices.Clip(run.Tools), web.Tools()...)
 	}
 	r := newAnalysisRun(run, out)
-	r.web, r.plain = web, true
+	r.web, r.plain, r.linker = web, true, link
 	c, err := r.loop(ctx, msgs)
 	if err != nil {
-		return r.text.String(), r.meta(), err
+		return Reply{Text: r.text.String()}, r.meta(), err
 	}
-	return c.raw, r.meta(), nil
+	return Reply{Text: c.raw, Links: r.links}, r.meta(), nil
 }

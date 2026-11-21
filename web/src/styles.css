@@ -1706,6 +1706,16 @@ a.rn:hover .t { color: var(--brand); }
 .dlg-stop button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font-size: 13px; cursor: pointer; }
 .dlg-stop button svg { width: 14px; height: 14px; }
 .dlg-turn.asking .analysis-progress { margin: 4px 0 8px; }
+/* the end of a reply that links it to the course (ADR 0011) */
+.dlg-linking { margin: 10px 0 4px; }
+.dlg-links { margin: 14px 0 4px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.dlg-links-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.dlg-links-title svg { width: 14px; height: 14px; }
+.dlg-links ul { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.dlg-links li { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dlg-links-place { font-size: 14px; color: var(--explore); text-decoration: none; overflow-wrap: anywhere; }
+.dlg-links-place:hover { text-decoration: underline; }
+.dlg-links li span { font-size: 13px; line-height: 1.6; color: var(--text-2); }
 
 .dlg-composer { flex: none; width: 100%; max-width: calc(680px + 112px); margin: 0 auto; padding: 8px 56px 12px; }
 .dlg-box { display: flex; align-items: flex-end; gap: 8px; padding: 10px 10px 10px 14px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }

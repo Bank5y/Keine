@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react';
-import { ChevronLeft, Copy, FileText, Menu, Plus, RotateCcw, Square, Telescope, Trash2, X, ArrowUp } from 'lucide-react';
+import { BookOpen, ChevronLeft, Copy, FileText, Menu, Plus, RotateCcw, Square, Telescope, Trash2, X, ArrowUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Credit, documentParts, Lookups, Notice, Progress } from '@/components/analysis-popover';
 import { Confirm } from '@/components/confirm';
@@ -7,10 +7,11 @@ import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError, api } from '@/lib/api';
 import {
-  askTurn, carried, DEFAULT_QUESTION, forksAt, INTERRUPTED, KINDS, mapLayout, MAX_NODES, openNode, pathTo, prune, restack, retryTurn,
+  askTurn, carried, courseLinkItems, DEFAULT_QUESTION, forksAt, INTERRUPTED, KINDS, mapLayout, MAX_NODES, openNode, pathTo, prune, restack, retryTurn,
   seenBy, settle, spine, stepRun, turnAt, type Ended, type Layer, type Run,
 } from '@/lib/dialogue';
 import type { DialogueNode, ExplorationDetail, NodeKind, Question, Turn } from '@/lib/explorations';
+import { Link } from '@/lib/router';
 import { useUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -375,6 +376,7 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
               <LazyMarkdown text={t.reply} components={documentParts} />
             </div>
           ) : null}
+          <CourseLinks courseId={d.courseId} links={t.courseLinks} />
           {stop ? (
             <div className={cn('dlg-stop', t.meta.interrupted === 'failed' && 'failed')} role="status">
               <div><b>{stop.title}</b><span>{stop.body}</span></div>
@@ -438,8 +440,30 @@ function Asking({ question, run, kind }: { question: Question; run: Run; kind: N
       {run.text ? <Lookups activities={run.activities} /> : run.activities.length ? <Progress activities={run.activities} /> : null}
       {run.thinking && !run.text ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p> : null}
       {!run.text && !run.thinking && !run.activities.length ? <p className="analysis-wait">正在回答…</p> : null}
-      {run.text ? <div className="dlg-reply analysis-explanation caret"><LazyMarkdown text={run.text} /></div> : null}
+      {run.text ? <div className={cn('dlg-reply analysis-explanation', !run.linking && 'caret')}><LazyMarkdown text={run.text} /></div> : null}
+      {run.linking ? <p className="analysis-wait thinking dlg-linking"><span className="analysis-dot" aria-hidden />正在关联课程内容…</p> : null}
     </div>
+  );
+}
+
+// CourseLinks is the end of a reply that links it to the course (ADR
+// 0011): a line for each lesson and section, with how it relates; nothing
+// when the turn linked none.
+function CourseLinks({ courseId, links }: { courseId: number; links: Turn['courseLinks'] }) {
+  const items = courseLinkItems(courseId, links);
+  if (!items.length) return null;
+  return (
+    <aside className="dlg-links" aria-label="课程里的相关内容">
+      <div className="dlg-links-title"><BookOpen aria-hidden />课程里的相关内容</div>
+      <ul>
+        {items.map((l) => (
+          <li key={l.href}>
+            <Link href={l.href} className="dlg-links-place">{l.place}</Link>
+            {l.note ? <span>{l.note}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </aside>
   );
 }
 
