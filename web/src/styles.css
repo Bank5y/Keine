@@ -74,6 +74,11 @@
   --border: var(--line);
   --input: var(--rule);
   --ring: var(--text);
+  /* dialogue node kinds (#137) */
+  --kind-main: var(--explore);
+  --kind-child: #6e8bb8;
+  --kind-branch: #5e8a6a;
+  --kind-divergent: #b07a3a;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1536,7 +1541,6 @@ a.rn:hover .t { color: var(--brand); }
    Exploration zoom (#134): the document (level 1) and the
    dialogue (level 2), over a frosted page
    ========================================================= */
-:root { --kind-main: var(--explore); --kind-child: #6e8bb8; --kind-branch: #5e8a6a; --kind-divergent: #b07a3a; }
 .kind-main { --kind: var(--kind-main); }
 .kind-child { --kind: var(--kind-child); }
 .kind-branch { --kind: var(--kind-branch); }
