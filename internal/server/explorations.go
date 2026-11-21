@@ -194,7 +194,7 @@ func (s *Server) showExploration(w http.ResponseWriter, r *http.Request) {
 	if !writeExplorationError(w, r, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, explorationView{d, assistant.FirstQuestion(d.Quote, d.Title)})
+	writeJSON(w, http.StatusOK, explorationView{d, firstQuestion(d)})
 }
 
 // explorationView is an exploration as the page shows it: with the

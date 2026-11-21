@@ -15,11 +15,7 @@ var followupSystem string
 // FollowupPrompt is the prompt of a turn after the analysis (#136, ADR
 // 0011): the same for every kind of node. Its context is not a passage but
 // the exploration (FollowupContext).
-var FollowupPrompt = Prompt{
-	Version: "followup-2",
-	System:  DefaultStyle.system(followupSystem),
-	Style:   DefaultStyle,
-}
+var FollowupPrompt = newPrompt("followup-2", followupSystem, DefaultStyle)
 
 // FirstQuestion is the question an exploration's analysis stands for
 // (ADR 0011): to explain the term (by the exploration's title, which keeps
@@ -88,15 +84,16 @@ func background(snapshot []Message) string {
 	}
 	var kept []string
 	for _, s := range sections(content) {
-		if strings.HasPrefix(s, "## 课程信息") || strings.HasPrefix(s, "## 选中的原文") {
+		if strings.HasPrefix(s, headCourseInfo) || strings.HasPrefix(s, headSelection) {
 			kept = append(kept, s)
 		}
 	}
 	return backgroundNote + "\n\n" + strings.Join(kept, "\n\n")
 }
 
-// sectionHeads are how the analysis's sources begin (Passage.section).
-var sectionHeads = []string{"## 课程信息\n", "## 课程目录（", "## 选中的原文\n", "## 本讲全文（", "## 本讲小节目录\n"}
+// sectionHeads are the sources' headings in the order AnalysisPrompt
+// puts them; the lesson comes whole or as its sections.
+var sectionHeads = []string{headCourseInfo, headOutline, headSelection, headLesson, headLessonSections}
 
 // sections splits an analysis's request into its sources, in the order
 // AnalysisPrompt puts them: each source begins at the first of the heads

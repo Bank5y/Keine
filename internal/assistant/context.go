@@ -31,17 +31,28 @@ type Prompt struct {
 	Sources []Source
 }
 
+// newPrompt is a skill's prompt answered in style: its own prompt, then
+// the style's.
+func newPrompt(version, skill string, style Style, sources ...Source) Prompt {
+	return Prompt{Version: version, System: strings.TrimSpace(skill) + "\n\n" + style.Text, Style: style, Sources: sources}
+}
+
+// The headings each source begins with (Passage.section); a follow-up
+// finds the sources it keeps by them.
+const (
+	headCourseInfo     = "## 课程信息"
+	headOutline        = "## 课程目录"
+	headSelection      = "## 选中的原文"
+	headLesson         = "## 本讲全文"
+	headLessonSections = "## 本讲小节目录"
+)
+
 //go:embed prompts/analysis.md
 var analysisSystem string
 
 // AnalysisPrompt is the prompt of an analysis. The sources that change
 // least come first, so the start of the request can be cached.
-var AnalysisPrompt = Prompt{
-	Version: "analysis-3",
-	System:  DefaultStyle.system(analysisSystem),
-	Style:   DefaultStyle,
-	Sources: []Source{SourceCourseInfo, SourceOutline, SourceSelection, SourceLesson},
-}
+var AnalysisPrompt = newPrompt("analysis-3", analysisSystem, DefaultStyle, SourceCourseInfo, SourceOutline, SourceSelection, SourceLesson)
 
 // Selected marks the selected place in the lesson text.
 const (
@@ -101,7 +112,7 @@ func (in Passage) section(s Source) string {
 	var b strings.Builder
 	switch s {
 	case SourceCourseInfo:
-		b.WriteString("## 课程信息\n课程：" + in.CourseTitle)
+		b.WriteString(headCourseInfo + "\n课程：" + in.CourseTitle)
 		if in.CourseIntro != "" {
 			b.WriteString("\n简介：" + in.CourseIntro)
 		}
@@ -112,7 +123,7 @@ func (in Passage) section(s Source) string {
 			}
 		}
 	case SourceOutline:
-		b.WriteString("## 课程目录（方括号里是讲的标识）")
+		b.WriteString(headOutline + "（方括号里是讲的标识）")
 		for _, ch := range in.Outline {
 			b.WriteString("\n- " + ch.Title)
 			for _, l := range ch.Lessons {
@@ -120,13 +131,13 @@ func (in Passage) section(s Source) string {
 			}
 		}
 	case SourceSelection:
-		fmt.Fprintf(&b, "## 选中的原文\n位置：%s（本讲 [%s]）\n「%s」", strings.Join(in.Path, " › "), in.LessonKey, in.Quote)
+		fmt.Fprintf(&b, "%s\n位置：%s（本讲 [%s]）\n「%s」", headSelection, strings.Join(in.Path, " › "), in.LessonKey, in.Quote)
 	case SourceLesson:
 		if in.Sections == nil {
-			fmt.Fprintf(&b, "## 本讲全文（选中处用 %s 标出）\n%s", SelectedOpen, strings.TrimSpace(in.Lesson))
+			fmt.Fprintf(&b, "%s（选中处用 %s 标出）\n%s", headLesson, SelectedOpen, strings.TrimSpace(in.Lesson))
 			break
 		}
-		b.WriteString("## 本讲小节目录")
+		b.WriteString(headLessonSections)
 		for _, s := range in.Sections {
 			b.WriteString("\n" + s)
 		}

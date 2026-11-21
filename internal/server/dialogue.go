@@ -305,7 +305,7 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 	if err := json.Unmarshal(raw, &snap); err != nil {
 		return nil, err
 	}
-	fc := assistant.FollowupContext{FirstQuestion: assistant.FirstQuestion(d.Quote, d.Title), FirstReply: chain[0].Reply}
+	fc := assistant.FollowupContext{FirstQuestion: firstQuestion(d), FirstReply: chain[0].Reply}
 	for _, m := range snap.Messages {
 		fc.Snapshot = append(fc.Snapshot, assistant.Message{Role: m.Role, Content: m.Content})
 	}
@@ -313,6 +313,11 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 		fc.History = append(fc.History, assistant.Exchange{Asked: asked(t.Question), Reply: t.Reply})
 	}
 	return fc.Messages(asked(q)), nil
+}
+
+// firstQuestion is the question an exploration's analysis stands for.
+func firstQuestion(d course.ExplorationDetail) string {
+	return assistant.FirstQuestion(d.Quote, d.Title)
 }
 
 func asked(q course.Question) assistant.Asked {
