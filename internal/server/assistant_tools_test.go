@@ -463,7 +463,7 @@ func TestAnAccountFailureTurnsTheToolOffAtOnce(t *testing.T) {
 
 func TestADraftFollowedByToolCallsIsReset(t *testing.T) {
 	c := call("search_course", map[string]any{"query": "Agent"})
-	m := newScriptedModel(toolStep([]assistant.ToolCall{c}, "<exp_title>草稿标题</exp_title><exp_intro>草稿"), texts(goodAnswer))
+	m := newScriptedModel(toolStep([]assistant.ToolCall{c}, "<exp_title>草稿标题</exp_title><exp_concept>草稿"), texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
 	id, lesson := toolColumn(t, bob, "")

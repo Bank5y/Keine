@@ -79,6 +79,11 @@ type Server struct {
 	// stopSweeping ends the periodic draft sweep
 	stopSweeping context.CancelFunc
 	sweeping     sync.WaitGroup
+	// buildCtx carries the concept index builds, which go on in the
+	// background; Close cancels it and waits for them
+	buildCtx   context.Context
+	stopBuilds context.CancelFunc
+	building   sync.WaitGroup
 }
 
 // New connects to the database, migrates it and makes sure the deployment's
@@ -115,6 +120,12 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 			return nil, err
 		}
 	}
+	// a build a stopped server left behind can be tried again
+	if err := s.courses.FailInterruptedIndexes(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	s.buildCtx, s.stopBuilds = context.WithCancel(context.Background())
 	s.routes()
 	s.sweepPeriodically()
 	return s, nil
@@ -123,6 +134,8 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 func (s *Server) Close() {
 	s.stopSweeping()
 	s.sweeping.Wait()
+	s.stopBuilds()
+	s.building.Wait()
 	s.db.Close()
 }
 
@@ -240,6 +253,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/admin/courses/{id}/publish", s.adminOnly(s.courseAction(s.adminPublish)))
 	s.mux.HandleFunc("POST /api/admin/courses/{id}/unpublish", s.adminOnly(s.courseAction(s.adminUnpublish)))
 	s.mux.HandleFunc("PATCH /api/admin/courses/{id}", s.adminOnly(s.adminEditCourse))
+	s.mux.HandleFunc("GET /api/admin/concept-indexes", s.adminOnly(s.listConceptIndexes))
+	s.mux.HandleFunc("GET /api/admin/courses/{id}/concept-index", s.adminOnly(s.showConceptIndex))
+	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index", s.adminOnly(s.buildConceptIndex))
 	s.mux.HandleFunc("GET /api/library", s.signedIn(s.library))
 	s.mux.HandleFunc("POST /api/courses/{id}/subscribe", s.signedIn(s.courseAction(s.subscribe)))
 	s.mux.HandleFunc("DELETE /api/courses/{id}/subscribe", s.signedIn(s.courseAction(s.unsubscribe)))

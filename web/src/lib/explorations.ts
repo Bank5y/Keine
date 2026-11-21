@@ -14,7 +14,8 @@ export interface Exploration {
   suffix: string;
   state: 'attached' | 'pending' | 'excerpt';
   title: string;
-  intro: string;
+  // the document's one sentence, which the card shows
+  concept: string;
   // where the quote sits in the lesson text as it is now, counted in
   // non-whitespace characters like an annotation's
   range: TextRange | null;
@@ -76,24 +77,19 @@ export interface DialogueNode {
   createdAt: string;
 }
 
-export interface DocItem { id: number; text: string }
-
 export interface ExplorationDetail {
   id: number;
   courseId: number;
   quote: string;
   state: Exploration['state'];
   lessonTitle: string;
+  // the exploration document (ADR 0012): title, concept and concept
+  // explanation, fixed once pinned
   title: string;
-  intro: string;
-  meaning: string;
+  concept: string;
+  explanation: string;
   // the question the analysis stands for, which opens the dialogue (ADR 0011)
   firstQuestion: string;
-  docVersion: number;
-  footnotes: DocItem[];
-  extensions: DocItem[];
-  expansions: DocItem[];
-  references: DocItem[];
   nodes: DialogueNode[];
   createdAt: string;
 }

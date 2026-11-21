@@ -15,11 +15,19 @@ import http.server, json, re, sys, time
 REPLY = ["这是", "演示用的", "模型回复。"]
 
 ANALYSIS = """<exp_title>Agent（智能体）</exp_title>
-<exp_intro>能够自主规划步骤、调用工具，并根据执行结果调整下一步行动的大模型应用。</exp_intro>
-<exp_body>
-Agent 指的是以大模型为核心、能围绕一个目标自己决定下一步做什么的程序：它把目标拆成若干步骤，每一步调用模型或工具，再根据结果决定继续、重试还是换一条路。
+<exp_concept>这一讲里把目标拆成步骤、逐步调用模型和工具完成的程序，和「一个提示词做完所有事」相对。</exp_concept>
+<exp_explanation>
+Agent 在这一讲里是一种把控制流写在代码里的做法：程序围绕一个目标，先拆出步骤，每一步只调用一次模型或工具，再根据结果决定继续、重试还是换一条路。
 
-在这一讲里，Agent 是和「把所有逻辑塞进一个提示词」相对的做法：后者指望模型一次想清楚，前者把控制流写在代码里，每一步只做一件事，更容易调试和评估。
+**基本做法：**
+
+- planner 先给出完整的步骤列表，每一步写明要用的工具。
+- executor 按顺序执行，不再做选择，整个过程可以完整重放。
+
+**和单个提示词的区别：**
+
+- 单个提示词指望模型一次想清楚，出错时很难定位是哪一步。
+- Agent 每一步都有输入和输出，更容易调试和评估。
 
 ```mermaid
 flowchart TD
@@ -29,7 +37,7 @@ flowchart TD
   D -- "是" --> E["下一步"]
   D -- "否" --> F["重试或回退"]
 ```
-</exp_body>"""
+</exp_explanation>"""
 
 
 # a follow-up turn of the exploration dialogue answers in plain Markdown

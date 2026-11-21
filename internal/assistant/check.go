@@ -7,18 +7,17 @@ import (
 	"unicode/utf8"
 )
 
-// Length limits of an analysis, in characters. The meaning has the same
-// limit as a note.
+// Length limits of an analysis, in characters. The concept explanation
+// has the same limit as a note.
 const (
-	MaxTitle = 100
-	MaxIntro = 300
-	MaxBody  = 20000
+	MaxTitle       = 100
+	MaxConcept     = 300
+	MaxExplanation = 20000
 )
 
 var (
 	headingLine  = regexp.MustCompile(`(?m)^ {0,3}#{1,6}(\s|$)`)
 	listLine     = regexp.MustCompile(`(?m)^ {0,3}([-*+]|\d+[.)])\s`)
-	boldLine     = regexp.MustCompile(`(?m)^ {0,3}(\*\*|__)[^\n]+(\*\*|__)[:：]?\s*$`)
 	markdownLink = regexp.MustCompile(`\]\([^)]*\)|\]\[[^\]]*\]|^\[[^\]]+\]:\s`)
 	bareURL      = regexp.MustCompile(`(?i)https?://|<a\s`)
 	svgTag       = regexp.MustCompile(`(?i)<svg[\s>]|data:image/svg`)
@@ -51,33 +50,30 @@ func checkAnalysis(raw string, p *tagParser) []string {
 	if p.closed[PartTitle] && a.Title == "" {
 		add("标题是空的")
 	}
-	if p.closed[PartIntro] && a.Intro == "" {
-		add("简介是空的")
+	if p.closed[PartConcept] && a.Concept == "" {
+		add("概念是空的")
 	}
-	if headingLine.MatchString(a.Intro) || listLine.MatchString(a.Intro) {
-		add("简介里不能有标题或列表")
+	if headingLine.MatchString(a.Concept) || listLine.MatchString(a.Concept) {
+		add("概念里不能有标题或列表")
 	}
-	if headingLine.MatchString(a.Body) {
-		add("含义里不能写标题")
+	if headingLine.MatchString(a.Explanation) {
+		add("概念解释里不能写 # 标题")
 	}
-	if boldLine.MatchString(a.Body) {
-		add("含义里不能用单独一行的加粗文字充当小标题")
+	if markdownLink.MatchString(a.Explanation) || bareURL.MatchString(a.Explanation) {
+		add("概念解释里不能有链接")
 	}
-	if markdownLink.MatchString(a.Body) || bareURL.MatchString(a.Body) {
-		add("含义里不能有链接")
-	}
-	if svgTag.MatchString(a.Body) {
+	if svgTag.MatchString(a.Explanation) {
 		add("不能直接写 SVG")
 	}
-	problems = append(problems, checkMermaid(a.Body)...)
+	problems = append(problems, checkMermaid(a.Explanation)...)
 	if n := utf8.RuneCountInString(a.Title); n > MaxTitle {
 		add("标题 %d 字，超过上限 %d 字", n, MaxTitle)
 	}
-	if n := utf8.RuneCountInString(a.Intro); n > MaxIntro {
-		add("简介 %d 字，超过上限 %d 字", n, MaxIntro)
+	if n := utf8.RuneCountInString(a.Concept); n > MaxConcept {
+		add("概念 %d 字，超过上限 %d 字", n, MaxConcept)
 	}
-	if n := utf8.RuneCountInString(a.Body); n > MaxBody {
-		add("含义 %d 字，超过上限 %d 字", n, MaxBody)
+	if n := utf8.RuneCountInString(a.Explanation); n > MaxExplanation {
+		add("概念解释 %d 字，超过上限 %d 字", n, MaxExplanation)
 	}
 	return problems
 }

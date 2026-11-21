@@ -16,9 +16,10 @@ var reportSystem string
 // the whole dialogue tree, not a passage.
 var ReportPrompt = newPrompt("report-1", reportSystem, DefaultStyle)
 
-// The parts of a report besides the title and the body.
+// The parts of a report besides the title.
 const (
 	PartSummary Part = "summary"
+	PartBody    Part = "body"
 	PartPoints  Part = "points"
 )
 
