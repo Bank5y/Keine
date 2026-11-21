@@ -65,7 +65,7 @@ export function VariantC({ s }: { s: Store }) {
               zIndex: l.phase === 'leave' ? 99 : i,
               pointerEvents: gone ? 'none' : 'auto',
             }}>
-              {t > 0 && !gone ? <Spine l={l} onClick={() => (l.draft ? null : s.open(l.key))} /> : null}
+              <Spine l={l} shown={t > 0 && !gone} onClick={() => (l.draft ? null : s.open(l.key))} />
               <div style={{ flex: 1, minWidth: 0, display: 'flex', opacity: t > 0 ? 0 : 1, transition: `opacity ${MS}ms` }}>
                 <Body l={l} s={s} onBack={pop} />
               </div>
@@ -81,15 +81,29 @@ const mk = (key: string, s: Store, phase: Layer['phase']): Layer => (key === 'dr
 
 // a covered layer: its type and name standing on its left edge; click to
 // pop everything above it
-function Spine({ l, onClick }: { l: Layer; onClick: () => void }) {
+// it is always mounted and fades: the tint first, then the dot and the name
+// a beat later, sliding in from the left, so a push reads as one motion
+function Spine({ l, shown, onClick }: { l: Layer; shown: boolean; onClick: () => void }) {
   const type = l.node?.type ?? 'child';
+  const ease = 'cubic-bezier(.2,.8,.2,1)';
   return (
-    <button type="button" onClick={onClick} title={l.node ? `回到「${l.node.name}」` : ''} style={{
-      position: 'absolute', left: 0, top: 0, bottom: 0, width: SPINE, zIndex: 2, border: 0, cursor: 'pointer',
-      background: `linear-gradient(90deg, ${TYPES[type].soft}, var(--surface))`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 18,
+    <button type="button" onClick={onClick} tabIndex={shown ? 0 : -1} title={l.node ? `回到「${l.node.name}」` : ''} style={{
+      position: 'absolute', left: 0, top: 0, bottom: 0, width: SPINE, zIndex: 2, border: 0, cursor: 'pointer', padding: 0,
+      background: 'var(--surface)', pointerEvents: shown ? 'auto' : 'none',
+      opacity: shown ? 1 : 0, transition: `opacity ${MS}ms ${ease}`,
     }}>
-      <TypeDot type={type} size={9} />
-      <span style={{ writingMode: 'vertical-rl', fontSize: 13, color: 'var(--text-2)', letterSpacing: 2, maxHeight: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.node?.name ?? '新节点'}</span>
+      <span aria-hidden style={{
+        position: 'absolute', inset: 0, background: `linear-gradient(90deg, ${TYPES[type].soft}, var(--surface))`,
+        opacity: shown ? 1 : 0, transition: `opacity ${MS * 1.4}ms ${ease} ${shown ? 60 : 0}ms`,
+      }} />
+      <span style={{
+        position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 18, height: '100%',
+        opacity: shown ? 1 : 0, transform: shown ? 'none' : 'translateX(-10px)',
+        transition: `opacity ${MS}ms ${ease} ${shown ? MS * 0.55 : 0}ms, transform ${MS}ms ${ease} ${shown ? MS * 0.55 : 0}ms`,
+      }}>
+        <TypeDot type={type} size={9} />
+        <span style={{ writingMode: 'vertical-rl', fontSize: 13, color: 'var(--text-2)', letterSpacing: 2, maxHeight: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.node?.name ?? '新节点'}</span>
+      </span>
     </button>
   );
 }
