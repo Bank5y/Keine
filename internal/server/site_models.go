@@ -59,6 +59,7 @@ func (s *Server) modelsState(w http.ResponseWriter, r *http.Request) (map[string
 		"tavily":      tavily,
 		"masterKey":   s.models.CanStoreKeys(),
 		"providers":   assistant.ProviderPresets,
+		"formats":     assistant.Formats,
 	}, true
 }
 

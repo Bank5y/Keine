@@ -127,7 +127,7 @@ func (w *Web) Tools() []Tool {
 	if w.route.Fetch != nil {
 		out = append(out, NewTool(ToolWebFetch,
 			"读一个网页的正文（Markdown）。只能读本次运行 web_search 结果里出现过的 URL。摘要不够用时再读。",
-			func(a webFetchArgs) string { return hostOf(a.URL) }, w.fetch))
+			func(a webFetchArgs) string { return HostOf(a.URL) }, w.fetch))
 	}
 	return out
 }
@@ -187,7 +187,7 @@ func (w *Web) fetch(ctx context.Context, a webFetchArgs) (string, error) {
 	}
 	title := strings.TrimSpace(p.Title)
 	if title == "" {
-		title = hostOf(u)
+		title = HostOf(u)
 	}
 	w.add(WebSource{Title: title, URL: u, Kind: WebSourceFetch})
 	if utf8.RuneCountInString(content) > MaxPageContent {
@@ -228,8 +228,8 @@ func clip(s string, n int) string {
 	return string([]rune(s)[:n]) + "…"
 }
 
-// hostOf is the site a URL is on, as the reader sees a fetch in progress.
-func hostOf(raw string) string {
+// HostOf is the site a URL is on, as the reader sees a fetch in progress.
+func HostOf(raw string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" {
 		return raw

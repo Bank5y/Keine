@@ -42,6 +42,11 @@ type Request struct {
 	// Thinking switches the model's thinking on or off where the provider
 	// configuration has a switch; elsewhere it changes nothing.
 	Thinking bool
+	// ProviderWeb declares the provider's own web_search and web_fetch
+	// besides Tools (ADR 0008, the provider route), for adapters whose
+	// format has them (FormatSpec.ProviderWeb). ToolChoice "none" keeps
+	// them from being used too.
+	ProviderWeb bool
 }
 
 type Message struct {
@@ -53,6 +58,12 @@ type Message struct {
 	ToolCalls []ToolCall
 	// ToolCallID names the call a tool message answers.
 	ToolCallID string
+	// Native is an assistant message in its adapter's own form, from the
+	// Result of the call that wrote it: what the provider wants back as it
+	// was (Anthropic's thinking blocks with their signatures, its search
+	// results). Within one run only: it is opaque to the loop and never
+	// stored (ADR 0008).
+	Native any
 }
 
 // ToolSpec is a tool declaration: Parameters is its JSON Schema.
@@ -77,12 +88,35 @@ const (
 	EventReasoning EventKind = "reasoning"
 	// EventToolCall carries one complete tool call.
 	EventToolCall EventKind = "tool_call"
+	// EventWeb is a step of the provider's own search (the provider route,
+	// ADR 0008): a search or a fetch as it starts, and as it ends with what
+	// it found.
+	EventWeb EventKind = "web"
+	// EventSources carries sources the answer cites, besides those its
+	// searches found.
+	EventSources EventKind = "sources"
 )
 
 type Event struct {
 	Kind     EventKind
 	Text     string
 	ToolCall *ToolCall
+	Web      *WebStep
+	// Sources are what a done step or a citation adds to the source list.
+	Sources []WebSource
+}
+
+// WebStep is a search or a fetch the provider made, as the adapter
+// normalizes it: an ID the start and the end share, the capability
+// (ToolWebSearch or ToolWebFetch), what it was about, and how it went.
+// The provider's errors map to the reasons the Keine tool route has; they
+// are neither tried again nor turn the capability off (ADR 0008).
+type WebStep struct {
+	ID     string
+	Kind   string
+	Target string
+	Status ActivityStatus
+	Reason Category
 }
 
 type FinishReason string
@@ -104,11 +138,18 @@ type Usage struct {
 	CacheRead  *int64 `json:"cacheRead"`
 	CacheWrite *int64 `json:"cacheWrite"`
 	Reasoning  *int64 `json:"reasoning"`
+	// Searches are the provider's own searches the call is billed for
+	// (the provider route); nil when it made none it bills.
+	Searches *int64 `json:"searches,omitempty"`
 }
 
 type Result struct {
 	Usage  Usage
 	Finish FinishReason
+	// Native is the call's message in the adapter's own form, for the
+	// Native of the assistant message the loop passes back; nil when the
+	// adapter rebuilds messages from their Keine form.
+	Native any
 }
 
 // Category is what kind of failure a call met, the only detail of a

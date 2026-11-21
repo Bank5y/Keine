@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Bank5y/keine/internal/assistant"
+	"github.com/Bank5y/keine/internal/assistant/anthropic"
 	"github.com/Bank5y/keine/internal/assistant/openai"
 	"github.com/Bank5y/keine/internal/assistant/search"
 	"github.com/Bank5y/keine/internal/auth"
@@ -89,7 +90,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	}
 	s := &Server{opts: opts, db: pool, auth: auth.NewService(pool), courses: course.NewService(pool, opts.Storage).WithClock(opts.Now), notifications: notify.NewService(pool), generator: course.PromptTemplate{}, files: opts.Storage, mux: http.NewServeMux()}
 	if opts.AdapterFor == nil {
-		opts.AdapterFor = func(e assistant.Endpoint) assistant.Adapter { return openai.New(e) }
+		opts.AdapterFor = adapterFor
 	}
 	if opts.SearchFor == nil {
 		opts.SearchFor = search.For
@@ -223,4 +224,12 @@ func (s *Server) routes() {
 	if s.opts.Web != nil {
 		s.mux.Handle("/", spa(s.opts.Web))
 	}
+}
+
+// adapterFor is the adapter of a site model's interface format.
+func adapterFor(e assistant.Endpoint) assistant.Adapter {
+	if e.Format == assistant.FormatAnthropic {
+		return anthropic.New(e)
+	}
+	return openai.New(e)
 }

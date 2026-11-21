@@ -250,7 +250,7 @@ func TestInvalidModelsAreRejected(t *testing.T) {
 	f := newFakeModel(t)
 	admin := a.admin()
 	for name, change := range map[string]func(map[string]any){
-		"format":        func(m map[string]any) { m["format"] = "anthropic" },
+		"format":        func(m map[string]any) { m["format"] = "gemini" },
 		"base url":      func(m map[string]any) { m["baseUrl"] = "ftp://example.com" },
 		"model":         func(m map[string]any) { m["model"] = " " },
 		"display name":  func(m map[string]any) { m["displayName"] = "" },

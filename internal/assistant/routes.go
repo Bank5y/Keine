@@ -8,8 +8,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// SearchRoute is how a site model's runs reach the web (ADR 0008): on the
-// Keine tool route, through which search service; or not at all.
+// SearchRoute is how a site model's runs reach the web (ADR 0008): with
+// the provider's own search, on the Keine tool route through which search
+// service, or not at all.
 type SearchRoute string
 
 const (
@@ -20,30 +21,39 @@ const (
 	// RouteDeepSeek searches and reads pages with DeepSeek Search / Fetch,
 	// on the DeepSeek model's own key.
 	RouteDeepSeek SearchRoute = "deepseek"
+	// RouteProvider searches and reads pages with the provider's own
+	// tools, for a format whose adapter has them (FormatSpec.ProviderWeb).
+	RouteProvider SearchRoute = "provider"
 	// RouteOff is the deployer's choice of no web.
 	RouteOff SearchRoute = "off"
 )
 
 func validRoute(r SearchRoute) bool {
 	switch r {
-	case RouteAuto, RouteTavily, RouteDeepSeek, RouteOff:
+	case RouteAuto, RouteTavily, RouteDeepSeek, RouteProvider, RouteOff:
 		return true
 	}
 	return false
 }
 
 // Resolve is the route a model's runs take: the chosen one when what it
-// needs is there, or for RouteAuto the provider's own search service, else
-// Tavily when the site has a key. ok is false when nothing resolves, which
-// leaves the assistant unavailable.
-func Resolve(route SearchRoute, provider Provider, tavilyKey bool) (SearchRoute, bool) {
+// needs is there, or for RouteAuto the provider's own search when the
+// format has it, else the provider's own search service, else Tavily when
+// the site has a key. ok is false when nothing resolves, which leaves the
+// assistant unavailable.
+func Resolve(route SearchRoute, format string, provider Provider, tavilyKey bool) (SearchRoute, bool) {
 	switch route {
 	case RouteOff:
 		return RouteOff, true
+	case RouteProvider:
+		return RouteProvider, providerWeb(format)
 	case RouteDeepSeek:
 		return RouteDeepSeek, provider == ProviderDeepSeek
 	case RouteTavily:
 		return RouteTavily, tavilyKey
+	}
+	if providerWeb(format) {
+		return RouteProvider, true
 	}
 	if provider == ProviderDeepSeek {
 		return RouteDeepSeek, true
@@ -146,7 +156,8 @@ func searchTestFailure(err error, key string) error {
 }
 
 // routeOf is the web route of a resolved search route, on the model's key
-// for DeepSeek and the site's Tavily key for Tavily; nil when off.
+// for DeepSeek and the site's Tavily key for Tavily; nil when off or on
+// the provider route, where the adapter searches.
 func (s *Models) routeOf(route SearchRoute, modelKey, tavilyKey string) *WebRoute {
 	switch route {
 	case RouteDeepSeek:

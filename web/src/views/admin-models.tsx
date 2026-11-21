@@ -6,19 +6,19 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Empty, ErrorBox } from '@/components/common';
 import { api, ApiError, type Problem } from '@/lib/api';
-import { chooseProvider, keepRoute, searchLabel, searchRoutes, type Preset, type SearchRoute } from '@/lib/provider';
+import { chooseFormat, chooseProvider, keepRoute, searchLabel, searchRoutes, type Format, type Preset, type SearchRoute } from '@/lib/provider';
 import { cn } from '@/lib/utils';
 
 interface Rates { input: number; cacheRead: number; cacheWrite: number; output: number; search: number }
 interface SiteModel {
-  id: number; format: 'openai'; provider: string; baseUrl: string; model: string; displayName: string;
+  id: number; format: string; provider: string; baseUrl: string; model: string; displayName: string;
   contextWindow: number | null; rates: Rates | null; keyLast4: string;
   searchRoute: SearchRoute; search: SearchRoute; searchReady: boolean;
 }
 type TurnKind = 'analysis' | 'followup' | 'sync';
 interface TurnModel { modelId: number; thinking: boolean }
 interface State {
-  models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; masterKey: boolean; providers: Preset[];
+  models: SiteModel[]; turns: Record<TurnKind, TurnModel | null>; aiAvailable: boolean; masterKey: boolean; providers: Preset[]; formats: Format[];
   tavily: { set: boolean; keyLast4: string };
 }
 
@@ -79,14 +79,14 @@ export function AdminModels() {
             <span className="count">{st ? <><b>{st.models.length}</b>个模型</> : '正在加载…'}</span>
             <Button size="sm" variant="default" onClick={() => setEditing('new')}>添加模型</Button>
           </div>
-          {st && !st.models.length ? <Empty title="还没有模型">添加一个 OpenAI 兼容的模型, 再给三种轮次选上它。</Empty> : null}
+          {st && !st.models.length ? <Empty title="还没有模型">添加一个 OpenAI 兼容或 Anthropic Messages 格式的模型, 再给三种轮次选上它。</Empty> : null}
           {st?.models.length ? (
             <div className="ledger">
               {st.models.map((m) => (
                 <div className="model-row" key={m.id}>
                   <div className="min-w-0">
                     <div className="name">{m.displayName}</div>
-                    <div className="meta">{m.model}  ·  {st.providers.find((p) => p.id === m.provider)?.name ?? 'OpenAI 兼容'}  ·  {contextLabel(m)}</div>
+                    <div className="meta">{m.model}  ·  {st.providers.find((p) => p.id === m.provider)?.name ?? st.formats.find((x) => x.id === m.format)?.name ?? m.format}  ·  {contextLabel(m)}</div>
                     <div className={cn('meta', !m.searchReady && 'st warn')}>联网: {searchLabel(m)}</div>
                   </div>
                   {m.rates ? (
@@ -148,7 +148,7 @@ export function AdminModels() {
         ) : null}
       </section>
       <ModelDialog
-        target={editing} masterKey={st?.masterKey ?? false} presets={st?.providers ?? []}
+        target={editing} masterKey={st?.masterKey ?? false} presets={st?.providers ?? []} formats={st?.formats ?? []}
         onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load(); }}
       />
       <Dialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }} title="删除模型">
@@ -162,14 +162,14 @@ export function AdminModels() {
   );
 }
 
-interface Form { provider: string; displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; rates: Record<keyof Rates, string>; searchRoute: SearchRoute }
+interface Form { format: string; provider: string; displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; rates: Record<keyof Rates, string>; searchRoute: SearchRoute }
 
-const blank: Form = { provider: '', displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' }, searchRoute: '' };
+const blank: Form = { format: 'openai', provider: '', displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' }, searchRoute: '' };
 
 function formOf(m: SiteModel): Form {
   const r = m.rates;
   return {
-    provider: m.provider, displayName: m.displayName, model: m.model, baseUrl: m.baseUrl, key: '',
+    format: m.format, provider: m.provider, displayName: m.displayName, model: m.model, baseUrl: m.baseUrl, key: '',
     contextWindow: m.contextWindow ? String(m.contextWindow) : '', searchRoute: m.searchRoute,
     rates: r ? { input: String(r.input), cacheRead: String(r.cacheRead), cacheWrite: String(r.cacheWrite), output: String(r.output), search: String(r.search) } : blank.rates,
   };
@@ -181,12 +181,12 @@ function payload(f: Form) {
   const rates = rateVals.every((v) => v === '') ? null : Object.fromEntries(RATE_FIELDS.map(([k], i) => [k, rateVals[i] === '' ? null : Number(rateVals[i])]));
   const cw = f.contextWindow.trim();
   return {
-    format: 'openai', provider: f.provider, displayName: f.displayName, model: f.model, baseUrl: f.baseUrl, key: f.key,
+    format: f.format, provider: f.provider, displayName: f.displayName, model: f.model, baseUrl: f.baseUrl, key: f.key,
     contextWindow: cw === '' ? null : Number(cw), rates, searchRoute: f.searchRoute,
   };
 }
 
-function ModelDialog({ target, masterKey, presets, onClose, onDone }: { target: SiteModel | 'new' | null; masterKey: boolean; presets: Preset[]; onClose: () => void; onDone: () => void }) {
+function ModelDialog({ target, masterKey, presets, formats, onClose, onDone }: { target: SiteModel | 'new' | null; masterKey: boolean; presets: Preset[]; formats: Format[]; onClose: () => void; onDone: () => void }) {
   const [f, setF] = useState<Form>(blank);
   const [err, setErr] = useState<{ message: string; problems?: Problem[]; test?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -223,21 +223,23 @@ function ModelDialog({ target, masterKey, presets, onClose, onDone }: { target: 
         <p>保存前会发一次带假工具的流式请求, 通过了才保存。</p>
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <div className="field"><label htmlFor="mf">接口格式</label>
-            <select id="mf" className="select" value="openai" onChange={() => {}}><option value="openai">OpenAI 兼容</option></select>
+            <select id="mf" className="select" value={f.format} onChange={(e) => setF((x) => chooseFormat(x, e.target.value, formats, presets))}>
+              {formats.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
           </div>
           <div className="field"><label htmlFor="mp">服务商配置</label>
-            <select id="mp" className="select" value={f.provider} onChange={(e) => setF((x) => ({ ...chooseProvider(x, e.target.value, presets), searchRoute: keepRoute(x.searchRoute, e.target.value) }))}>
+            <select id="mp" className="select" value={f.provider} onChange={(e) => setF((x) => ({ ...chooseProvider(x, e.target.value, presets), searchRoute: keepRoute(x.searchRoute, x.format, e.target.value) }))}>
               <option value="">无</option>
-              {presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {presets.filter((p) => p.format === f.format).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
         </div>
         {preset ? <span className="hint provider-hint">已套用 {preset.name} 的默认地址和显示名称，填 key 和模型名即可。</span> : null}
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <div className="field"><label htmlFor="mn">显示名称</label><Input id="mn" placeholder="例如: DeepSeek Flash" value={f.displayName} onChange={set('displayName')} /></div>
-          <div className="field"><label htmlFor="mm">模型名</label><Input id="mm" className="font-mono" placeholder={preset ? '例如: deepseek-flash' : '例如: deepseek-chat'} value={f.model} onChange={set('model')} /></div>
+          <div className="field"><label htmlFor="mm">模型名</label><Input id="mm" className="font-mono" placeholder={preset ? '例如: deepseek-flash' : f.format === 'anthropic' ? '例如: claude-opus-5-5' : '例如: deepseek-chat'} value={f.model} onChange={set('model')} /></div>
         </div>
-        <div className="field"><label htmlFor="mu">地址</label><Input id="mu" className="font-mono" placeholder="https://api.example.com/v1" value={f.baseUrl} onChange={set('baseUrl')} /></div>
+        <div className="field"><label htmlFor="mu">地址</label><Input id="mu" className="font-mono" placeholder={f.format === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.example.com/v1'} value={f.baseUrl} onChange={set('baseUrl')} /></div>
         <div className="field"><label htmlFor="mk">Key</label>
           <Input
             id="mk" type="password" autoComplete="off" disabled={!masterKey} value={f.key} onChange={set('key')}
@@ -251,7 +253,7 @@ function ModelDialog({ target, masterKey, presets, onClose, onDone }: { target: 
           <div className="field"><label htmlFor="mc">上下文窗口 (token)</label><Input id="mc" inputMode="numeric" placeholder="128000" value={f.contextWindow} onChange={set('contextWindow')} /><span className="hint">留空按 128k。</span></div>
           <div className="field"><label htmlFor="ms">联网搜索</label>
             <select id="ms" className="select" value={f.searchRoute} onChange={(e) => setF((x) => ({ ...x, searchRoute: e.target.value as SearchRoute }))}>
-              {searchRoutes(f.provider).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              {searchRoutes(f.format, f.provider).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
             </select>
             <span className="hint">是否搜索由模型决定。解析不出路线时 AI 不启用。</span>
           </div>
@@ -309,7 +311,7 @@ function TavilyKey({ state, masterKey, onSaved }: { state: { set: boolean; keyLa
           <Button type="submit" size="sm" variant="default" disabled={busy || !key.trim()}>{busy ? '测试中…' : '测试并保存'}</Button>
           {state.set ? <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void run('DELETE')}>删除</Button> : null}
         </div>
-        <span className="hint">非 DeepSeek 的模型用它搜索 (只搜索, 不抓取网页)。保存前会做一次真实搜索。</span>
+        <span className="hint">没有自带搜索的模型 (DeepSeek 和 Anthropic 以外) 用它搜索 (只搜索, 不抓取网页)。保存前会做一次真实搜索。</span>
       </div>
       {err ? <ErrorBox message={err} /> : null}
     </form>
