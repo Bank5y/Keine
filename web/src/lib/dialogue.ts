@@ -9,7 +9,7 @@ import { track, type ToolActivity } from '@/lib/progress';
 export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
   main: { label: '主节点', hint: '' },
   child: { label: '子节点', hint: '沿这一轮继续追问，往深处挖' },
-  branch: { label: '分支节点', hint: '在课程里拓宽这个概念' },
+  branch: { label: '分支节点', hint: '横向拓宽，讲相关的概念和它们的关系' },
   divergent: { label: '发散节点', hint: '走出课程，看同类的其他内容' },
 };
 
