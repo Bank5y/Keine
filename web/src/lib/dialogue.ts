@@ -17,7 +17,7 @@ export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
 // change it, and what they send is the node's first question (ADR 0009)
 export const DEFAULT_QUESTION: Record<Exclude<NodeKind, 'main'>, string> = {
   child: '沿着这一点继续往下讲：它具体是怎么做到的，为什么要这样？',
-  branch: '在这门课里，和它相关的还有哪些概念？它们和它是什么关系？',
+  branch: '和它相关的还有哪些概念？它们和它是什么关系？',
   divergent: '课程之外，还有哪些同类的做法？和这里的做法相比有什么异同？',
 };
 

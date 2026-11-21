@@ -197,7 +197,7 @@ func TestTheAnalysisAndAFollowUpBothAnswerInTheStyleAndRecordIt(t *testing.T) {
 	if len(metas) != 2 {
 		t.Fatalf("expected 2 turns, got %v", metas)
 	}
-	for i, want := range []string{assistant.AnalysisPrompt.Version, "followup-2"} {
+	for i, want := range []string{"analysis-4", "followup-2"} {
 		mt := metas[i]
 		if mt["prompt"] != want || mt["style"] != style.ID || mt["styleVersion"] != float64(style.Version) {
 			t.Fatalf("turn %d meta %v", i, mt)
