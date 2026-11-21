@@ -325,6 +325,10 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			case strings.TrimSpace(c.raw) == "":
 				return c, &RunError{Code: CodeMalformedOutput, Kept: false, Cause: errors.New("empty reply")}
 			}
+			if r.linker != nil {
+				// within the run's deadline, after the answer (ADR 0011)
+				r.links = r.link(runCtx, msgs, c, r.linker)
+			}
 			return c, nil
 		}
 		problems := checkAnalysis(c.raw, c.parser)
@@ -369,6 +373,13 @@ type analysisRun struct {
 	// the reader sees
 	plain bool
 	text  strings.Builder
+	// linker, on the turn a node forks with, links the answer to the
+	// course (ADR 0011); links are what it linked
+	linker Linker
+	links  []CourseLink
+	// quiet: the call under way is the linking step's, which the reader
+	// sees only as its activity
+	quiet bool
 	// calls and toolRuns number the activities
 	calls, toolRuns int
 	breakers        map[string]*breaker
@@ -443,6 +454,9 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	think := Activity{ID: fmt.Sprintf("thinking-%d", r.calls), Kind: ActivityThinking}
 	activity := func(status ActivityStatus) error {
 		think.Status = status
+		if r.quiet {
+			return nil
+		}
 		return r.out.Activity(think)
 	}
 	// while the call writes, what it costs so far is worked out locally
@@ -482,6 +496,9 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 			}
 			raw.WriteString(e.Text)
 			defer r.peek(asked, raw.String())
+			if r.quiet {
+				return nil
+			}
 			if r.plain {
 				if e.Text == "" {
 					return nil

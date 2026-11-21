@@ -59,6 +59,9 @@ type turnMeta struct {
 	Degraded     []string              `json:"degraded,omitempty"`
 	// Interrupted is why the reply stops short, "" when it is whole (#136)
 	Interrupted course.Interruption `json:"interrupted,omitempty"`
+	// CourseLinks are what the turn a node forks with linked of the course
+	// (ADR 0011)
+	CourseLinks []course.CourseLink `json:"courseLinks,omitempty"`
 }
 
 // newTurnMeta is the metadata of a turn the site ran with p on model.

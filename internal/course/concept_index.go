@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/text/unicode/norm"
@@ -72,16 +74,19 @@ func (s *Service) ConceptIndexes(ctx context.Context) ([]IndexedCourse, error) {
 // ConceptEntry is an entry of a concept index: a concept of the course
 // text, the lesson and section it is in, and a summary.
 type ConceptEntry struct {
-	Name    string   `json:"name"`
-	Aliases []string `json:"aliases"`
-	Lesson  struct {
-		ID    int64  `json:"id"`
-		Key   string `json:"key"`
-		Title string `json:"title"`
-	} `json:"lesson"`
+	Name    string      `json:"name"`
+	Aliases []string    `json:"aliases"`
+	Lesson  EntryLesson `json:"lesson"`
 	// Section is nil when the concept is at the lesson's top.
 	Section *EntrySection `json:"section"`
 	Summary string        `json:"summary"`
+}
+
+// EntryLesson is the lesson an entry is in.
+type EntryLesson struct {
+	ID    int64  `json:"id"`
+	Key   string `json:"key"`
+	Title string `json:"title"`
 }
 
 // EntrySection is a section of a lesson: its anchor in the reader and its
@@ -109,6 +114,46 @@ func (x ConceptIndex) Find(term string) []ConceptEntry {
 				break
 			}
 		}
+	}
+	return out
+}
+
+// minMentionRunes is the shortest a name or an alias can be, normalized,
+// and still be looked for in a text: a single character matches anywhere.
+const minMentionRunes = 2
+
+// Mentioned is the entries a text names, by name or alias, compared
+// normalized (NormalizeConcept): those of lesson except left out, in the
+// order the text first names them, at most max of them (ADR 0011).
+func (x ConceptIndex) Mentioned(text, except string, max int) []ConceptEntry {
+	t := NormalizeConcept(text)
+	type hit struct {
+		at    int
+		entry ConceptEntry
+	}
+	var hits []hit
+	for _, e := range x.Entries {
+		if e.Lesson.Key == except {
+			continue
+		}
+		first := -1
+		for _, n := range append([]string{e.Name}, e.Aliases...) {
+			n = NormalizeConcept(n)
+			if utf8.RuneCountInString(n) < minMentionRunes {
+				continue
+			}
+			if i := strings.Index(t, n); i >= 0 && (first < 0 || i < first) {
+				first = i
+			}
+		}
+		if first >= 0 {
+			hits = append(hits, hit{first, e})
+		}
+	}
+	slices.SortStableFunc(hits, func(a, b hit) int { return a.at - b.at })
+	var out []ConceptEntry
+	for _, h := range hits[:min(len(hits), max)] {
+		out = append(out, h.entry)
 	}
 	return out
 }

@@ -25,6 +25,8 @@ type ExplorationDetail struct {
 	// LessonTitle is the title of the lesson it was made on, "" once that
 	// lesson is gone
 	LessonTitle string `json:"lessonTitle"`
+	// LessonKey is the key of the lesson it was made on
+	LessonKey string `json:"-"`
 	// the document (ADR 0012): title, concept and concept explanation
 	Title       string    `json:"title"`
 	Concept     string    `json:"concept"`
@@ -68,6 +70,9 @@ type Turn struct {
 	Reply     string    `json:"reply"`
 	Meta      TurnMeta  `json:"meta"`
 	CreatedAt time.Time `json:"createdAt"`
+	// CourseLinks are what the turn a node forks with linked of the course
+	// (ADR 0011), kept in its metadata
+	CourseLinks []CourseLink `json:"courseLinks"`
 	// NodeKind is the kind of the turn's node, so a chain of turns tells
 	// which turn forked which kind of node
 	NodeKind NodeKind `json:"-"`
@@ -127,13 +132,45 @@ type TurnMeta struct {
 	Interrupted Interruption      `json:"interrupted,omitempty"`
 }
 
+// CourseLink is a concept of another lesson that a turn's answer linked
+// (ADR 0011): the index entry's concept and place, and a sentence on how
+// it relates to the answer.
+type CourseLink struct {
+	Concept string        `json:"concept"`
+	Note    string        `json:"note"`
+	Lesson  EntryLesson   `json:"lesson"`
+	Section *EntrySection `json:"section"`
+}
+
+// readMeta reads a turn's stored metadata: what the reader sees of it, and
+// its course links.
+func (t *Turn) readMeta(raw []byte) error {
+	var links struct {
+		CourseLinks []CourseLink `json:"courseLinks"`
+	}
+	if err := json.Unmarshal(raw, &t.Meta); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw, &links); err != nil {
+		return err
+	}
+	if t.Meta.Sources == nil {
+		t.Meta.Sources = []json.RawMessage{}
+	}
+	t.CourseLinks = links.CourseLinks
+	if t.CourseLinks == nil {
+		t.CourseLinks = []CourseLink{}
+	}
+	return nil
+}
+
 // ExplorationDetail is one of the viewer's explorations, whatever its state.
 func (s *Service) ExplorationDetail(ctx context.Context, viewer auth.User, id int64) (ExplorationDetail, error) {
 	d := ExplorationDetail{Nodes: []Node{}}
-	err := s.db.QueryRow(ctx, `SELECT e.id, e.course_id, e.quote, e.state, coalesce(l.title, ''), e.title, e.concept, e.explanation, e.created_at
+	err := s.db.QueryRow(ctx, `SELECT e.id, e.course_id, e.quote, e.state, coalesce(l.title, ''), e.lesson_key, e.title, e.concept, e.explanation, e.created_at
 		FROM explorations e LEFT JOIN lessons l ON l.course_id = e.course_id AND l.key = e.lesson_key
 		WHERE e.id = $1 AND e.user_id = $2`, id, viewer.ID).
-		Scan(&d.ID, &d.CourseID, &d.Quote, &d.State, &d.LessonTitle, &d.Title, &d.Concept, &d.Explanation, &d.CreatedAt)
+		Scan(&d.ID, &d.CourseID, &d.Quote, &d.State, &d.LessonTitle, &d.LessonKey, &d.Title, &d.Concept, &d.Explanation, &d.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, ErrExplorationNotFound
 	}
@@ -184,11 +221,8 @@ func dialogue(ctx context.Context, q querier, explorationID int64) ([]Node, erro
 		if t.Question.Attachments == nil {
 			t.Question.Attachments = []Attachment{}
 		}
-		if err := json.Unmarshal(meta, &t.Meta); err != nil {
+		if err := t.readMeta(meta); err != nil {
 			return nil, err
-		}
-		if t.Meta.Sources == nil {
-			t.Meta.Sources = []json.RawMessage{}
 		}
 		t.NodeKind = nodes[at[node]].Kind
 		nodes[at[node]].Turns = append(nodes[at[node]].Turns, t)
