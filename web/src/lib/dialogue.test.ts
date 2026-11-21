@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { forksAt, mapLayout, pathTo, prune, restack, seenBy, settle, spine, stepRun, type Layer } from './dialogue';
+import { carried, forksAt, mapLayout, pathTo, prune, restack, seenBy, settle, spine, stepRun, type Layer } from './dialogue';
 import type { DialogueNode, NodeKind } from './explorations';
 
 let ids = 0;
@@ -96,5 +96,16 @@ describe('stepRun', () => {
     const s = stepRun(undefined, { type: 'activity', id: 'thinking-1', kind: 'thinking', status: 'running' });
     expect(s.thinking).toBe(true);
     expect(s.activities).toHaveLength(0);
+  });
+});
+
+describe('carried', () => {
+  it('names the background the main node brings along', () => {
+    expect(carried(tree[0])).toBe('带上了：课程信息 · 选中的原文 · 分析');
+  });
+  it('is nothing on any other node', () => {
+    expect(carried(tree[1])).toBeNull();
+    expect(carried(tree[2])).toBeNull();
+    expect(carried(tree[3])).toBeNull();
   });
 });

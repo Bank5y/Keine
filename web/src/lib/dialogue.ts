@@ -23,6 +23,15 @@ export const DEFAULT_QUESTION: Record<Exclude<NodeKind, 'main'>, string> = {
 
 export const MAX_NODES = 50;
 
+// what the follow-ups bring along as background (ADR 0011): the course,
+// the selected passage and the analysis
+const BACKGROUND = ['课程信息', '选中的原文', '分析'];
+
+// carried is the faint line atop the main node naming that background; it
+// shows once there, on no other node, and is no part of any turn.
+export const carried = (n: DialogueNode): string | null =>
+  n.kind === 'main' ? `带上了：${BACKGROUND.join(' · ')}` : null;
+
 const byId = (nodes: DialogueNode[], id: number) => nodes.find((n) => n.id === id);
 
 // pathTo is the node and its ancestors, from the main node down.

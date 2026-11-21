@@ -1643,16 +1643,8 @@ a.rn:hover .t { color: var(--brand); }
 .dlg-rule::before, .dlg-rule::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 .dlg-turn { margin-bottom: 8px; }
-.dlg-turn-label { margin: 8px 0 6px; font-size: 11px; font-weight: 500; color: var(--text-3); }
-.dlg-analysis { padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-.dlg-analysis blockquote { margin: 0 0 10px; padding-left: 10px; border-left: 2px solid var(--explore); }
-.dlg-analysis blockquote span { display: block; font-family: var(--serif); font-size: 13px; color: var(--text-2); }
-.dlg-analysis blockquote small { font-size: 11px; color: var(--text-3); }
-.dlg-analysis-head { display: flex; align-items: flex-start; gap: 16px; }
-.dlg-analysis-head > div { flex: 1; }
-.dlg-analysis-head b { font-family: var(--serif); font-size: 15px; }
-.dlg-analysis-head p { margin: 2px 0 0; font-size: 13px; color: var(--text-2); line-height: 1.6; }
-.dlg-analysis-head button { flex: none; border: 0; background: none; font-size: 12px; color: var(--explore); cursor: pointer; }
+.dlg-carried { margin: 4px 0 0; font-size: 12px; color: var(--text-3); }
+.dlg-analysis .analysis-title { font-size: 17px; }
 .dlg-asked { display: flex; justify-content: flex-end; margin: 18px 0 12px; }
 .dlg-asked-bubble { max-width: 78%; padding: 9px 14px; border-radius: 10px; background: var(--surface-2); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
 .dlg-fragment { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 4px 10px; border: 1px solid var(--line); border-left: 3px solid var(--kind); border-radius: 4px; background: var(--surface); font-size: 12px; color: var(--text-2); }
