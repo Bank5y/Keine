@@ -151,8 +151,10 @@ type Run struct {
 	Now func() time.Time
 	// Deadline ends the run (default DefaultDeadline).
 	Deadline time.Duration
-	// Spent hears what the run has used so far after each model call, for
-	// a caller who stops the run (by cancelling it) once it costs too much.
+	// Spent hears what the run has used so far, for a caller who stops the
+	// run (by cancelling it) once it costs too much: after each model call,
+	// and while a call writes, with that call worked out from its messages
+	// and what it wrote so far.
 	Spent func(Usage)
 }
 
@@ -196,8 +198,11 @@ func Analyze(ctx context.Context, run Run, msgs []Message, out Sink) (Analysis, 
 	}
 	r := newAnalysisRun(run, out)
 	r.web = web
-	a, err := r.analyze(ctx, msgs)
-	return a, r.meta(), err
+	c, err := r.loop(ctx, msgs)
+	if err != nil {
+		return Analysis{}, r.meta(), err
+	}
+	return c.parser.parts(), r.meta(), nil
 }
 
 // meta is what the run found, the searches billed (on the Keine tool
@@ -238,7 +243,7 @@ func (r *analysisRun) meta() Meta {
 	return m
 }
 
-func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, error) {
+func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) {
 	run := r.run
 	runCtx, cancel := context.WithTimeoutCause(ctx, run.Deadline, errRunDeadline)
 	defer cancel()
@@ -255,7 +260,7 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 	}
 	for {
 		if r.past(run.Deadline) {
-			return Analysis{}, timeout(errRunDeadline)
+			return called{}, timeout(errRunDeadline)
 		}
 		if !answering && r.past(run.Deadline*3/4) {
 			answering = true
@@ -275,13 +280,13 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 		if err != nil {
 			switch {
 			case ctx.Err() != nil:
-				return Analysis{}, ctx.Err()
+				return called{}, ctx.Err()
 			case errors.Is(err, errRunDeadline) || errors.Is(context.Cause(runCtx), errRunDeadline):
-				return Analysis{}, timeout(err)
+				return called{}, timeout(err)
 			}
 			var re *RunError
 			if errors.As(err, &re) {
-				return Analysis{}, err
+				return called{}, err
 			}
 			cat := CategoryOf(err)
 			// 429, 5xx and connection errors (a connection timing out among them)
@@ -289,19 +294,19 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 				retried = true
 				continue
 			}
-			return Analysis{}, &RunError{Code: runCode(cat), Kept: r.streamed, Cause: err}
+			return called{}, &RunError{Code: runCode(cat), Kept: r.streamed, Cause: err}
 		}
 		if len(c.toolCalls) > 0 && !answering {
 			steps++
-			if c.parser.emitted {
+			if r.streamed {
 				if err := r.reset(); err != nil {
-					return Analysis{}, err
+					return called{}, err
 				}
 			}
 			msgs = appendMessages(msgs, Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, ToolCalls: c.toolCalls, Native: c.result.Native})
 			msgs = append(msgs, r.execute(runCtx, c.toolCalls)...)
 			if ctx.Err() != nil {
-				return Analysis{}, ctx.Err()
+				return called{}, ctx.Err()
 			}
 			switch {
 			case steps == MaxSteps-1:
@@ -312,19 +317,29 @@ func (r *analysisRun) analyze(ctx context.Context, msgs []Message) (Analysis, er
 			}
 			continue
 		}
+		if r.plain {
+			// a reply is Markdown as written: it is whole unless cut short
+			switch {
+			case c.result.Finish == FinishLength:
+				return c, &RunError{Code: CodeOutputTruncated, Kept: r.streamed}
+			case strings.TrimSpace(c.raw) == "":
+				return c, &RunError{Code: CodeMalformedOutput, Kept: false, Cause: errors.New("empty reply")}
+			}
+			return c, nil
+		}
 		problems := checkAnalysis(c.raw, c.parser)
 		if c.result.Finish == FinishLength {
 			problems = append([]string{"答复太长，被截断了"}, problems...)
 		}
 		if len(problems) == 0 {
-			return c.parser.parts(), nil
+			return c, nil
 		}
 		if r.streamed || remedied {
 			code := CodeMalformedOutput
 			if c.result.Finish == FinishLength {
 				code = CodeOutputTruncated
 			}
-			return Analysis{}, &RunError{Code: code, Kept: r.streamed, Cause: errors.New(strings.Join(problems, "; "))}
+			return called{}, &RunError{Code: code, Kept: r.streamed, Cause: errors.New(strings.Join(problems, "; "))}
 		}
 		remedied = true
 		answering = true
@@ -349,6 +364,11 @@ type analysisRun struct {
 	out Sink
 	// streamed: the reader sees some of an answer
 	streamed bool
+	// plain: the answer is Markdown that streams as it is written (a
+	// follow-up turn), not an analysis's tagged parts; text is what of it
+	// the reader sees
+	plain bool
+	text  strings.Builder
 	// calls and toolRuns number the activities
 	calls, toolRuns int
 	breakers        map[string]*breaker
@@ -397,6 +417,7 @@ func (r *analysisRun) past(d time.Duration) bool { return r.run.Now().Sub(r.star
 
 func (r *analysisRun) reset() error {
 	r.streamed = false
+	r.text.Reset()
 	return r.out.Delta(Delta{Reset: true})
 }
 
@@ -424,6 +445,11 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 		think.Status = status
 		return r.out.Activity(think)
 	}
+	// while the call writes, what it costs so far is worked out locally
+	var asked int64
+	if r.run.Spent != nil {
+		asked = int64(EstimateMessages(req.Messages))
+	}
 	p := newTagParser(func(s Part, text string) error {
 		r.streamed = true
 		if err := r.out.Delta(Delta{Part: s, Text: text}); err != nil {
@@ -434,6 +460,11 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	res, err := r.stream(ctx, req, func(e Event) error {
 		if r.past(r.run.Deadline) {
 			return errRunDeadline
+		}
+		if ctx.Err() != nil {
+			// cancelled while the model writes (the reader's credits ran
+			// out): nothing more goes out
+			return context.Cause(ctx)
 		}
 		switch e.Kind {
 		case EventReasoning:
@@ -450,6 +481,18 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 				}
 			}
 			raw.WriteString(e.Text)
+			defer r.peek(asked, raw.String())
+			if r.plain {
+				if e.Text == "" {
+					return nil
+				}
+				r.streamed = true
+				r.text.WriteString(e.Text)
+				if err := r.out.Delta(Delta{Text: e.Text}); err != nil {
+					return sinkError{err}
+				}
+				return nil
+			}
 			return p.feed(e.Text)
 		case EventToolCall:
 			toolCalls = append(toolCalls, *e.ToolCall)
@@ -505,6 +548,20 @@ func (r *analysisRun) spend(req Request, u Usage, wrote string, calledTools bool
 	if r.run.Spent != nil {
 		r.run.Spent(total)
 	}
+}
+
+// peek tells Spent what the run has used with the call that is writing,
+// worked out from its messages and what it wrote so far.
+func (r *analysisRun) peek(asked int64, wrote string) {
+	if r.run.Spent == nil {
+		return
+	}
+	out := int64(EstimateTokens(wrote))
+	r.mu.Lock()
+	total := r.usage
+	r.mu.Unlock()
+	total.Add(Usage{Input: &asked, Output: &out})
+	r.run.Spent(total)
 }
 
 // addProvided notes sources of the provider's own search.
