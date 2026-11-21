@@ -2,6 +2,7 @@
 // The stack is the current node's path: clicking a node's chip pushes its
 // drawer from the right, going back pops it. Underneath, at most three
 // layers show as spines on the left; older ones slide off left and fade.
+import { Menu } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { TYPES, type DNode, byId, childrenOf, path } from './data';
 import { Composer, Draft, ForkHead, Turns } from './parts';
@@ -93,11 +94,11 @@ function NodeMap({ s }: { s: Store }) {
   return (
     <aside style={{ width: open ? MAP_W : 36, flex: 'none', borderLeft: '1px solid var(--line)', background: 'var(--bg)', transition: `width ${MS}ms ${ease}`, overflow: 'hidden', position: 'relative' }}>
       <button type="button" onClick={() => setOpen((v) => !v)} title={open ? '收起节点图' : '展开节点图'} style={{
-        position: 'absolute', top: 10, left: 6, zIndex: 2, width: 24, height: 24, border: '1px solid var(--line)', borderRadius: 4, background: 'var(--surface)', cursor: 'pointer', color: 'var(--text-3)', fontSize: 12, lineHeight: 1,
-      }}>{open ? '›' : '‹'}</button>
+        position: 'absolute', top: 10, right: 6, zIndex: 2, width: 24, height: 24, border: '1px solid var(--line)', borderRadius: 4, background: open ? 'var(--surface-2)' : 'var(--surface)', cursor: 'pointer', color: 'var(--text-3)', display: 'grid', placeItems: 'center', padding: 0, transition: `background ${MS}ms`,
+      }}><Menu size={14} strokeWidth={2} /></button>
       {!open ? <div style={{ position: 'absolute', top: 46, left: 0, width: 36, writingMode: 'vertical-rl', display: 'flex', alignItems: 'center', fontSize: 12, color: 'var(--text-3)', letterSpacing: 2, opacity: open ? 0 : 1, transition: `opacity ${MS}ms` }}>节点图</div> : null}
       <div style={{ width: MAP_W, height: '100%', opacity: open ? 1 : 0, transition: `opacity ${MS * 0.7}ms ${ease} ${open ? MS * 0.4 : 0}ms`, display: 'flex', flexDirection: 'column', pointerEvents: 'none', userSelect: 'none' }}>
-        <div style={{ padding: '13px 0 8px 40px', fontSize: 12, color: 'var(--text-3)' }}>节点图 · {s.nodes.length - 1} 个节点</div>
+        <div style={{ padding: '13px 40px 8px 16px', fontSize: 12, color: 'var(--text-3)' }}>节点图 · {s.nodes.length - 1} 个节点</div>
         <div style={{ flex: 1, overflow: 'auto', position: 'relative', pointerEvents: 'auto' }}>
           <svg width={Math.max(MAP_W, g.w)} height={g.h} style={{ display: 'block' }}>
             {g.nodes.filter((r) => r.n.parent).map((r) => {
@@ -128,10 +129,6 @@ function NodeMap({ s }: { s: Store }) {
               );
             })}
           </svg>
-        </div>
-        <div style={{ padding: '8px 14px 12px', borderTop: '1px solid var(--line)', fontSize: 11, color: 'var(--text-3)', display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
-          {(['main', 'child', 'branch', 'divergent'] as const).map((k) => <span key={k} style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}><TypeDot type={k} size={7} />{TYPES[k].label}</span>)}
-          <span>线上数字：岔出的那一轮</span>
         </div>
       </div>
     </aside>
