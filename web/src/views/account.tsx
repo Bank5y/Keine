@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ChevronRight, LogOut, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,8 @@ import { Input } from '@/components/ui/input';
 import { ErrorBox, PageHead } from '@/components/common';
 import { api, ApiError } from '@/lib/api';
 import { Link } from '@/lib/router';
-import { logout, type User } from '@/lib/session';
+import { credits, quota } from '@/lib/credits';
+import { loadUser, logout, type User } from '@/lib/session';
 
 export function AccountView({ user }: { user: User }) {
   const [current, setCurrent] = useState('');
@@ -14,6 +15,8 @@ export function AccountView({ user }: { user: User }) {
   const [confirm, setConfirm] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // what is left of today's credits changes with every run
+  useEffect(() => { loadUser().catch(() => {}); }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -51,6 +54,7 @@ export function AccountView({ user }: { user: User }) {
             <ChevronRight className="me-chev" aria-hidden="true" />
           </Link>
         ) : null}
+        {user.credits ? <Credits account={user.credits} /> : null}
         <section className="me-section" aria-labelledby="pw-head">
           <h2 id="pw-head">修改密码</h2>
           <p>修改后, 其他设备上的登录不受影响。</p>
@@ -68,5 +72,27 @@ export function AccountView({ user }: { user: User }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// Credits is what is left of today's credits, out of the plan's (#130).
+function Credits({ account: a }: { account: NonNullable<User['credits']> }) {
+  const left = a.remaining === null ? null : Math.max(0, Math.min(1, a.remaining / (a.daily || 1)));
+  return (
+    <section className="me-section" aria-labelledby="cr-head">
+      <h2 id="cr-head">今日积分</h2>
+      <p>分析和探索对话按实际用量扣积分。每天 0 点重置成套餐的每日额度, 不结转。</p>
+      <div className="me-credits">
+        <span className="me-credits-left">{a.remaining === null ? '不限' : credits(Math.max(0, a.remaining))}</span>
+        {a.daily === null ? null : <span className="me-credits-of">/ {quota(a.daily)}</span>}
+        <span className="me-credits-plan">{a.plan}</span>
+      </div>
+      {a.remaining !== null && a.remaining < 0 ? <small className="me-credits-note">今天已透支 {credits(-a.remaining)}: 额度用完前开始的运行按实际扣完。</small> : null}
+      {left === null ? <small className="me-credits-note">今天已用 {credits(a.used)}</small> : (
+        <div className="meter" role="meter" aria-label="今日剩余积分" aria-valuemin={0} aria-valuemax={a.daily ?? 0} aria-valuenow={Math.max(0, a.remaining ?? 0)}>
+          <span style={{ width: `${left * 100}%` }} />
+        </div>
+      )}
+    </section>
   );
 }

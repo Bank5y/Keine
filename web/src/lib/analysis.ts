@@ -41,6 +41,7 @@ const refusals: Record<string, Refusal> = {
   busy: { title: '分析没能开始', retry: true },
   run_in_progress: { title: '分析没能开始', retry: true },
   context_too_long: { title: '分析没能开始', retry: false },
+  credits_insufficient: { title: '今日积分不够这次分析', retry: false },
 };
 
 // activities are the run's lookups, kept through the answer

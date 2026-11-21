@@ -604,6 +604,10 @@ type Turn struct {
 	Adapter  Adapter
 	Model    string
 	Thinking bool
+	// DisplayName is the model's name as the admin gave it; Rates are its
+	// rates now, which a run is charged at (ADR 0010).
+	DisplayName string
+	Rates       Rates
 	// ContextWindow is the model's, in tokens (DefaultContextWindow when
 	// the admin left it unset).
 	ContextWindow int
@@ -627,9 +631,11 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 		window          *int
 	)
 	err := s.db.QueryRow(ctx, `
-		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking, m.search_route, m.context_window
+		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking, m.search_route, m.context_window,
+			m.display_name, m.rate_input, m.rate_cache_read, m.rate_cache_write, m.rate_output, m.rate_search
 		FROM turn_models t JOIN site_models m ON m.id = t.model_id WHERE t.kind = $1`, kind).
-		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking, &route, &window)
+		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking, &route, &window,
+			&t.DisplayName, &t.Rates.Input, &t.Rates.CacheRead, &t.Rates.CacheWrite, &t.Rates.Output, &t.Rates.Search)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Turn{}, fmt.Errorf("%w: %s is not mapped", ErrAssistantUnavailable, kind)
 	}

@@ -52,6 +52,13 @@ type Meta struct {
 	// run got no web results, which never goes into the document.
 	Degraded []string `json:"degraded,omitempty"`
 	Searches int      `json:"searches"`
+	// Usage is what the run's model calls used together, Estimated set
+	// when some of it was worked out locally (a call cut short, or one the
+	// provider did not report); Charged is false when no call cost
+	// anything (ADR 0010).
+	Usage     Usage `json:"-"`
+	Estimated bool  `json:"-"`
+	Charged   bool  `json:"-"`
 }
 
 type ActivityStatus string
@@ -144,6 +151,9 @@ type Run struct {
 	Now func() time.Time
 	// Deadline ends the run (default DefaultDeadline).
 	Deadline time.Duration
+	// Spent hears what the run has used so far after each model call, for
+	// a caller who stops the run (by cancelling it) once it costs too much.
+	Spent func(Usage)
 }
 
 // errRunDeadline is what cancels a run whose time is up.
@@ -201,6 +211,7 @@ func (r *analysisRun) meta() Meta {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	m.Searches += r.providerSearches
+	m.Usage, m.Estimated, m.Charged = r.usage, r.estimated, r.charged
 	// a citation may name a page its search found under another title
 	type place struct {
 		url  string
@@ -347,6 +358,10 @@ type analysisRun struct {
 	// answer cited, in order; providerSearches the searches it billed
 	provided         []WebSource
 	providerSearches int
+	// usage is what the calls used so far; estimated, some of it worked
+	// out locally; charged, some call cost anything
+	usage              Usage
+	estimated, charged bool
 }
 
 // breaker is how a tool fared in this run (#117): it is off after an
@@ -452,6 +467,7 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 		}
 		return nil
 	})
+	r.spend(req, res.Usage, raw.String()+reasoning.String(), len(toolCalls) > 0)
 	if se, ok := errors.AsType[sinkError](err); ok {
 		return called{}, se.err
 	}
@@ -467,6 +483,28 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 		}
 	}
 	return called{raw: raw.String(), reasoning: reasoning.String(), parser: p, toolCalls: toolCalls, result: res}, err
+}
+
+// spend adds what a call used to the run's usage: as the provider
+// reported it, or, for a call that wrote something without a report (cut
+// short), worked out from its messages and what it wrote. A call that
+// failed before writing anything costs nothing.
+func (r *analysisRun) spend(req Request, u Usage, wrote string, calledTools bool) {
+	r.mu.Lock()
+	switch {
+	case u.reported():
+		r.usage.Add(u)
+		r.charged = true
+	case wrote != "" || calledTools:
+		in, out := int64(EstimateMessages(req.Messages)), int64(EstimateTokens(wrote))
+		r.usage.Add(Usage{Input: &in, Output: &out})
+		r.estimated, r.charged = true, true
+	}
+	total := r.usage
+	r.mu.Unlock()
+	if r.run.Spent != nil {
+		r.run.Spent(total)
+	}
 }
 
 // addProvided notes sources of the provider's own search.

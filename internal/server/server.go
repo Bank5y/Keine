@@ -17,6 +17,7 @@ import (
 	"github.com/Bank5y/keine/internal/assistant/search"
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
+	"github.com/Bank5y/keine/internal/credits"
 	"github.com/Bank5y/keine/internal/db"
 	"github.com/Bank5y/keine/internal/notify"
 	"github.com/Bank5y/keine/internal/secret"
@@ -67,6 +68,8 @@ type Server struct {
 	models        *assistant.Models
 	// runs keeps the assistant runs within MaxRuns, one a reader
 	runs *assistant.Gate
+	// credits keeps what the assistant costs each reader
+	credits *credits.Service
 	// generator helps users write a course manifest
 	generator course.Generator
 	files     storage.Store
@@ -102,6 +105,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	}
 	s.models = assistant.NewModels(pool, box, opts.AdapterFor, opts.SearchFor)
 	s.runs = assistant.NewGate(opts.MaxRuns)
+	s.credits = credits.NewService(pool, opts.Now)
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -172,6 +176,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/admin/tavily", s.adminOnly(s.setTavily))
 	s.mux.HandleFunc("DELETE /api/admin/tavily", s.adminOnly(s.clearTavily))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}", s.adminOnly(s.updateUser))
+	s.mux.HandleFunc("GET /api/admin/plans", s.adminOnly(s.listPlans))
+	s.mux.HandleFunc("POST /api/admin/plans", s.adminOnly(s.createPlan))
+	s.mux.HandleFunc("PUT /api/admin/plans/{id}", s.adminOnly(s.updatePlan))
+	s.mux.HandleFunc("DELETE /api/admin/plans/{id}", s.adminOnly(s.deletePlan))
+	s.mux.HandleFunc("PUT /api/admin/plans/{id}/default", s.adminOnly(s.setDefaultPlan))
+	s.mux.HandleFunc("GET /api/admin/usage", s.adminOnly(s.siteUsage))
+	s.mux.HandleFunc("GET /api/admin/usage/users", s.adminOnly(s.readersUsage))
+	s.mux.HandleFunc("GET /api/admin/usage/users/{id}", s.adminOnly(s.readerUsage))
 	s.mux.HandleFunc("PUT /api/admin/users/{id}/password", s.adminOnly(s.resetPassword))
 	s.mux.HandleFunc("POST /api/courses", s.signedIn(s.uploadCourse))
 	s.mux.HandleFunc("GET /api/courses/{id}", s.signedIn(s.getCourse))

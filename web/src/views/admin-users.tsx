@@ -5,20 +5,38 @@ import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Empty, ErrorBox } from '@/components/common';
 import { api, ApiError } from '@/lib/api';
+import { credits, quota, type Account, type Plan } from '@/lib/credits';
 import type { User } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
+// a user on the admin's list, with their plan and what they used today
+type Listed = User & { credits: Account };
+
 export function AdminUsers({ me }: { me: User }) {
-  const [users, setUsers] = useState<User[] | null>(null);
+  const [users, setUsers] = useState<Listed[] | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [err, setErr] = useState('');
   const [creating, setCreating] = useState(false);
   const [resetting, setResetting] = useState<User | null>(null);
   const [toggling, setToggling] = useState<User | null>(null);
 
-  const load = () => api<{ users: User[] }>('GET', '/api/admin/users').then((r) => setUsers(r.users)).catch((e) => setErr(e.message));
-  useEffect(() => { void load(); }, []);
+  const load = () => api<{ users: Listed[] }>('GET', '/api/admin/users').then((r) => setUsers(r.users)).catch((e) => setErr(e.message));
+  useEffect(() => {
+    void load();
+    api<{ plans: Plan[] }>('GET', '/api/admin/plans').then((r) => setPlans(r.plans)).catch((e) => setErr(e.message));
+  }, []);
+
+  async function assign(u: Listed, planId: number) {
+    try {
+      await api('PUT', `/api/admin/users/${u.id}`, { planId });
+      toast.success(`${u.username} 已改到「${plans.find((p) => p.id === planId)?.name ?? ''}」`);
+      void load();
+    } catch (ex) {
+      toast.error(ex instanceof ApiError ? ex.message : '操作失败');
+    }
+  }
 
   async function toggle(u: User) {
     try {
@@ -39,11 +57,22 @@ export function AdminUsers({ me }: { me: User }) {
       </div>
       {err ? <ErrorBox message={err} /> : null}
       {users && !users.length ? <Empty title="还没有账号" /> : null}
-      <div className="ledger">
+      <div className="ledger users">
+        {users?.length ? (
+          <div className="ledger-row ledger-head" aria-hidden="true">
+            <span /><span /><span>套餐</span><span>今日已用 / 每日额度</span><span className="meta" /><span />
+          </div>
+        ) : null}
         {(users || []).map((u) => (
           <div className="ledger-row" key={u.id}>
             <span className="name" title={u.username}>{u.username}{u.id === me.id ? <span className="ml-2 text-xs font-normal text-ink-3">(你)</span> : null}</span>
             <span className={cn('st', u.disabled ? 'off' : (u.role === 'admin' ? 'admin' : 'ok'))}>{u.disabled ? '已禁用' : (u.role === 'admin' ? '管理员' : '正常')}</span>
+            <select className="select plan-select" aria-label={`${u.username} 的套餐`} value={u.credits.planId} onChange={(e) => void assign(u, Number(e.target.value))}>
+              {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <span className="used">
+              <b className={cn(u.credits.remaining !== null && u.credits.remaining < 0 && 'over')}>{credits(u.credits.used)}</b> / {quota(u.credits.daily)}
+            </span>
             <span className="meta">注册于 {fmtDate(u.createdAt)}</span>
             <span className="acts">
               {/* every row has both buttons, so the columns line up; the server refuses disabling yourself */}

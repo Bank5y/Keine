@@ -143,6 +143,30 @@ type Usage struct {
 	Searches *int64 `json:"searches,omitempty"`
 }
 
+// Add adds what another call used: a field either reported counts, and
+// stays nil only when neither did.
+func (u *Usage) Add(o Usage) {
+	for _, f := range []struct {
+		to   **int64
+		from *int64
+	}{
+		{&u.Input, o.Input}, {&u.Output, o.Output}, {&u.CacheRead, o.CacheRead},
+		{&u.CacheWrite, o.CacheWrite}, {&u.Reasoning, o.Reasoning}, {&u.Searches, o.Searches},
+	} {
+		if f.from == nil {
+			continue
+		}
+		n := *f.from
+		if *f.to != nil {
+			n += **f.to
+		}
+		*f.to = &n
+	}
+}
+
+// reported tells whether the provider said what the call used.
+func (u Usage) reported() bool { return u.Input != nil || u.Output != nil }
+
 type Result struct {
 	Usage  Usage
 	Finish FinishReason

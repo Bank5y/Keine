@@ -26,6 +26,9 @@ type apiError struct {
 	// Length is how long a lesson is against what its model takes, when
 	// the reader has to choose how much of it to send.
 	Length any `json:"length,omitempty"`
+	// Credits are what a run would cost against what is left, when that
+	// is not enough.
+	Credits any `json:"credits,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
