@@ -7,7 +7,7 @@ describe('unavailableText', () => {
   });
 
   it('tells the admin what to fix and where', () => {
-    expect(unavailableText({ reason: 'turns_unmapped', turns: ['followup', 'sync'] }, true)).toBe('AI 未启用：后续轮、同步还没选模型。在「管理 → 模型 → 轮次」里配置。');
+    expect(unavailableText({ reason: 'turns_unmapped', turns: ['report', 'concept_index'] }, true)).toBe('AI 未启用：报告、概念索引还没选模型。在「管理 → 模型 → 轮次」里配置。');
     expect(unavailableText({ reason: 'search_unrouted', models: ['GLM', 'Qwen'] }, true)).toBe('AI 未启用：GLM、Qwen 没有可用的联网路线。在「管理 → 模型 → 联网」里配置。');
   });
 

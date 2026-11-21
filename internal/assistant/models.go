@@ -31,12 +31,13 @@ const (
 type TurnKind string
 
 const (
-	TurnAnalysis TurnKind = "analysis"
-	TurnFollowup TurnKind = "followup"
-	TurnSync     TurnKind = "sync"
+	TurnAnalysis     TurnKind = "analysis"
+	TurnFollowup     TurnKind = "followup"
+	TurnReport       TurnKind = "report"
+	TurnConceptIndex TurnKind = "concept_index"
 )
 
-var TurnKinds = []TurnKind{TurnAnalysis, TurnFollowup, TurnSync}
+var TurnKinds = []TurnKind{TurnAnalysis, TurnFollowup, TurnReport, TurnConceptIndex}
 
 func ValidTurnKind(k string) bool {
 	for _, t := range TurnKinds {
