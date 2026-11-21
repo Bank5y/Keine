@@ -15,7 +15,7 @@ import { AdminUsers } from '@/views/admin-users';
 
 const TABS: [string, string][] = [['/admin/reviews', '审核'], ['/admin/users', '用户'], ['/admin/models', '模型'], ['/admin/plans', '套餐'], ['/admin/usage', '用量'], ['/admin/site', '站点设置']];
 
-const TAB_VIEWS: Record<string, ComponentType> = { '/admin/models': AdminModels, '/admin/plans': AdminPlans, '/admin/site': SiteSettings };
+const TAB_VIEWS: Record<string, ComponentType> = { '/admin/plans': AdminPlans, '/admin/site': SiteSettings };
 
 // AdminView stays mounted while its tabs change (each has its own address):
 // only the content below the tabs fades over, and the page keeps its place.
@@ -29,7 +29,7 @@ export function AdminView({ path, user }: { path: string; user: User }) {
         {TABS.map(([href, label]) => <Link key={href} href={href} keepScroll className={cn(tab === href && 'active')} aria-current={tab === href ? 'page' : undefined}>{label}</Link>)}
       </nav>
       <TabPane fading={fading}>
-        {shown === '/admin/users' ? <AdminUsers me={user} /> : shown === '/admin/usage' ? <AdminUsage path={path} /> : createElement(TAB_VIEWS[shown] ?? AdminReviews)}
+        {shown === '/admin/users' ? <AdminUsers me={user} /> : shown === '/admin/usage' ? <AdminUsage path={path} /> : shown === '/admin/models' ? <AdminModels path={path} /> : createElement(TAB_VIEWS[shown] ?? AdminReviews)}
       </TabPane>
     </div>
   );

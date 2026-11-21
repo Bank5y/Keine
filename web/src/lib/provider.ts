@@ -60,6 +60,9 @@ export function searchRoutes(format: string, provider: string): { id: SearchRout
 export const keepRoute = (route: SearchRoute, format: string, provider: string): SearchRoute =>
   searchRoutes(format, provider).some((r) => r.id === route) ? route : '';
 
+// routeChoice is the route an admin chose for a model, by name.
+export const routeChoice = (r: SearchRoute) => (r === '' ? '自动' : routeNames[r]);
+
 // searchLabel is what a model searches with now, as the server resolved it.
 export const searchLabel = (m: { search: SearchRoute; searchReady: boolean }) =>
   !m.searchReady || m.search === '' ? '没有搜索路线' : routeNames[m.search];

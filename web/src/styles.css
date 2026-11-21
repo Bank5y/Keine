@@ -413,6 +413,8 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .check input { width: 16px; height: 16px; accent-color: var(--brand); }
 
 /* ---------- usage (admin) ---------- */
+.models-seg { margin-bottom: 24px; }
+.routes-table td { white-space: normal; }
 .usage-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
 .usage-range { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 5px; background: var(--surface-2); }
@@ -747,6 +749,12 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .analysis-retry svg { width: 12px; height: 12px; }
 .ann-btn.analyze { color: var(--brand); }
 .ann-btn.analyze:hover { color: var(--brand-hover); background: var(--brand-soft); }
+.ann-btn.analyze[aria-disabled="true"], .ann-btn.analyze[aria-disabled="true"]:hover { color: var(--text-3); opacity: .6; background: transparent; cursor: not-allowed; }
+.ann-tip-host { position: relative; display: inline-flex; }
+.ann-tip { position: absolute; top: calc(100% + 10px); left: 50%; z-index: 30; width: max-content; max-width: 280px; padding: 8px 12px; border-radius: 5px; background: var(--text); color: var(--bg); font-size: 12px; line-height: 1.5; text-align: left; white-space: normal; transform: translateX(-50%); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s; }
+.ann-tip::before { content: ""; position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; background: inherit; transform: translateX(-50%) rotate(45deg); }
+.ann-tip-host:hover .ann-tip, .ann-tip-host:focus-within .ann-tip { opacity: 1; visibility: visible; }
+
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes pulse { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .analysis, .analysis-skeleton span, .analysis-dot, .analysis-progress li.running .analysis-dot { animation: none; } .analysis-title.caret::after, .analysis-intro.caret::after, .analysis-meaning.caret .prose > :last-child::after { animation: none; } }
