@@ -303,29 +303,30 @@ func TestAIAvailableOnceEveryTurnKindIsMapped(t *testing.T) {
 	}
 	admin.mustOK(admin.do("PUT", "/api/admin/turns/analysis", map[string]any{"modelId": id}))
 	admin.mustOK(admin.do("PUT", "/api/admin/turns/followup", map[string]any{"modelId": id}))
+	admin.mustOK(admin.do("PUT", "/api/admin/turns/report", map[string]any{"modelId": id}))
 	if aiAvailable(t, alice) {
-		t.Fatal("AI available with sync unmapped")
+		t.Fatal("AI available with the concept index unmapped")
 	}
-	st := admin.mustOK(admin.do("PUT", "/api/admin/turns/sync", map[string]any{"modelId": id, "thinking": true})).json()
+	st := admin.mustOK(admin.do("PUT", "/api/admin/turns/concept_index", map[string]any{"modelId": id, "thinking": true})).json()
 	if !aiAvailable(t, alice) || st["aiAvailable"] != true {
 		t.Fatalf("AI not available with every kind mapped: %v", st)
 	}
 	turns := listModels(admin)["turns"].(map[string]any)
-	if s := turns["sync"].(map[string]any); s["modelId"] != float64(id) || s["thinking"] != true {
+	if s := turns["concept_index"].(map[string]any); s["modelId"] != float64(id) || s["thinking"] != true {
 		t.Fatalf("turns = %v", turns)
 	}
 
 	expectError(t, admin.do("DELETE", fmt.Sprintf("/api/admin/models/%d", id), nil), http.StatusConflict, "model_in_use")
 
-	admin.mustOK(admin.do("PUT", "/api/admin/turns/sync", map[string]any{"modelId": nil}))
+	admin.mustOK(admin.do("PUT", "/api/admin/turns/concept_index", map[string]any{"modelId": nil}))
 	if aiAvailable(t, alice) {
-		t.Fatal("AI still available after unmapping sync")
+		t.Fatal("AI still available after unmapping the concept index")
 	}
-	if listModels(admin)["turns"].(map[string]any)["sync"] != nil {
-		t.Fatal("sync still mapped")
+	if listModels(admin)["turns"].(map[string]any)["concept_index"] != nil {
+		t.Fatal("the concept index still mapped")
 	}
 	expectError(t, admin.do("PUT", "/api/admin/turns/summary", map[string]any{"modelId": id}), http.StatusNotFound, "not_found")
-	expectError(t, admin.do("PUT", "/api/admin/turns/sync", map[string]any{"modelId": 99999}), http.StatusNotFound, "model_not_found")
+	expectError(t, admin.do("PUT", "/api/admin/turns/report", map[string]any{"modelId": 99999}), http.StatusNotFound, "model_not_found")
 }
 
 func TestAdminDeletesModel(t *testing.T) {

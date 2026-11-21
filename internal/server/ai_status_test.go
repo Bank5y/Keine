@@ -23,7 +23,7 @@ func modelsProblem(t *testing.T, admin *client) map[string]any {
 func TestTheAdminIsToldWhyTheAssistantIsUnavailable(t *testing.T) {
 	a := newApp(t, withModel(newScriptedModel()), withMasterKey(masterKey))
 	admin := a.admin()
-	if p := aiProblem(t, admin); p["reason"] != "turns_unmapped" || fmt.Sprint(p["turns"]) != "[analysis followup sync]" {
+	if p := aiProblem(t, admin); p["reason"] != "turns_unmapped" || fmt.Sprint(p["turns"]) != "[analysis followup report concept_index]" {
 		t.Fatalf("with no model: %v", p)
 	}
 
@@ -34,12 +34,13 @@ func TestTheAdminIsToldWhyTheAssistantIsUnavailable(t *testing.T) {
 	}
 	qwen, glm := newModel("Qwen"), newModel("GLM")
 	admin.mustOK(admin.do("PUT", "/api/admin/turns/analysis", map[string]any{"modelId": qwen}))
-	if p := aiProblem(t, admin); p["reason"] != "turns_unmapped" || fmt.Sprint(p["turns"]) != "[followup sync]" {
+	if p := aiProblem(t, admin); p["reason"] != "turns_unmapped" || fmt.Sprint(p["turns"]) != "[followup report concept_index]" {
 		t.Fatalf("with analysis mapped: %v", p)
 	}
 
 	admin.mustOK(admin.do("PUT", "/api/admin/turns/followup", map[string]any{"modelId": glm}))
-	admin.mustOK(admin.do("PUT", "/api/admin/turns/sync", map[string]any{"modelId": qwen}))
+	admin.mustOK(admin.do("PUT", "/api/admin/turns/report", map[string]any{"modelId": qwen}))
+	admin.mustOK(admin.do("PUT", "/api/admin/turns/concept_index", map[string]any{"modelId": qwen}))
 	// both search on auto, with neither a search of their own nor a Tavily key
 	p := aiProblem(t, admin)
 	if p["reason"] != "search_unrouted" || fmt.Sprint(p["models"]) != "[GLM Qwen]" {
