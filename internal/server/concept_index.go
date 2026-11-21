@@ -60,18 +60,7 @@ func (s *Server) buildConceptIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := s.courses.StartConceptIndex(r.Context(), id)
-	switch {
-	case errors.Is(err, course.ErrNotFound):
-		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
-		return
-	case errors.Is(err, course.ErrIndexBuilding):
-		writeError(w, http.StatusConflict, "index_building", "这个版本的概念索引正在建立。")
-		return
-	case errors.Is(err, course.ErrIndexBuilt):
-		writeError(w, http.StatusConflict, "index_built", "这个版本的概念索引已经建立。")
-		return
-	case err != nil:
-		writeInternal(w, r, err)
+	if !writeCourseError(w, r, err) {
 		return
 	}
 	s.building.Add(1)
@@ -79,13 +68,13 @@ func (s *Server) buildConceptIndex(w http.ResponseWriter, r *http.Request) {
 		defer s.building.Done()
 		s.extractConcepts(s.buildCtx, turn, b)
 	}()
-	writeJSON(w, http.StatusAccepted, map[string]any{"status": course.IndexBuilding})
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": course.ConceptIndexBuilding})
 }
 
 // extractConcepts extracts the build's lessons in turn; the first that
 // fails ends the build as failed, with what was extracted before it kept.
-func (s *Server) extractConcepts(ctx context.Context, turn assistant.Turn, b course.IndexBuild) {
-	failure := ""
+func (s *Server) extractConcepts(ctx context.Context, turn assistant.Turn, b course.ConceptIndexBuild) {
+	end := course.ConceptIndexDone()
 	for _, l := range b.Lessons {
 		sections := anchor.Sections(l.Markdown)
 		titles := make([]string, len(sections))
@@ -97,25 +86,19 @@ func (s *Server) extractConcepts(ctx context.Context, turn assistant.Turn, b cou
 			CourseTitle: b.CourseTitle, Chapter: l.Chapter, Title: l.Title, Sections: titles, Markdown: l.Markdown,
 		})
 		// the site's own run: no reader is charged (#158)
-		if rerr := s.credits.RecordRun(context.WithoutCancel(ctx), 0, assistant.TurnConceptIndex, turn, meta); rerr != nil {
-			slog.Error("usage not recorded", "kind", assistant.TurnConceptIndex, "err", rerr)
-		}
+		s.recordRun(ctx, 0, assistant.TurnConceptIndex, turn, meta)
 		if err != nil {
-			failure = assistant.CodeProviderError
-			var re *assistant.RunError
-			if errors.As(err, &re) {
-				failure = re.Code
-			}
-			slog.Info("concept extraction failed", "course", b.CourseID, "lesson", l.Key, "err", err)
+			code, _ := runFailure(ctx, "concept extraction", err)
+			end = course.ConceptIndexFailedWith(code)
 			break
 		}
 		if err := s.courses.KeepLessonConcepts(context.WithoutCancel(ctx), b, l, placed(found, sections)); err != nil {
 			slog.Error("concepts not kept", "course", b.CourseID, "lesson", l.Key, "err", err)
-			failure = "internal"
+			end = course.ConceptIndexFailedWith("internal")
 			break
 		}
 	}
-	if err := s.courses.FinishConceptIndex(context.WithoutCancel(ctx), b, failure); err != nil {
+	if err := s.courses.FinishConceptIndex(context.WithoutCancel(ctx), b, end); err != nil {
 		slog.Error("concept index not finished", "course", b.CourseID, "err", err)
 	}
 }

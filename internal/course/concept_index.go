@@ -5,50 +5,52 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/Bank5y/keine/internal/storage"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/text/unicode/norm"
 )
 
 // A concept index's status (#158): a version starts with none, and has one
 // only once an admin builds it.
-type IndexStatus string
+type ConceptIndexStatus string
 
 const (
-	IndexNone     IndexStatus = "none"
-	IndexBuilding IndexStatus = "building"
-	IndexBuilt    IndexStatus = "built"
-	IndexFailed   IndexStatus = "failed"
+	ConceptIndexNone     ConceptIndexStatus = "none"
+	ConceptIndexBuilding ConceptIndexStatus = "building"
+	ConceptIndexBuilt    ConceptIndexStatus = "built"
+	ConceptIndexFailed   ConceptIndexStatus = "failed"
 )
 
 var (
-	// ErrIndexBuilding: the version's index is being built already.
-	ErrIndexBuilding = errors.New("concept index building")
-	// ErrIndexBuilt: the version's index is built; a new version gets its own.
-	ErrIndexBuilt = errors.New("concept index built")
+	// ErrConceptIndexBuilding: the version's index is being built already.
+	ErrConceptIndexBuilding = errors.New("concept index building")
+	// ErrConceptIndexBuilt: the version's index is built; a new version gets its own.
+	ErrConceptIndexBuilt = errors.New("concept index built")
 )
 
-// IndexedCourse is a library course with the index of its current version,
+// ConceptIndexCourse is a library course with the index of its current version,
 // as the admin page lists it.
-type IndexedCourse struct {
-	ID         int64       `json:"id"`
-	Title      string      `json:"title"`
-	UpdatedAt  time.Time   `json:"updatedAt"`
-	Lessons    int         `json:"lessons"`
-	Status     IndexStatus `json:"status"`
-	Entries    int         `json:"entries"`
-	Error      string      `json:"error,omitempty"`
-	StartedAt  *time.Time  `json:"startedAt"`
-	FinishedAt *time.Time  `json:"finishedAt"`
+type ConceptIndexCourse struct {
+	ID         int64              `json:"id"`
+	Title      string             `json:"title"`
+	UpdatedAt  time.Time          `json:"updatedAt"`
+	Lessons    int                `json:"lessons"`
+	Status     ConceptIndexStatus `json:"status"`
+	Entries    int                `json:"entries"`
+	Error      string             `json:"error,omitempty"`
+	StartedAt  *time.Time         `json:"startedAt"`
+	FinishedAt *time.Time         `json:"finishedAt"`
 }
 
 // ConceptIndexes lists the library's courses with the status of their
 // current version's index, by title.
-func (s *Service) ConceptIndexes(ctx context.Context) ([]IndexedCourse, error) {
+func (s *Service) ConceptIndexes(ctx context.Context) ([]ConceptIndexCourse, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT c.id, c.title, c.updated_at,
 		       (SELECT count(*) FROM lessons l WHERE l.course_id = c.id AND l.file IS NOT NULL),
@@ -62,8 +64,8 @@ func (s *Service) ConceptIndexes(ctx context.Context) ([]IndexedCourse, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := []IndexedCourse{}
-	var c IndexedCourse
+	out := []ConceptIndexCourse{}
+	var c ConceptIndexCourse
 	_, err = pgx.ForEachRow(rows, []any{&c.ID, &c.Title, &c.UpdatedAt, &c.Lessons, &c.Status, &c.Entries, &c.Error, &c.StartedAt, &c.FinishedAt}, func() error {
 		out = append(out, c)
 		return nil
@@ -98,8 +100,8 @@ type EntrySection struct {
 
 // ConceptIndex is the index of one version of a course.
 type ConceptIndex struct {
-	Status  IndexStatus    `json:"status"`
-	Entries []ConceptEntry `json:"entries"`
+	Status  ConceptIndexStatus `json:"status"`
+	Entries []ConceptEntry     `json:"entries"`
 }
 
 // Find is the entries whose name or an alias is term, compared
@@ -123,9 +125,10 @@ func (x ConceptIndex) Find(term string) []ConceptEntry {
 const minMentionRunes = 2
 
 // Mentioned is the entries a text names, by name or alias, compared
-// normalized (NormalizeConcept): those of lesson except left out, in the
-// order the text first names them, at most max of them (ADR 0011).
-func (x ConceptIndex) Mentioned(text, except string, max int) []ConceptEntry {
+// normalized (NormalizeConcept), in the order the text first names them,
+// at most max of them (ADR 0011). Entries of the lesson keyed exceptLesson
+// are left out.
+func (x ConceptIndex) Mentioned(text, exceptLesson string, max int) []ConceptEntry {
 	t := NormalizeConcept(text)
 	type hit struct {
 		at    int
@@ -133,7 +136,7 @@ func (x ConceptIndex) Mentioned(text, except string, max int) []ConceptEntry {
 	}
 	var hits []hit
 	for _, e := range x.Entries {
-		if e.Lesson.Key == except {
+		if e.Lesson.Key == exceptLesson {
 			continue
 		}
 		first := -1
@@ -168,14 +171,14 @@ func NormalizeConcept(s string) string {
 // Summary.FilesDir): its status, and its entries in course order once it is
 // built. It does not check who may read the course.
 func (s *Service) ConceptIndexOf(ctx context.Context, courseID int64, filesDir string) (ConceptIndex, error) {
-	x := ConceptIndex{Status: IndexNone, Entries: []ConceptEntry{}}
+	x := ConceptIndex{Status: ConceptIndexNone, Entries: []ConceptEntry{}}
 	var indexID int64
 	err := s.db.QueryRow(ctx, "SELECT id, status FROM concept_indexes WHERE course_id = $1 AND files_dir = $2", courseID, filesDir).
 		Scan(&indexID, &x.Status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return x, nil
 	}
-	if err != nil || x.Status != IndexBuilt {
+	if err != nil || x.Status != ConceptIndexBuilt {
 		return x, err
 	}
 	rows, err := s.db.Query(ctx, `
@@ -202,17 +205,17 @@ func (s *Service) ConceptIndexOf(ctx context.Context, courseID int64, filesDir s
 	return x, err
 }
 
-// IndexBuild is a build of a version's index under way: the lessons it has
+// ConceptIndexBuild is a build of a version's index under way: the lessons it has
 // to extract, those whose text an earlier build extracted already copied.
-type IndexBuild struct {
+type ConceptIndexBuild struct {
 	ID          int64
 	CourseID    int64
 	CourseTitle string
-	Lessons     []IndexLesson
+	Lessons     []ConceptIndexLesson
 }
 
-// IndexLesson is a lesson of the version to extract its concepts from.
-type IndexLesson struct {
+// ConceptIndexLesson is a lesson of the version to extract its concepts from.
+type ConceptIndexLesson struct {
 	Key, Title, Chapter string
 	Markdown            string
 	hash                string
@@ -232,9 +235,22 @@ type ExtractedConcept struct {
 // current version: from none, or again after it failed. Lessons whose
 // text an earlier build of the course extracted (a previous version, or
 // this one before it failed) get those entries copied; the rest are
-// returned to be extracted, and kept with KeepLessonConcepts.
-func (s *Service) StartConceptIndex(ctx context.Context, courseID int64) (IndexBuild, error) {
-	b := IndexBuild{CourseID: courseID}
+// returned to be extracted, and kept with KeepLessonConcepts. A lesson
+// whose text is missing from storage is logged and left out of the index.
+//
+// The texts are read with no lock held; the course is checked again under
+// the lock, and the start begins over if it switched version meanwhile.
+func (s *Service) StartConceptIndex(ctx context.Context, courseID int64) (ConceptIndexBuild, error) {
+	for attempt := 1; ; attempt++ {
+		b, err := s.startConceptIndex(ctx, courseID)
+		if !errors.Is(err, ErrCourseBusy) || attempt == busyAttempts {
+			return b, err
+		}
+	}
+}
+
+func (s *Service) startConceptIndex(ctx context.Context, courseID int64) (ConceptIndexBuild, error) {
+	b := ConceptIndexBuild{CourseID: courseID}
 	var dir string
 	err := s.db.QueryRow(ctx, "SELECT title, files_dir FROM courses WHERE id = $1 AND visibility = 'public' AND deleted_at IS NULL", courseID).
 		Scan(&b.CourseTitle, &dir)
@@ -245,7 +261,7 @@ func (s *Service) StartConceptIndex(ctx context.Context, courseID int64) (IndexB
 		return b, err
 	}
 	type lessonFile struct {
-		IndexLesson
+		ConceptIndexLesson
 		file string
 	}
 	rows, err := s.db.Query(ctx, `
@@ -255,67 +271,84 @@ func (s *Service) StartConceptIndex(ctx context.Context, courseID int64) (IndexB
 		return b, err
 	}
 	var lf lessonFile
-	var files []lessonFile
+	var listed []lessonFile
 	if _, err := pgx.ForEachRow(rows, []any{&lf.Key, &lf.Title, &lf.Chapter, &lf.file}, func() error {
-		files = append(files, lf)
+		listed = append(listed, lf)
 		return nil
 	}); err != nil {
 		return b, err
 	}
-	// read before the build is claimed, so a missing file fails nothing
-	for i := range files {
-		t, err := s.readText(ctx, courseID, dir, LessonText{File: files[i].file})
+	var files []lessonFile
+	for _, f := range listed {
+		t, err := s.readText(ctx, courseID, dir, LessonText{File: f.file})
+		if errors.Is(err, storage.ErrNotFound) {
+			slog.Warn("lesson text missing", "course", courseID, "file", filesPrefix(courseID, dir)+f.file)
+			continue
+		}
 		if err != nil {
 			return b, err
 		}
-		files[i].Markdown = t.Markdown
+		f.Markdown = t.Markdown
 		sum := sha256.Sum256([]byte(t.Markdown))
-		files[i].hash = hex.EncodeToString(sum[:])
+		f.hash = hex.EncodeToString(sum[:])
+		files = append(files, f)
 	}
 
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return b, err
-	}
-	defer tx.Rollback(ctx)
-	var status IndexStatus
-	err = tx.QueryRow(ctx, "SELECT id, status FROM concept_indexes WHERE course_id = $1 AND files_dir = $2 FOR UPDATE", courseID, dir).Scan(&b.ID, &status)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		err = tx.QueryRow(ctx, `INSERT INTO concept_indexes (course_id, files_dir, status, started_at) VALUES ($1, $2, 'building', $3)
-			ON CONFLICT (course_id, files_dir) DO NOTHING RETURNING id`, courseID, dir, s.now()).Scan(&b.ID)
+	err = s.tx(ctx, func(tx pgx.Tx) error {
+		// the texts were read from dir: under the lock it must still be the
+		// version the course shows
+		var now string
+		err := tx.QueryRow(ctx, "SELECT files_dir FROM courses WHERE id = $1 AND visibility = 'public' AND deleted_at IS NULL FOR SHARE", courseID).Scan(&now)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return b, ErrIndexBuilding // another admin started it just now
+			return ErrNotFound
 		}
-	case err != nil:
-	case status == IndexBuilding:
-		return b, ErrIndexBuilding
-	case status == IndexBuilt:
-		return b, ErrIndexBuilt
-	default:
-		_, err = tx.Exec(ctx, "UPDATE concept_indexes SET status = 'building', error = NULL, started_at = $2, finished_at = NULL WHERE id = $1", b.ID, s.now())
-	}
-	if err != nil {
-		return b, err
-	}
-	// lessons gone from this version, from a build before it failed
-	keys := make([]string, len(files))
-	for i, f := range files {
-		keys[i] = f.Key
-	}
-	if _, err := tx.Exec(ctx, "DELETE FROM concept_index_lessons WHERE index_id = $1 AND lesson_key <> ALL($2)", b.ID, keys); err != nil {
-		return b, err
-	}
-	for _, f := range files {
-		done, err := copyLessonConcepts(ctx, tx, b.ID, courseID, f.Key, f.hash)
 		if err != nil {
-			return b, err
+			return err
 		}
-		if !done {
-			b.Lessons = append(b.Lessons, f.IndexLesson)
+		if now != dir {
+			return ErrCourseBusy
 		}
-	}
-	return b, tx.Commit(ctx)
+		var status ConceptIndexStatus
+		err = tx.QueryRow(ctx, "SELECT id, status FROM concept_indexes WHERE course_id = $1 AND files_dir = $2 FOR UPDATE", courseID, dir).Scan(&b.ID, &status)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			err = tx.QueryRow(ctx, `INSERT INTO concept_indexes (course_id, files_dir, status, started_at) VALUES ($1, $2, 'building', $3)
+				ON CONFLICT (course_id, files_dir) DO NOTHING RETURNING id`, courseID, dir, s.now()).Scan(&b.ID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrConceptIndexBuilding // another admin started it just now
+			}
+		case err != nil:
+		case status == ConceptIndexBuilding:
+			return ErrConceptIndexBuilding
+		case status == ConceptIndexBuilt:
+			return ErrConceptIndexBuilt
+		default:
+			_, err = tx.Exec(ctx, "UPDATE concept_indexes SET status = 'building', error = NULL, started_at = $2, finished_at = NULL WHERE id = $1", b.ID, s.now())
+		}
+		if err != nil {
+			return err
+		}
+		// lessons gone from this version, or whose text is missing, from a
+		// build before it failed
+		keys := make([]string, len(files))
+		for i, f := range files {
+			keys[i] = f.Key
+		}
+		if _, err := tx.Exec(ctx, "DELETE FROM concept_index_lessons WHERE index_id = $1 AND lesson_key <> ALL($2)", b.ID, keys); err != nil {
+			return err
+		}
+		for _, f := range files {
+			done, err := copyLessonConcepts(ctx, tx, b.ID, courseID, f.Key, f.hash)
+			if err != nil {
+				return err
+			}
+			if !done {
+				b.Lessons = append(b.Lessons, f.ConceptIndexLesson)
+			}
+		}
+		return nil
+	})
+	return b, err
 }
 
 // copyLessonConcepts makes sure the index has the lesson's entries from
@@ -357,7 +390,7 @@ func copyLessonConcepts(ctx context.Context, tx pgx.Tx, indexID, courseID int64,
 }
 
 // KeepLessonConcepts keeps what was extracted of a lesson of the build.
-func (s *Service) KeepLessonConcepts(ctx context.Context, b IndexBuild, l IndexLesson, concepts []ExtractedConcept) error {
+func (s *Service) KeepLessonConcepts(ctx context.Context, b ConceptIndexBuild, l ConceptIndexLesson, concepts []ExtractedConcept) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -380,20 +413,36 @@ func (s *Service) KeepLessonConcepts(ctx context.Context, b IndexBuild, l IndexL
 	return tx.Commit(ctx)
 }
 
-// FinishConceptIndex ends a build: built, or failed with a run error code.
-// What it extracted before it failed is kept for the next try.
-func (s *Service) FinishConceptIndex(ctx context.Context, b IndexBuild, failure string) error {
-	status, reason := IndexBuilt, any(nil)
-	if failure != "" {
-		status, reason = IndexFailed, failure
+// ConceptIndexEnd is how a build ended: built, or failed with a run error
+// code.
+type ConceptIndexEnd struct {
+	status ConceptIndexStatus
+	code   string
+}
+
+// ConceptIndexDone is a build that extracted every lesson.
+func ConceptIndexDone() ConceptIndexEnd { return ConceptIndexEnd{status: ConceptIndexBuilt} }
+
+// ConceptIndexFailedWith is a build that stopped at a lesson, with the run
+// error code it failed with.
+func ConceptIndexFailedWith(code string) ConceptIndexEnd {
+	return ConceptIndexEnd{status: ConceptIndexFailed, code: code}
+}
+
+// FinishConceptIndex ends a build as end says. What a failed build
+// extracted before it failed is kept for the next try.
+func (s *Service) FinishConceptIndex(ctx context.Context, b ConceptIndexBuild, end ConceptIndexEnd) error {
+	var reason any
+	if end.status == ConceptIndexFailed {
+		reason = end.code
 	}
-	_, err := s.db.Exec(ctx, "UPDATE concept_indexes SET status = $2, error = $3, finished_at = $4 WHERE id = $1", b.ID, status, reason, s.now())
+	_, err := s.db.Exec(ctx, "UPDATE concept_indexes SET status = $2, error = $3, finished_at = $4 WHERE id = $1", b.ID, end.status, reason, s.now())
 	return err
 }
 
-// FailInterruptedIndexes marks the builds a stopped server left behind as
+// FailInterruptedConceptIndexes marks the builds a stopped server left behind as
 // failed, so they can be tried again.
-func (s *Service) FailInterruptedIndexes(ctx context.Context) error {
+func (s *Service) FailInterruptedConceptIndexes(ctx context.Context) error {
 	_, err := s.db.Exec(ctx, "UPDATE concept_indexes SET status = 'failed', error = 'interrupted', finished_at = $1 WHERE status = 'building'", s.now())
 	return err
 }

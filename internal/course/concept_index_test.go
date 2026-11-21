@@ -3,7 +3,7 @@ package course
 import "testing"
 
 func TestAConceptIsFoundByItsNameOrAnAliasAsWritten(t *testing.T) {
-	x := ConceptIndex{Status: IndexBuilt, Entries: []ConceptEntry{
+	x := ConceptIndex{Status: ConceptIndexBuilt, Entries: []ConceptEntry{
 		{Name: "任期", Aliases: []string{"term"}},
 		{Name: "Leader Election", Aliases: []string{"领导者选举"}},
 		{Name: "日志复制"},

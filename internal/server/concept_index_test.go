@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -273,4 +274,30 @@ func TestOnlyTheAdminBuildsAnIndexOfALibraryCourse(t *testing.T) {
 	expectStatus(t, alice.do("POST", conceptIndexPath(private), nil), http.StatusForbidden)
 	expectError(t, admin.do("POST", conceptIndexPath(private), nil), http.StatusNotFound, "course_not_found")
 	expectError(t, admin.do("POST", conceptIndexPath(99999), nil), http.StatusNotFound, "course_not_found")
+}
+
+func TestALessonMissingFromStorageIsLeftOutOfTheIndex(t *testing.T) {
+	steps := threeLessons()
+	m := newScriptedModel(steps[1], steps[2])
+	a := aiApp(t, m)
+	alice := a.user("alice")
+	admin := a.admin()
+	id := publishedIndexed(t, a, alice)
+	dir, _ := filesIn(a, id)
+	if err := a.files.Delete(context.Background(), fmt.Sprintf("courses/%d/%s/00_开篇词.md", id, dir)); err != nil {
+		t.Fatal(err)
+	}
+
+	admin.mustOK(admin.do("POST", conceptIndexPath(id), nil))
+	if s := awaitIndex(t, admin, id); s != "built" {
+		t.Fatalf("with one lesson's text missing, the index is %q", s)
+	}
+	if n := len(m.calls()); n != 2 {
+		t.Fatalf("only the lessons with a text are extracted: %d calls", n)
+	}
+	entries := indexEntries(t, admin, id)
+	if len(entries) != 2 {
+		t.Fatalf("entries = %v", entries)
+	}
+	entryNamed(t, entries, "意图识别")
 }

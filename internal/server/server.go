@@ -121,7 +121,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		}
 	}
 	// a build a stopped server left behind can be tried again
-	if err := s.courses.FailInterruptedIndexes(ctx); err != nil {
+	if err := s.courses.FailInterruptedConceptIndexes(ctx); err != nil {
 		pool.Close()
 		return nil, err
 	}
