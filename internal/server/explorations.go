@@ -46,16 +46,25 @@ type snapshotMessage struct {
 
 // turnMeta is what a turn records besides its reply (ADR 0008).
 type turnMeta struct {
-	Source    string                `json:"source"`
-	Model     string                `json:"model"`
-	Prompt    string                `json:"prompt"`
-	Usage     assistant.Usage       `json:"usage"`
-	Estimated bool                  `json:"estimated,omitempty"`
-	Searches  int                   `json:"searches"`
-	Sources   []assistant.WebSource `json:"sources"`
-	Degraded  []string              `json:"degraded,omitempty"`
+	Source string `json:"source"`
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	// Style and StyleVersion are the answer style the turn ran with (ADR 0011)
+	Style        string                `json:"style"`
+	StyleVersion int                   `json:"styleVersion"`
+	Usage        assistant.Usage       `json:"usage"`
+	Estimated    bool                  `json:"estimated,omitempty"`
+	Searches     int                   `json:"searches"`
+	Sources      []assistant.WebSource `json:"sources"`
+	Degraded     []string              `json:"degraded,omitempty"`
 	// Interrupted is why the reply stops short, "" when it is whole (#136)
 	Interrupted course.Interruption `json:"interrupted,omitempty"`
+}
+
+// newTurnMeta is the metadata of a turn the site ran with p on model.
+func newTurnMeta(model string, p assistant.Prompt, m assistant.Meta) turnMeta {
+	return turnMeta{Source: "site", Model: model, Prompt: p.Version, Style: p.Style.ID, StyleVersion: p.Style.Version,
+		Usage: m.Usage, Estimated: m.Estimated, Searches: m.Searches, Sources: m.Sources, Degraded: m.Degraded}
 }
 
 // stagedAnalyses keeps each reader's latest finished analysis, one each: a
@@ -185,7 +194,14 @@ func (s *Server) showExploration(w http.ResponseWriter, r *http.Request) {
 	if !writeExplorationError(w, r, err) {
 		return
 	}
-	writeJSON(w, http.StatusOK, d)
+	writeJSON(w, http.StatusOK, explorationView{d, assistant.FirstQuestion(d.Quote, d.Title)})
+}
+
+// explorationView is an exploration as the page shows it: with the
+// question its analysis stands for, which opens the dialogue (ADR 0011).
+type explorationView struct {
+	course.ExplorationDetail
+	FirstQuestion string `json:"firstQuestion"`
 }
 
 func (s *Server) deleteExploration(w http.ResponseWriter, r *http.Request) {

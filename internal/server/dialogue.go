@@ -244,8 +244,7 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	if err := s.credits.RecordRun(keepCtx, user.ID, assistant.TurnFollowup, turn, meta); err != nil {
 		slog.Error("usage not recorded", "user", user.ID, "err", err)
 	}
-	tm := turnMeta{Source: "site", Model: turn.Model, Prompt: assistant.FollowupPrompt.Version, Usage: meta.Usage,
-		Estimated: meta.Estimated, Searches: meta.Searches, Sources: meta.Sources, Degraded: meta.Degraded}
+	tm := newTurnMeta(turn.Model, assistant.FollowupPrompt, meta)
 	code := ""
 	var re *assistant.RunError
 	switch {
@@ -290,9 +289,9 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	return true
 }
 
-// followupMessages assembles a question's context (#94): the analysis's
-// snapshot, its reply, the document now, and the dialogue along the
-// question's chain after the analysis.
+// followupMessages assembles a question's context (ADR 0011): the
+// background from the analysis's snapshot, the first exchange, and the
+// dialogue along the question's chain after the analysis.
 func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d course.ExplorationDetail, after int64, q course.Question) ([]assistant.Message, error) {
 	chain, ok := d.Chain(after)
 	if !ok || len(chain) == 0 {
@@ -306,10 +305,7 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 	if err := json.Unmarshal(raw, &snap); err != nil {
 		return nil, err
 	}
-	fc := assistant.FollowupContext{FirstReply: chain[0].Reply, Doc: assistant.Doc{
-		Title: d.Title, Intro: d.Intro, Meaning: d.Meaning,
-		Footnotes: itemTexts(d.Footnotes), Extensions: itemTexts(d.Extensions), Expansions: itemTexts(d.Expansions), References: itemTexts(d.References),
-	}}
+	fc := assistant.FollowupContext{FirstQuestion: assistant.FirstQuestion(d.Quote, d.Title), FirstReply: chain[0].Reply}
 	for _, m := range snap.Messages {
 		fc.Snapshot = append(fc.Snapshot, assistant.Message{Role: m.Role, Content: m.Content})
 	}
@@ -321,12 +317,4 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 
 func asked(q course.Question) assistant.Asked {
 	return assistant.Asked{Text: q.Text, Fragments: q.Selections()}
-}
-
-func itemTexts(items []course.DocItem) []string {
-	out := make([]string, len(items))
-	for i, it := range items {
-		out[i] = it.Text
-	}
-	return out
 }

@@ -87,6 +87,8 @@ export interface ExplorationDetail {
   title: string;
   intro: string;
   meaning: string;
+  // the question the analysis stands for, which opens the dialogue (ADR 0011)
+  firstQuestion: string;
   docVersion: number;
   footnotes: DocItem[];
   extensions: DocItem[];

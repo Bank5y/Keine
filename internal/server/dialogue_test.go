@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -98,7 +99,7 @@ func contents(req assistant.Request) []string {
 	return out
 }
 
-func TestAFollowUpReadsTheSnapshotTheFirstReplyTheDocumentThenTheDialogue(t *testing.T) {
+func TestAFollowUpReadsTheBackgroundTheFirstExchangeThenTheDialogue(t *testing.T) {
 	m := newScriptedModel(texts(goodAnswer), texts("第一个后续回复。"), texts("第二个后续回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -112,7 +113,7 @@ func TestAFollowUpReadsTheSnapshotTheFirstReplyTheDocumentThenTheDialogue(t *tes
 
 	calls := m.calls()
 	first, second := contents(calls[1]), contents(calls[2])
-	want := []string{"system:", "user:", "assistant:", "user:【当前探索文档】", "user:planner 和 executor 怎么分工？"}
+	want := []string{"system:", "user:", "user:解释「Agent（智能体）」的含义", "assistant:", "user:planner 和 executor 怎么分工？"}
 	if len(first) != len(want) {
 		t.Fatalf("expected %d messages, got %q", len(want), first)
 	}
@@ -121,33 +122,135 @@ func TestAFollowUpReadsTheSnapshotTheFirstReplyTheDocumentThenTheDialogue(t *tes
 			t.Fatalf("message %d: expected %q…, got %q", i, w, first[i])
 		}
 	}
-	if !strings.Contains(first[0], "探索对话里继续追问") || !strings.Contains(first[1], "这里的 <selected>Agent</selected> 指的是") ||
-		!strings.Contains(first[2], "<exp_title>Agent（智能体）</exp_title>") || !strings.Contains(first[3], "# Agent（智能体）") {
-		t.Fatalf("context %q", first)
+	if first[2] != "user:解释「Agent（智能体）」的含义" {
+		t.Fatalf("the first question is a question of its own: %q", first[2])
 	}
-	// the second turn's request starts as the first one's did, then the first turn
-	for i := 0; i < len(first)-1; i++ {
-		if second[i] != first[i] {
-			t.Fatalf("message %d changed between turns:\n%q\n%q", i, first[i], second[i])
+	background, reply := first[1], first[3]
+	if !strings.Contains(background, "读者已经读过") || !strings.Contains(background, "## 课程信息") ||
+		!strings.Contains(background, "## 选中的原文") || !strings.Contains(background, "「Agent」") {
+		t.Fatalf("background %q", background)
+	}
+	if !strings.Contains(reply, "Agent（智能体）") || !strings.Contains(reply, "Agent 是把目标拆成步骤、逐步执行的系统。") {
+		t.Fatalf("first reply %q", reply)
+	}
+	for _, msg := range first {
+		for _, gone := range []string{"## 课程目录", "本讲全文", "<selected>", "【当前探索文档】", "<exp_"} {
+			if strings.Contains(msg, gone) {
+				t.Fatalf("%q is not in a follow-up's request: %q", gone, msg)
+			}
 		}
 	}
-	if rest := second[len(first)-1:]; len(rest) != 3 || rest[0] != "user:planner 和 executor 怎么分工？" || rest[1] != "assistant:第一个后续回复。" || rest[2] != "user:那出错了怎么办？" {
+	// the second turn's request starts as the first one, then its reply
+	if len(second) != len(first)+2 || !slices.Equal(second[:len(first)], first) {
+		t.Fatalf("the second request does not start with the first:\n%q\n%q", first, second)
+	}
+	if rest := second[len(first):]; rest[0] != "assistant:第一个后续回复。" || rest[1] != "user:那出错了怎么办？" {
 		t.Fatalf("history %q", rest)
 	}
 }
 
-func TestAFollowUpReadsTheSnapshotAfterTheCourseChanged(t *testing.T) {
+func TestAnExplorationOfASentenceIsFirstAskedToExplainIt(t *testing.T) {
+	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
+	a := aiApp(t, m)
+	bob := a.user("bob")
+	id, lesson := analysisColumn(t, bob)
+	sentence := "这里的 Agent 指的是把目标拆成步骤的程序。"
+	r := pin(bob, id, lesson, analysisID(t, bob, id, lesson, map[string]any{"quote": sentence}))
+	expectStatus(t, r, http.StatusCreated)
+	exp := int(r.json()["id"].(float64))
+
+	ask(t, bob, exp, firstTurn(t, bob, exp), "再说说？")
+
+	q := "解释这段话：「" + sentence + "」"
+	if got := contents(m.calls()[1])[2]; got != "user:"+q {
+		t.Fatalf("expected the first question %q, got %q", q, got)
+	}
+	if got := detail(t, bob, exp)["firstQuestion"]; got != q {
+		t.Fatalf("the detail shows the first question: %v", got)
+	}
+}
+
+func TestTheDetailShowsTheQuestionOfAnExplorationOfATerm(t *testing.T) {
+	bob := aiApp(t, newScriptedModel(texts(goodAnswer))).user("bob")
+	_, _, exp := pinnedExploration(t, bob)
+
+	if got := detail(t, bob, exp)["firstQuestion"]; got != "解释「Agent（智能体）」的含义" {
+		t.Fatalf("first question %v", got)
+	}
+}
+
+func TestTheAnalysisAndAFollowUpBothAnswerInTheStyleAndRecordIt(t *testing.T) {
+	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
+	a := aiApp(t, m)
+	bob := a.user("bob")
+	_, _, exp := pinnedExploration(t, bob)
+
+	ask(t, bob, exp, firstTurn(t, bob, exp), "再说说？")
+
+	style := assistant.DefaultStyle
+	for i, call := range m.calls() {
+		if system := contents(call)[0]; !strings.Contains(system, style.Text) {
+			t.Fatalf("request %d has no answer style in its system prompt: %q", i, system)
+		}
+	}
+	metas := turnMetas(t, a, exp)
+	if len(metas) != 2 {
+		t.Fatalf("expected 2 turns, got %v", metas)
+	}
+	for i, want := range []string{assistant.AnalysisPrompt.Version, "followup-2"} {
+		mt := metas[i]
+		if mt["prompt"] != want || mt["style"] != style.ID || mt["styleVersion"] != float64(style.Version) {
+			t.Fatalf("turn %d meta %v", i, mt)
+		}
+	}
+	if style.ID != "computing" || style.Version != 1 {
+		t.Fatalf("default style %s-%d", style.ID, style.Version)
+	}
+}
+
+// turnMetas reads, past the API, each turn's whole metadata, in order.
+func turnMetas(t *testing.T, a *app, exp int) []map[string]any {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, a.dbURL)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close(ctx)
+	rows, err := conn.Query(ctx, `SELECT t.meta FROM exploration_turns t JOIN exploration_nodes n ON n.id = t.node_id
+		WHERE n.exploration_id = $1 ORDER BY t.id`, exp)
+	if err != nil {
+		t.Fatalf("turns: %v", err)
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var raw []byte
+		var mt map[string]any
+		if err := rows.Scan(&raw); err != nil || json.Unmarshal(raw, &mt) != nil {
+			t.Fatalf("meta: %v", err)
+		}
+		out = append(out, mt)
+	}
+	return out
+}
+
+func TestAFollowUpReadsTheBackgroundAsPinnedAfterTheCourseChanged(t *testing.T) {
 	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
 	id, _, exp := pinnedExploration(t, bob)
-	bob.mustOK(updateCourse(t, bob, id, analysisFiles(strings.Replace(analysisLesson, "把目标拆成步骤的程序", "会自己调用工具的程序", 1))))
+	manifest := columnManifest()
+	manifest["intro"] = "一门改过简介的专栏。"
+	files := columnFiles(manifest)
+	files["01_用户输入.md"] = analysisLesson
+	bob.mustOK(updateCourse(t, bob, id, files))
 
 	ask(t, bob, exp, firstTurn(t, bob, exp), "再说说？")
 
-	snapshot := contents(m.calls()[1])[1]
-	if !strings.Contains(snapshot, "把目标拆成步骤的程序") || strings.Contains(snapshot, "会自己调用工具的程序") {
-		t.Fatalf("the follow-up reads the text as pinned: %s", snapshot)
+	background := contents(m.calls()[1])[1]
+	if !strings.Contains(background, "一门讲 Agent 的专栏。") || strings.Contains(background, "改过简介") {
+		t.Fatalf("the follow-up reads the course as pinned: %s", background)
 	}
 }
 

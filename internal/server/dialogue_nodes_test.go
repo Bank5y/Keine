@@ -21,14 +21,14 @@ func openNode(t *testing.T, c *client, exp, fork int, kind, text string, fragmen
 	return n
 }
 
-// asked is what the model was asked in each request after the first one
-// that stood for its own question: every user and assistant message after
-// the document, as role:content.
+// dialogueOf is what a request holds after the first exchange (the
+// first question and the analysis): every user and assistant message, as
+// role:content.
 func dialogueOf(t *testing.T, msgs []string) []string {
 	t.Helper()
-	i := slices.IndexFunc(msgs, func(m string) bool { return strings.HasPrefix(m, "user:【当前探索文档】") })
+	i := slices.IndexFunc(msgs, func(m string) bool { return strings.HasPrefix(m, "assistant:") })
 	if i < 0 {
-		t.Fatalf("no document in %q", msgs)
+		t.Fatalf("no first reply in %q", msgs)
 	}
 	return msgs[i+1:]
 }

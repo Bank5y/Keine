@@ -22,10 +22,12 @@ const (
 )
 
 // Prompt is a versioned skill prompt with the context sources it goes
-// with; the version is what a saved turn records.
+// with; the version is what a saved turn records. System holds the skill's
+// own prompt followed by the answer style.
 type Prompt struct {
 	Version string
 	System  string
+	Style   Style
 	Sources []Source
 }
 
@@ -35,8 +37,9 @@ var analysisSystem string
 // AnalysisPrompt is the prompt of an analysis. The sources that change
 // least come first, so the start of the request can be cached.
 var AnalysisPrompt = Prompt{
-	Version: "analysis-2",
-	System:  strings.TrimSpace(analysisSystem),
+	Version: "analysis-3",
+	System:  DefaultStyle.system(analysisSystem),
+	Style:   DefaultStyle,
 	Sources: []Source{SourceCourseInfo, SourceOutline, SourceSelection, SourceLesson},
 }
 

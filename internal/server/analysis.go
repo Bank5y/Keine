@@ -142,8 +142,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		analysisID := s.staged.keep(user, stagedAnalysis{
 			courseID: id, lessonID: lessonID, quote: anchor.Quote{Exact: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix},
 			analysis: a, snapshot: snapshot, until: s.opts.Now().Add(analysisTTL),
-			meta: turnMeta{Source: "site", Model: turn.Model, Prompt: assistant.AnalysisPrompt.Version, Usage: meta.Usage,
-				Estimated: meta.Estimated, Searches: meta.Searches, Sources: meta.Sources, Degraded: meta.Degraded},
+			meta: newTurnMeta(turn.Model, assistant.AnalysisPrompt, meta),
 		})
 		_ = sse.send("done", analysisDone{AnalysisID: analysisID, Analysis: a, Degraded: meta.Degraded, Sources: meta.Sources})
 	case errors.As(err, &re):
