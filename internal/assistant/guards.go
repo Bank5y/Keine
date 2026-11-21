@@ -38,6 +38,10 @@ type Limits struct {
 // or the whole of a lesson past its hard limit was chosen.
 var ErrContextTooLong = errors.New("input past the context window")
 
+// ErrReportTooLong: an exploration's dialogue tree is past what a report's
+// request may hold (ReportInput).
+var ErrReportTooLong = errors.New("dialogue tree past the report's input")
+
 // LengthChoiceError is a lesson past the soft limit, sent with no choice
 // of how much of it to send: the limits and the lesson in tokens, its
 // length in characters, and whether the whole of it still fits.

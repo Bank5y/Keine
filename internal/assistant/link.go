@@ -129,9 +129,11 @@ func (r *analysisRun) link(ctx context.Context, msgs []Message, answer called, f
 	msgs = appendMessages(msgs,
 		Message{Role: RoleAssistant, Content: answer.raw, Reasoning: answer.reasoning, Native: answer.result.Native},
 		Message{Role: RoleUser, Content: linkMessage(cs)})
-	req := Request{Model: r.run.Turn.Model, Messages: msgs, Tools: []ToolSpec{linkSpec}, ToolChoice: "auto", MaxTokens: maxTokens, Thinking: r.run.Turn.Thinking}
+	// the step must call link_course; a thinking model may not be forced
+	// to call a tool, so it is only asked to
+	req := Request{Model: r.run.Turn.Model, Messages: msgs, Tools: []ToolSpec{linkSpec}, ToolChoice: "required", MaxTokens: maxTokens, Thinking: r.run.Turn.Thinking}
 	if r.run.Turn.Thinking {
-		req.MaxTokens = maxTokensThinking
+		req.ToolChoice, req.MaxTokens = "auto", maxTokensThinking
 	}
 	r.quiet = true
 	c, err := r.call(ctx, req)

@@ -112,6 +112,20 @@ func TestAForkAnswerNamingAnotherLessonsConceptIsFollowedByTheCandidates(t *test
 	}
 }
 
+func TestTheLinkingStepMustCallLinkCourse(t *testing.T) {
+	const answer = "子节点的回答：先做意图识别。"
+	m := newScriptedModel(linkSteps(linkedLessons(), texts(answer), linkCall())...)
+	a := aiApp(t, m)
+	bob, _, exp := linkedExploration(t, a, true)
+
+	openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
+
+	calls := m.calls()
+	if got := calls[len(calls)-1].ToolChoice; got != "required" {
+		t.Fatalf("the linking step's tool choice = %q", got)
+	}
+}
+
 func TestTheLinksKeptAreTheCandidatesTheModelPickedWithTheirPlaces(t *testing.T) {
 	const answer = "子节点的回答：先做意图识别，再用 function calling 执行。"
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(answer),
@@ -281,6 +295,24 @@ func TestALaterTurnReadsTheForkTurnWithItsLinks(t *testing.T) {
 	if !strings.HasPrefix(reply, "assistant:"+mentioning) || !strings.Contains(reply, "课程里的相关内容") ||
 		!strings.Contains(reply, "02｜三层意图识别") || !strings.Contains(reply, "第一步就是意图识别。") {
 		t.Fatalf("the fork turn's reply comes with its links: %q", reply)
+	}
+}
+
+func TestTheReportReadsTheForkTurnWithItsLinks(t *testing.T) {
+	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("c1", "第一步就是意图识别。")), texts(goodReport))...)
+	a := aiApp(t, m)
+	bob, _, exp := linkedExploration(t, a, true)
+	openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
+
+	if _, done := generate(t, bob, exp); done.name != "done" {
+		t.Fatalf("report ended with %+v", done)
+	}
+
+	calls := m.calls()
+	tree := strings.Join(contents(calls[len(calls)-1]), "\n")
+	if !strings.Contains(tree, mentioning) || !strings.Contains(tree, "课程里的相关内容") ||
+		!strings.Contains(tree, "02｜三层意图识别") || !strings.Contains(tree, "第一步就是意图识别。") {
+		t.Fatalf("the report reads the fork turn's reply with its links: %q", tree)
 	}
 }
 

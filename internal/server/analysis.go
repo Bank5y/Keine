@@ -38,6 +38,8 @@ func writeRunError(w http.ResponseWriter, r *http.Request, err error) bool {
 		}})
 	case errors.Is(err, assistant.ErrContextTooLong):
 		writeError(w, http.StatusUnprocessableEntity, "context_too_long", "这次要发送的内容超过了模型能读的长度，可以改选「只看相关小节」或缩短选区。")
+	case errors.Is(err, assistant.ErrReportTooLong):
+		writeError(w, http.StatusUnprocessableEntity, "report_too_long", "对话过长，暂时无法生成探索报告。")
 	case errors.Is(err, assistant.ErrBusy):
 		writeError(w, http.StatusServiceUnavailable, "busy", "现在使用的人比较多，请稍后再试。")
 	case errors.Is(err, assistant.ErrRunInProgress):
@@ -100,19 +102,14 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if !writeCreditsError(w, r, s.credits.Afford(ctx, user, credits.Estimate(assistant.EstimateMessages(msgs), turn))) {
 		return
 	}
-	leave, err := s.runs.Enter(user)
-	if !writeRunError(w, r, err) {
+	sse, leave, ok := s.streamRun(w, r, user)
+	if !ok {
 		return
 	}
 	defer leave()
 	// the reader's analysis not pinned is gone once a new one starts
 	s.staged.drop(user)
 
-	sse, ok := startEvents(w)
-	if !ok {
-		writeInternal(w, r, errors.New("response cannot stream"))
-		return
-	}
 	run := assistant.Run{
 		Turn:     turn,
 		Tools:    append(assistant.CourseTools(&courseLibrary{s.courses, currentUser(r), p.Course}), s.opts.ExtraTools...),
@@ -124,34 +121,25 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
 		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
 	})
-	// a run is charged as it went, failed or cut short too (ADR 0010)
-	if err := s.credits.RecordRun(context.WithoutCancel(ctx), user, assistant.TurnAnalysis, turn, meta); err != nil {
-		slog.Error("usage not recorded", "user", user, "err", err)
+	s.recordRun(ctx, user, assistant.TurnAnalysis, turn, meta)
+	if err != nil {
+		_ = sse.send("error", runError(runFailure(ctx, "analysis", err)))
+		return
 	}
-	var re *assistant.RunError
-	switch {
-	case err == nil:
-		lessonText := "full"
-		if narrow {
-			lessonText = "related"
-		}
-		snapshot := analysisSnapshot{Version: 1, Prompt: assistant.AnalysisPrompt.Version, LessonText: lessonText}
-		for _, m := range msgs {
-			snapshot.Messages = append(snapshot.Messages, snapshotMessage{Role: m.Role, Content: m.Content})
-		}
-		analysisID := s.staged.keep(user, stagedAnalysis{
-			courseID: id, lessonID: lessonID, quote: anchor.Quote{Exact: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix},
-			analysis: a, snapshot: snapshot, until: s.opts.Now().Add(analysisTTL),
-			meta: newTurnMeta(turn.Model, assistant.AnalysisPrompt, meta),
-		})
-		_ = sse.send("done", analysisDone{AnalysisID: analysisID, Analysis: a, Degraded: meta.Degraded, Sources: meta.Sources})
-	case errors.As(err, &re):
-		slog.Info("analysis failed", "code", re.Code, "err", re.Cause)
-		_ = sse.send("error", runError(re.Code, re.Kept))
-	case ctx.Err() == nil:
-		slog.Error("analysis failed", "err", err)
-		_ = sse.send("error", runError(assistant.CodeProviderError, false))
+	lessonText := "full"
+	if narrow {
+		lessonText = "related"
 	}
+	snapshot := analysisSnapshot{Version: 1, Prompt: assistant.AnalysisPrompt.Version, LessonText: lessonText}
+	for _, m := range msgs {
+		snapshot.Messages = append(snapshot.Messages, snapshotMessage{Role: m.Role, Content: m.Content})
+	}
+	analysisID := s.staged.keep(user, stagedAnalysis{
+		courseID: id, lessonID: lessonID, quote: anchor.Quote{Exact: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix},
+		analysis: a, snapshot: snapshot, until: s.opts.Now().Add(analysisTTL),
+		meta: newTurnMeta(turn.Model, assistant.AnalysisPrompt, meta),
+	})
+	_ = sse.send("done", analysisDone{AnalysisID: analysisID, Analysis: a, Degraded: meta.Degraded, Sources: meta.Sources})
 }
 
 // analysisDone is the done event of an analysis: the ID to pin it by

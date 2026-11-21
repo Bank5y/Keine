@@ -57,23 +57,18 @@ func (s *Server) generateReport(w http.ResponseWriter, r *http.Request) {
 	}
 	size := assistant.EstimateMessages(msgs)
 	if size > assistant.ReportInput(turn) {
-		writeError(w, http.StatusUnprocessableEntity, "report_too_long", "对话过长，暂时无法生成探索报告。")
+		writeRunError(w, r, assistant.ErrReportTooLong)
 		return
 	}
 	if !writeRunCreditsError(w, r, s.credits.Afford(ctx, user.ID, credits.Estimate(size, turn)), "生成报告") {
 		return
 	}
-	leave, err := s.runs.Enter(user.ID)
-	if !writeRunError(w, r, err) {
+	sse, leave, ok := s.streamRun(w, r, user.ID)
+	if !ok {
 		return
 	}
 	defer leave()
 
-	sse, ok := startEvents(w)
-	if !ok {
-		writeInternal(w, r, errors.New("response cannot stream"))
-		return
-	}
 	deadline := s.opts.RunDeadline
 	if deadline <= 0 {
 		deadline = assistant.DefaultDeadline
@@ -83,30 +78,21 @@ func (s *Server) generateReport(w http.ResponseWriter, r *http.Request) {
 		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
 		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
 	})
-	keepCtx := context.WithoutCancel(ctx)
-	if err := s.credits.RecordRun(keepCtx, user.ID, assistant.TurnReport, turn, meta); err != nil {
-		slog.Error("usage not recorded", "user", user.ID, "err", err)
+	s.recordRun(ctx, user.ID, assistant.TurnReport, turn, meta)
+	if err != nil {
+		_ = sse.send("error", runError(runFailure(ctx, "report", err)))
+		return
 	}
-	var re *assistant.RunError
-	switch {
-	case err == nil:
-		kept, err := s.courses.AddReport(keepCtx, user, id, course.NewReport{
-			Title: rep.Title, Summary: rep.Summary, Body: rep.Body, Points: rep.Points,
-			References: refs, TurnIDs: taken, Meta: newTurnMeta(turn.Model, assistant.ReportPrompt, meta),
-		})
-		if err != nil {
-			slog.Error("report not kept", "user", user.ID, "err", err)
-			_ = sse.send("error", runError(assistant.CodeProviderError, false))
-			return
-		}
-		_ = sse.send("done", kept)
-	case errors.As(err, &re):
-		slog.Info("report failed", "code", re.Code, "err", re.Cause)
-		_ = sse.send("error", runError(re.Code, re.Kept))
-	case ctx.Err() == nil:
-		slog.Error("report failed", "err", err)
+	kept, err := s.courses.AddReport(context.WithoutCancel(ctx), user, id, course.NewReport{
+		Title: rep.Title, Summary: rep.Summary, Body: rep.Body, Points: rep.Points,
+		References: refs, TurnIDs: taken, Meta: newTurnMeta(turn.Model, assistant.ReportPrompt, meta),
+	})
+	if err != nil {
+		slog.Error("report not kept", "user", user.ID, "err", err)
 		_ = sse.send("error", runError(assistant.CodeProviderError, false))
+		return
 	}
+	_ = sse.send("done", kept)
 }
 
 // reportMessages assembles a report's request (ADR 0012): the background
@@ -150,7 +136,7 @@ func (s *Server) reportMessages(ctx context.Context, viewer auth.User, d course.
 			list = list[1:]
 		}
 		for _, t := range list {
-			rn.Turns = append(rn.Turns, assistant.Exchange{Asked: asked(t.Question), Reply: t.Reply})
+			rn.Turns = append(rn.Turns, assistant.Exchange{Asked: asked(t.Question), Reply: withLinks(t)})
 		}
 		at[n.ID] = len(rc.Nodes)
 		rc.Nodes = append(rc.Nodes, rn)

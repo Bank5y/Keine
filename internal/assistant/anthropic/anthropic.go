@@ -260,6 +260,8 @@ func wireRequest(req assistant.Request) sdk.MessageNewParams {
 			p.ToolChoice = sdk.ToolChoiceUnionParam{OfAuto: &sdk.ToolChoiceAutoParam{}}
 		case "none":
 			p.ToolChoice = sdk.ToolChoiceUnionParam{OfNone: &sdk.ToolChoiceNoneParam{}}
+		case "required":
+			p.ToolChoice = sdk.ToolChoiceUnionParam{OfAny: &sdk.ToolChoiceAnyParam{}}
 		}
 	}
 	return p

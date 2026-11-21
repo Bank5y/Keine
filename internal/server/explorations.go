@@ -62,6 +62,9 @@ type turnMeta struct {
 	// CourseLinks are what the turn a node forks with linked of the course
 	// (ADR 0011)
 	CourseLinks []course.CourseLink `json:"courseLinks,omitempty"`
+	// NodeNote is the note the turn a node forks with was asked with, kept
+	// as it was so its history does not change with the wording (#164)
+	NodeNote string `json:"nodeNote,omitempty"`
 }
 
 // newTurnMeta is the metadata of a turn the site ran with p on model.

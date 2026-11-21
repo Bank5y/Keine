@@ -76,6 +76,10 @@ type Turn struct {
 	// NodeKind is the kind of the turn's node, so a chain of turns tells
 	// which turn forked which kind of node
 	NodeKind NodeKind `json:"-"`
+	// NodeNote is the note the turn a node forks with was asked with, as
+	// it was then (#164); the reader never sees it. "" on other turns, and
+	// on fork turns kept before notes were.
+	NodeNote string `json:"-"`
 }
 
 // Question is what the reader asked, with what they attached to it.
@@ -142,11 +146,12 @@ type CourseLink struct {
 	Section *EntrySection `json:"section"`
 }
 
-// readMeta reads a turn's stored metadata: what the reader sees of it, and
-// its course links.
+// readMeta reads a turn's stored metadata: what the reader sees of it, its
+// course links, and its node note.
 func (t *Turn) readMeta(raw []byte) error {
 	var links struct {
 		CourseLinks []CourseLink `json:"courseLinks"`
+		NodeNote    string       `json:"nodeNote"`
 	}
 	if err := json.Unmarshal(raw, &t.Meta); err != nil {
 		return err
@@ -157,7 +162,7 @@ func (t *Turn) readMeta(raw []byte) error {
 	if t.Meta.Sources == nil {
 		t.Meta.Sources = []json.RawMessage{}
 	}
-	t.CourseLinks = links.CourseLinks
+	t.CourseLinks, t.NodeNote = links.CourseLinks, links.NodeNote
 	if t.CourseLinks == nil {
 		t.CourseLinks = []CourseLink{}
 	}

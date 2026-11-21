@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Bank5y/keine/internal/assistant"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestANodesSecondTurnStartsWithItsFirstRequestAndReplyAndAddsNoNote(t *testing.T) {
@@ -159,5 +161,58 @@ func TestTheTurnANodeForksWithBeginsWithItsKindsNote(t *testing.T) {
 				t.Fatalf("expected %q, got %q", want, got)
 			}
 		})
+	}
+}
+
+// setForkNote rewrites, past the API, the node note kept with a turn; nil
+// takes it out, as on a turn kept before notes were.
+func setForkNote(t *testing.T, a *app, turn int, note *string) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, a.dbURL)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close(ctx)
+	q := "UPDATE exploration_turns SET meta = meta - 'nodeNote' WHERE id = $1"
+	args := []any{turn}
+	if note != nil {
+		q = "UPDATE exploration_turns SET meta = jsonb_set(meta, '{nodeNote}', to_jsonb($2::text)) WHERE id = $1"
+		args = append(args, *note)
+	}
+	if _, err := conn.Exec(ctx, q, args...); err != nil {
+		t.Fatalf("set note: %v", err)
+	}
+}
+
+func TestAForkTurnKeepsItsNoteAsItWasAsked(t *testing.T) {
+	m := newScriptedModel(texts(goodAnswer), texts("分支的答"), texts("答二"), texts("答三"))
+	a := aiApp(t, m)
+	bob := a.user("bob")
+	_, _, exp := pinnedExploration(t, bob)
+	b := openNode(t, bob, exp, firstTurn(t, bob, exp), "branch", "还有哪些相关的概念？")
+	fork := idOf(turnsOf(b)[0])
+	metas := turnMetas(t, a, exp)
+	if got := metas[len(metas)-1]["nodeNote"]; got != nodeNotes["branch"] {
+		t.Fatalf("the fork turn keeps the note it was asked with: %v", got)
+	}
+
+	// the note's wording changed since: the old turn keeps its own
+	old := "旧的说法：讲讲相关的概念。"
+	setForkNote(t, a, fork, &old)
+	t2, _ := ask(t, bob, exp, fork, "再说一个")
+	got := dialogueOf(t, contents(m.calls()[2]))
+	if got[0] != "user:"+old+"\n\n还有哪些相关的概念？" {
+		t.Fatalf("history carries the note as it was kept: %q", got)
+	}
+	if raw := bob.mustOK(bob.do("GET", explorationPath(exp), nil)).body; strings.Contains(string(raw), old) {
+		t.Fatalf("the reader never sees the note: %s", raw)
+	}
+
+	// a turn kept without a note gets its kind's
+	setForkNote(t, a, fork, nil)
+	ask(t, bob, exp, idOf(t2), "第三问")
+	if got := dialogueOf(t, contents(m.calls()[3])); got[0] != "user:"+nodeNotes["branch"]+"\n\n还有哪些相关的概念？" {
+		t.Fatalf("a turn without a kept note gets its kind's: %q", got)
 	}
 }
