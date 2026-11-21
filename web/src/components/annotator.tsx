@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
+import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
 import { unavailableText } from '@/lib/ai';
@@ -25,8 +26,11 @@ export const supported = () => typeof CSS !== 'undefined' && 'highlights' in CSS
 // styles.css, which shows the rail at the same width); narrower ones show a
 // note in the bar that opens on its annotation.
 export const NOTE_RAIL_MEDIA = '(min-width: 1440px)';
-// the gap between stacked note cards
+// the gap between stacked cards in the rail
 const CARD_GAP = 8;
+// how far a pinned passage's card reaches past its text, each side
+const PASSAGE_PAD_X = 4;
+const PASSAGE_PAD_Y = 2;
 
 const failed = (ex: unknown) => toast.error(ex instanceof ApiError ? ex.message : '操作失败');
 
@@ -98,7 +102,18 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     if (map) for (const a of anns) { const r = map.place(a); if (r) out.set(a.id, r); }
     return out;
   }, [map, anns]);
-  const [pick, setPick] = useState<{ spot: Spot; quote: Quote; range: Range } | null>(null);
+  // the reader's explorations, on wide screens only (narrow ones show
+  // pinned passages as plain text and ask for none)
+  const [exps, setExps] = useState<Exploration[]>([]);
+  const placedExps = useMemo(() => {
+    const out = new Map<number, Range[]>();
+    if (map) for (const e of exps) { const r = map.place(e); if (r) out.set(e.id, r); }
+    return out;
+  }, [map, exps]);
+  // the exploration whose card is picked; reveal: bring its card into view
+  const [activeExp, setActiveExp] = useState<number | null>(null);
+  const [reveal, setReveal] = useState(0);
+  const [pick, setPick] = useState<{ spot: Spot; quote: Quote; range: Range; overlaps: boolean } | null>(null);
   const [open, setOpen] = useState<{ spot: Spot; ids: number[] } | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   // the annotation whose note card is picked, or whose text was clicked
@@ -106,6 +121,8 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   const bar = useRef<HTMLDivElement>(null);
   const wide = useMedia(NOTE_RAIL_MEDIA);
   const railed = wide && !!rail;
+  const expsRef = useRef(exps);
+  expsRef.current = exps;
   // wide screens offer 分析, greyed out with the reason until the
   // assistant is set up ('' once it is)
   const user = useUser();
@@ -124,6 +141,19 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       }).catch(() => {});
     return () => { alive = false; };
   }, [courseId, lessonId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!wide) return undefined;
+    let alive = true;
+    listExplorations(courseId, lessonId).then((list) => { if (alive) setExps(list); }).catch(() => {});
+    return () => { alive = false; };
+  }, [courseId, lessonId, wide]);
+
+  // a pinned passage clicked in the text brings its card into view
+  useEffect(() => {
+    if (!reveal || activeExp == null) return;
+    document.querySelector(`.exp-card[data-exploration="${activeExp}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // paint
   useEffect(() => {
@@ -187,7 +217,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       if (!quote) { setPick(null); return; }
       setOpen(null);
       setEditing(null);
-      setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange() });
+      setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange(), overlaps: !!overlapping(map.rangeOf(range), expsRef.current) });
     };
     const onChange = () => { clearTimeout(t); if (!down && !taps.recent()) t = window.setTimeout(read, 120); };
     const onDown = (e: PointerEvent) => { if (!bar.current?.contains(e.target as Node)) down = true; };
@@ -221,29 +251,34 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         const rect = (placed.get(a.id) ?? []).flatMap((r) => Array.from(r.getClientRects())).find((c) => e.clientX >= c.left && e.clientX <= c.right && e.clientY >= c.top && e.clientY <= c.bottom);
         if (rect) { hits.push(a.id); at ??= rect; }
       }
-      if (hits.length) claimTap(e);
+      // a pinned passage picks its card, and brings it into view
+      const within = (ranges: Range[]) => ranges.flatMap((r) => Array.from(r.getClientRects())).some((c) => e.clientX >= c.left - PASSAGE_PAD_X && e.clientX <= c.right + PASSAGE_PAD_X && e.clientY >= c.top - PASSAGE_PAD_Y && e.clientY <= c.bottom + PASSAGE_PAD_Y);
+      const exp = [...placedExps].find(([, ranges]) => within(ranges))?.[0] ?? null;
+      if (hits.length || exp != null) claimTap(e);
       setEditing(null);
       setOpen(hits.length && at ? { spot: { x: e.clientX + scrollX, top: at.top + scrollY, bottom: at.bottom + scrollY }, ids: hits } : null);
-      setActive(hits.find((id) => anns.find((a) => a.id === id)?.note) ?? null);
+      setActive(exp != null ? null : hits.find((id) => anns.find((a) => a.id === id)?.note) ?? null);
+      setActiveExp(exp);
+      if (exp != null) setReveal((n) => n + 1);
     };
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
-  }, [root, anns, placed]);
+  }, [root, anns, placed, placedExps]);
 
   // an open bar closes on a click elsewhere or on Escape; so does the focus
   // on a card
   useEffect(() => {
-    if (!open && !editing && active == null) return undefined;
-    const inside = (t: Node) => bar.current?.contains(t) || root?.contains(t) || (t instanceof Element && t.closest('.note-card'));
+    if (!open && !editing && active == null && activeExp == null) return undefined;
+    const inside = (t: Node) => bar.current?.contains(t) || root?.contains(t) || (t instanceof Element && t.closest('.note-card, .exp-card'));
     const onDown = (e: PointerEvent) => {
       if (inside(e.target as Node)) return;
-      setOpen(null); setEditing(null); setActive(null);
+      setOpen(null); setEditing(null); setActive(null); setActiveExp(null);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(null); setEditing(null); setActive(null); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(null); setEditing(null); setActive(null); setActiveExp(null); } };
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [open, editing, active, root]);
+  }, [open, editing, active, activeExp, root]);
 
   const create = async (look: Look, note?: string) => {
     const from = pick ?? (editing && 'quote' in editing ? editing : null);
@@ -308,6 +343,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     setEditing({ spot, id: a.id, draft: a.note ?? '' });
   };
 
+  const noteActive = editing && 'id' in editing ? editing.id : active;
   let floating: ReactNode = null;
   if (editing) {
     const isNew = 'quote' in editing;
@@ -326,7 +362,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         <span className="ann-sep" />
         <span className="ann-acts">
           <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
-          {wide ? <AnalyzeButton unavailable={unavailable} onAnalyze={() => analyze(pick.quote, [pick.range])} /> : null}
+          {wide ? <AnalyzeButton unavailable={unavailable || (pick.overlaps ? OVERLAP_TEXT : '')} onAnalyze={() => analyze(pick.quote, [pick.range])} /> : null}
         </span>
       </Floating>
     );
@@ -344,7 +380,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
               <span className="ann-sep" />
               <span className="ann-acts">
                 {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
-                {wide ? <AnalyzeButton unavailable={unavailable} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} /> : null}
+                {wide ? <AnalyzeButton unavailable={unavailable || (overlapping(a.range, exps) ? OVERLAP_TEXT : '')} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} /> : null}
                 <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>
               </span>
             </div>
@@ -366,28 +402,38 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   return (
     <>
       {railed && rail ? (
-        <NoteRail rail={rail} root={root} anns={anns} placed={placed} active={editing && 'id' in editing ? editing.id : active}
-          onPick={(id) => { setOpen(null); setEditing(null); setActive(id); }}
-          onEdit={startNote} onDelete={(a) => writeNote(a.id, '')} />
+        <Rail rail={rail} root={root} items={[
+          ...anns.filter((a) => a.note && placed.has(a.id)).map((a) => ({
+            key: `note-${a.id}`, ranges: placed.get(a.id)!, start: a.range?.start ?? 0, active: a.id === noteActive,
+            card: <NoteCard a={a} active={a.id === noteActive} onPick={() => { setOpen(null); setEditing(null); setActiveExp(null); setActive(a.id); }}
+              onEdit={() => startNote(a)} onDelete={() => writeNote(a.id, '')} />,
+          })),
+          ...exps.filter((e) => placedExps.has(e.id)).map((e) => ({
+            key: `exp-${e.id}`, ranges: placedExps.get(e.id)!, start: e.range?.start ?? 0, active: e.id === activeExp,
+            card: <ExplorationCard e={e} active={e.id === activeExp} onPick={() => { setOpen(null); setEditing(null); setActive(null); setActiveExp(e.id); }} />,
+          })),
+        ]} />
       ) : null}
+      {wide && root ? <PinnedPassages root={root} placed={placedExps} active={activeExp} /> : null}
       {floating}
       {analysis ? (
-        <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)} />
+        <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)}
+          onPinned={(e) => { setExps((list) => [...list, e]); setAnalysis(null); setActive(null); setActiveExp(e.id); }} />
       ) : null}
     </>
   );
 }
 
-// NoteRail lays the notes out in the rail: each card level with the first
-// line of its annotation, pushed down below the one before where they would
-// overlap. Annotations without a note, or not found in the text, take no room.
-function NoteRail({ rail, root, anns, placed, active, onPick, onEdit, onDelete }: {
-  rail: HTMLElement; root: HTMLElement | null; anns: Annotation[]; placed: Map<number, Range[]>; active: number | null;
-  onPick: (id: number) => void; onEdit: (a: Annotation) => void; onDelete: (a: Annotation) => void;
-}) {
-  const noted = useMemo(() => anns.filter((a) => a.note && placed.has(a.id)), [anns, placed]);
-  const cards = useRef(new Map<number, HTMLElement>());
-  const [tops, setTops] = useState<Map<number, number>>(new Map());
+// RailItem is a card in the rail: a note or an exploration, level with the
+// first line of its text.
+interface RailItem { key: string; ranges: Range[]; start: number; active: boolean; card: ReactNode }
+
+// Rail lays the cards out in the rail: each level with the first line of
+// its text, in the order of the text, pushed down below the one before
+// where they would overlap. Notes and explorations share it.
+function Rail({ rail, root, items }: { rail: HTMLElement; root: HTMLElement | null; items: RailItem[] }) {
+  const slots = useRef(new Map<string, HTMLElement>());
+  const [tops, setTops] = useState<Map<string, number>>(new Map());
   // the text and the rail reflow as the window resizes and images load
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -399,36 +445,106 @@ function NoteRail({ rail, root, anns, placed, active, onPick, onEdit, onDelete }
 
   useLayoutEffect(() => {
     const base = rail.getBoundingClientRect().top;
-    const want = noted.map((a) => ({ a, top: (firstLine(placed.get(a.id) ?? [])?.top ?? base) - base }))
-      .sort((x, y) => x.top - y.top || (x.a.range?.start ?? 0) - (y.a.range?.start ?? 0));
-    const next = new Map<number, number>();
+    const want = items.map((it) => ({ it, top: (firstLine(it.ranges)?.top ?? base) - base }))
+      .sort((x, y) => x.top - y.top || x.it.start - y.it.start);
+    const next = new Map<string, number>();
     let end = -Infinity;
-    for (const { a, top } of want) {
+    for (const { it, top } of want) {
       const at = Math.max(top, end + CARD_GAP);
-      next.set(a.id, at);
-      end = at + (cards.current.get(a.id)?.offsetHeight ?? 0);
+      next.set(it.key, at);
+      end = at + (slots.current.get(it.key)?.offsetHeight ?? 0);
     }
-    setTops((prev) => (prev.size === next.size && [...next].every(([id, t]) => Math.abs((prev.get(id) ?? NaN) - t) < 0.5) ? prev : next));
-  }, [rail, noted, placed, active, tick]);
+    setTops((prev) => (prev.size === next.size && [...next].every(([k, t]) => Math.abs((prev.get(k) ?? NaN) - t) < 0.5) ? prev : next));
+  }, [rail, items, tick]); // items are new each render: a card grows as it opens
 
   return createPortal(
-    noted.map((a) => (
-      <div key={a.id} ref={(el) => { if (el) cards.current.set(a.id, el); else cards.current.delete(a.id); }}
-        className={cn('note-card', a.id === active && 'active')} data-annotation={a.id} role="button" tabIndex={0}
-        aria-pressed={a.id === active} aria-label={`笔记：${a.quote}`}
-        style={{ top: tops.get(a.id) ?? 0, visibility: tops.has(a.id) ? undefined : 'hidden' }}
-        onClick={() => onPick(a.id)} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) onPick(a.id); }}>
-        <div className={cn('note-quote', `look-${lookName(a)}`)}>{a.quote}</div>
-        {/* a card that folds back starts again from its first line */}
-        <p className="note-text" ref={(el) => { if (el && a.id !== active) el.scrollTop = 0; }}>{a.note}</p>
-        <div className="note-actions">
-          <button type="button" className="ann-btn" aria-label="编辑笔记" title="编辑笔记" onClick={(e) => { e.stopPropagation(); onEdit(a); }}><Pencil /></button>
-          <button type="button" className="ann-btn danger" aria-label="删除笔记" title="删除笔记" onClick={(e) => { e.stopPropagation(); onDelete(a); }}><Trash2 /></button>
-        </div>
+    items.map((it) => (
+      <div key={it.key} ref={(el) => { if (el) slots.current.set(it.key, el); else slots.current.delete(it.key); }}
+        className={cn('rail-slot', it.active && 'active')}
+        style={{ top: tops.get(it.key) ?? 0, visibility: tops.has(it.key) ? undefined : 'hidden' }}>
+        {it.card}
       </div>
     )),
     rail,
   );
+}
+
+function NoteCard({ a, active, onPick, onEdit, onDelete }: { a: Annotation; active: boolean; onPick: () => void; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className={cn('note-card', active && 'active')} data-annotation={a.id} role="button" tabIndex={0}
+      aria-pressed={active} aria-label={`笔记：${a.quote}`}
+      onClick={onPick} onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) onPick(); }}>
+      <div className={cn('note-quote', `look-${lookName(a)}`)}>{a.quote}</div>
+      {/* a card that folds back starts again from its first line */}
+      <p className="note-text" ref={(el) => { if (el && !active) el.scrollTop = 0; }}>{a.note}</p>
+      <div className="note-actions">
+        <button type="button" className="ann-btn" aria-label="编辑笔记" title="编辑笔记" onClick={(e) => { e.stopPropagation(); onEdit(); }}><Pencil /></button>
+        <button type="button" className="ann-btn danger" aria-label="删除笔记" title="删除笔记" onClick={(e) => { e.stopPropagation(); onDelete(); }}><Trash2 /></button>
+      </div>
+    </div>
+  );
+}
+
+// ExplorationCard is an exploration in the rail: its title on one line,
+// its intro on two.
+function ExplorationCard({ e, active, onPick }: { e: Exploration; active: boolean; onPick: () => void }) {
+  return (
+    <div className={cn('exp-card', active && 'active')} data-exploration={e.id} role="button" tabIndex={0}
+      aria-pressed={active} aria-label={`探索：${e.title}`}
+      onClick={onPick} onKeyDown={(ev) => { if (ev.key === 'Enter' && ev.target === ev.currentTarget) onPick(); }}>
+      <div className="exp-card-title"><Sparkles aria-hidden />{e.title}</div>
+      <p className="exp-card-intro">{e.intro}</p>
+    </div>
+  );
+}
+
+// PinnedPassages draws the text of each exploration as a card raised a
+// little off the page, one per line so a passage over several lines has
+// full rounded ends on each. The cards sit under the text, so a highlight
+// over the same words keeps its colour inside them.
+function PinnedPassages({ root, placed, active }: { root: HTMLElement; placed: Map<number, Range[]>; active: number | null }) {
+  const host = root.parentElement;
+  const [boxes, setBoxes] = useState<{ key: string; id: number; left: number; top: number; width: number; height: number }[]>([]);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const ro = new ResizeObserver(() => setTick((t) => t + 1));
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [root]);
+  useLayoutEffect(() => {
+    if (!host) return;
+    const base = host.getBoundingClientRect();
+    const out: typeof boxes = [];
+    for (const [id, ranges] of placed) {
+      lineBoxes(ranges).forEach((r, i) => out.push({
+        key: `${id}-${i}`, id,
+        left: r.left - base.left - PASSAGE_PAD_X, top: r.top - base.top - PASSAGE_PAD_Y,
+        width: r.width + 2 * PASSAGE_PAD_X, height: r.height + 2 * PASSAGE_PAD_Y,
+      }));
+    }
+    setBoxes(out);
+  }, [host, placed, tick]);
+  if (!host) return null;
+  return createPortal(
+    <div className="pinned-layer" aria-hidden>
+      {boxes.map((b) => <span key={b.key} className={cn('pinned-passage', b.id === active && 'active')} style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />)}
+    </div>,
+    host,
+  );
+}
+
+// lineBoxes joins the boxes of some text into one per line.
+function lineBoxes(ranges: Range[]) {
+  const out: { left: number; top: number; right: number; bottom: number }[] = [];
+  for (const c of ranges.flatMap((r) => Array.from(r.getClientRects()))) {
+    if (c.width <= 0 || c.height <= 0) continue;
+    const line = out.find((l) => Math.abs(l.top - c.top) < c.height / 2);
+    if (line) {
+      line.left = Math.min(line.left, c.left); line.right = Math.max(line.right, c.right);
+      line.top = Math.min(line.top, c.top); line.bottom = Math.max(line.bottom, c.bottom);
+    } else out.push({ left: c.left, top: c.top, right: c.right, bottom: c.bottom });
+  }
+  return out.map((l) => ({ left: l.left, top: l.top, width: l.right - l.left, height: l.bottom - l.top }));
 }
 
 function NoteEditor({ draft, onDraft, canClear, onSave, onCancel }: { draft: string; onDraft: (s: string) => void; canClear: boolean; onSave: () => void; onCancel: () => void }) {

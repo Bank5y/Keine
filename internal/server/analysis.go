@@ -74,6 +74,9 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	if !writeAnnotationError(w, r, err) {
 		return
 	}
+	if !writeExplorationError(w, r, s.courses.CheckOverlap(ctx, currentUser(r), p)) {
+		return
+	}
 	if !p.Marked {
 		// the model still gets the quote, but not which of its places
 		slog.Warn("selection not marked in the lesson source", "course", id, "lesson", lessonID)
@@ -102,6 +105,8 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer leave()
+	// the reader's analysis not pinned is gone once a new one starts
+	s.staged.drop(user)
 
 	sse, ok := startEvents(w)
 	if !ok {
@@ -126,7 +131,21 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	var re *assistant.RunError
 	switch {
 	case err == nil:
-		_ = sse.send("done", analysisDone{Analysis: a, Degraded: meta.Degraded, Sources: meta.Sources})
+		lessonText := "full"
+		if narrow {
+			lessonText = "related"
+		}
+		snapshot := analysisSnapshot{Version: 1, Prompt: assistant.AnalysisPrompt.Version, LessonText: lessonText}
+		for _, m := range msgs {
+			snapshot.Messages = append(snapshot.Messages, snapshotMessage{Role: m.Role, Content: m.Content})
+		}
+		analysisID := s.staged.keep(user, stagedAnalysis{
+			courseID: id, lessonID: lessonID, quote: anchor.Quote{Exact: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix},
+			analysis: a, snapshot: snapshot, until: s.opts.Now().Add(analysisTTL),
+			meta: turnMeta{Source: "site", Model: turn.Model, Prompt: assistant.AnalysisPrompt.Version, Usage: meta.Usage,
+				Estimated: meta.Estimated, Searches: meta.Searches, Sources: meta.Sources, Degraded: meta.Degraded},
+		})
+		_ = sse.send("done", analysisDone{AnalysisID: analysisID, Analysis: a, Degraded: meta.Degraded, Sources: meta.Sources})
 	case errors.As(err, &re):
 		slog.Info("analysis failed", "code", re.Code, "err", re.Cause)
 		_ = sse.send("error", runError(re.Code, re.Kept))
@@ -136,13 +155,13 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// analysisDone is the done event of an analysis: the three parts, the
-// capabilities that went off (the reader is told the run got no web
-// results, which never goes into the document), and the turn's source
-// list (ADR 0008). The sources are the turn's metadata, made by the
-// server; the page shows none of them, and until the first turn is kept
-// on the server (#133) the event is where the turn's metadata goes.
+// analysisDone is the done event of an analysis: the ID to pin it by
+// (#133), the three parts, the capabilities that went off (the reader is
+// told the run got no web results, which never goes into the document),
+// and the turn's source list (ADR 0008), of which the page shows only
+// whether there is any.
 type analysisDone struct {
+	AnalysisID string `json:"analysisId"`
 	assistant.Analysis
 	Degraded []string              `json:"degraded,omitempty"`
 	Sources  []assistant.WebSource `json:"sources"`

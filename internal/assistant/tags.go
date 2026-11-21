@@ -1,6 +1,9 @@
 package assistant
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // Part is one of the three parts of an analysis: title, intro and
 // meaning ("body" on the wire, ADR 0008).
@@ -156,4 +159,17 @@ func (p *tagParser) parts() Analysis {
 		return ""
 	}
 	return Analysis{Title: get(PartTitle), Intro: get(PartIntro), Body: get(PartBody)}
+}
+
+// ErrAnalysisExpired: the analysis to pin is not there to pin: more than
+// half an hour old, replaced by a newer one, or another reader's or
+// another lesson's (#123).
+var ErrAnalysisExpired = errors.New("analysis expired or replaced")
+
+// Reply is the answer as the model's final reply writes it: the three
+// parts in their tags, which is how a later turn reads the first one.
+func (a Analysis) Reply() string {
+	return openTag(PartTitle) + a.Title + closeTag(PartTitle) + "\n" +
+		openTag(PartIntro) + a.Intro + closeTag(PartIntro) + "\n" +
+		openTag(PartBody) + "\n" + a.Body + "\n" + closeTag(PartBody)
 }

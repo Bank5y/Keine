@@ -55,6 +55,11 @@ describe('step', () => {
     expect(s).toEqual({ status: 'done', activities: [], parts: { title: 'Agent', intro: '简介。', body: '含义。' } });
   });
 
+  it('keeps the ID to pin the analysis by', () => {
+    const s = run({ type: 'done', analysisId: 'a1', title: 'Agent', intro: '简介。', body: '含义。' });
+    expect(s).toMatchObject({ status: 'done', analysisId: 'a1' });
+  });
+
   it('notes a run that got no web results, apart from the sections', () => {
     const s = run({ type: 'done', title: 'Agent', intro: '简介。', body: '含义。', degraded: ['web_search'], sources: [] });
     expect(s).toEqual({ status: 'done', activities: [], parts: { title: 'Agent', intro: '简介。', body: '含义。' }, noWeb: true });
