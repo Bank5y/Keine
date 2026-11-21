@@ -46,7 +46,7 @@ func TestANodeSeesItsChainUpToWhereItForked(t *testing.T) {
 
 	calls := m.calls()
 	got := dialogueOf(t, contents(calls[len(calls)-1]))
-	want := []string{"user:问二", "assistant:答二", "user:【选中片段】\n「选择权集中在规划阶段」\n\n沿着这一点继续往下讲"}
+	want := []string{"user:问二", "assistant:答二", "user:" + nodeNotes["child"] + "\n\n【选中片段】\n「选择权集中在规划阶段」\n\n沿着这一点继续往下讲"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("expected only the chain up to turn 2, got %q", got)
 	}
@@ -73,7 +73,10 @@ func TestNestedNodesSeeTheWholeChainOfForks(t *testing.T) {
 
 	calls := m.calls()
 	got := dialogueOf(t, contents(calls[len(calls)-1]))
-	want := []string{"user:问二", "assistant:答二", "user:节点 A 第一问", "assistant:A1", "user:节点 B 第一问", "assistant:B1", "user:节点 C 第一问"}
+	want := []string{"user:问二", "assistant:答二",
+		"user:" + nodeNotes["child"] + "\n\n节点 A 第一问", "assistant:A1",
+		"user:" + nodeNotes["divergent"] + "\n\n节点 B 第一问", "assistant:B1",
+		"user:" + nodeNotes["branch"] + "\n\n节点 C 第一问"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("expected the three forks' chain, without A's second turn, got %q", got)
 	}

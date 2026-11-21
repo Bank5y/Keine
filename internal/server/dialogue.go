@@ -65,7 +65,7 @@ func (s *Server) askTurn(w http.ResponseWriter, r *http.Request) {
 	if !writeDialogueError(w, r, err) {
 		return
 	}
-	if !s.converse(w, r, d, in.After, in.Question, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
+	if !s.converse(w, r, d, in.After, asked(in.Question), func(ctx context.Context, reply string, meta turnMeta) (any, error) {
 		return s.courses.AddTurn(ctx, user, id, in.After, course.NewTurn{Question: in.Question, Reply: reply, Meta: meta})
 	}, func() error {
 		// checked before the run too, so a question after a turn that is not
@@ -99,7 +99,7 @@ func (s *Server) openNode(w http.ResponseWriter, r *http.Request) {
 	if !writeDialogueError(w, r, err) {
 		return
 	}
-	s.converse(w, r, d, in.Fork, in.Question, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
+	s.converse(w, r, d, in.Fork, forked(in.Kind, in.Question), func(ctx context.Context, reply string, meta turnMeta) (any, error) {
 		return s.courses.OpenNode(ctx, user, id, in.Fork, in.Kind, course.NewTurn{Question: in.Question, Reply: reply, Meta: meta})
 	}, func() error {
 		if _, ok := d.Chain(in.Fork); !ok {
@@ -145,7 +145,7 @@ func (s *Server) retryTurn(w http.ResponseWriter, r *http.Request) {
 		writeDialogueError(w, r, course.ErrNotRetriable) // the analysis is never asked again
 		return
 	}
-	s.converse(w, r, d, before, target.Turn.Question, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
+	s.converse(w, r, d, before, askedIn(target.Turn), func(ctx context.Context, reply string, meta turnMeta) (any, error) {
 		return s.courses.ReplaceTurn(ctx, user, id, turnID, reply, meta)
 	}, nil)
 }
@@ -179,7 +179,7 @@ type keep func(ctx context.Context, reply string, meta turnMeta) (any, error)
 // ends: done carries what was kept, error says why the reply stops short
 // and carries it too. A run that spends the reader's last credits is
 // cancelled and kept as interrupted.
-func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.ExplorationDetail, after int64, q course.Question, save keep, check func() error) bool {
+func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.ExplorationDetail, after int64, q assistant.Asked, save keep, check func() error) bool {
 	ctx := r.Context()
 	user := currentUser(r)
 	if check != nil && !writeDialogueError(w, r, check()) {
@@ -292,7 +292,7 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 // followupMessages assembles a question's context (ADR 0011): the
 // background from the analysis's snapshot, the first exchange, and the
 // dialogue along the question's chain after the analysis.
-func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d course.ExplorationDetail, after int64, q course.Question) ([]assistant.Message, error) {
+func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d course.ExplorationDetail, after int64, q assistant.Asked) ([]assistant.Message, error) {
 	chain, ok := d.Chain(after)
 	if !ok || len(chain) == 0 {
 		return nil, course.ErrTurnNotFound
@@ -310,9 +310,9 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 		fc.Snapshot = append(fc.Snapshot, assistant.Message{Role: m.Role, Content: m.Content})
 	}
 	for _, t := range chain[1:] {
-		fc.History = append(fc.History, assistant.Exchange{Asked: asked(t.Question), Reply: t.Reply})
+		fc.History = append(fc.History, assistant.Exchange{Asked: askedIn(t), Reply: t.Reply})
 	}
-	return fc.Messages(asked(q)), nil
+	return fc.Messages(q), nil
 }
 
 // firstQuestion is the question an exploration's analysis stands for.
@@ -322,4 +322,21 @@ func firstQuestion(d course.ExplorationDetail) string {
 
 func asked(q course.Question) assistant.Asked {
 	return assistant.Asked{Text: q.Text, Fragments: q.Selections()}
+}
+
+// forked is the question a node of kind forks with: headed by the kind's
+// note (ADR 0011).
+func forked(kind course.NodeKind, q course.Question) assistant.Asked {
+	a := asked(q)
+	a.Note = assistant.NodeNote(string(kind))
+	return a
+}
+
+// askedIn is what a kept turn asked, as it was asked: the turn a node
+// forked with (its node's first) headed by its kind's note, as when it ran.
+func askedIn(t course.Turn) assistant.Asked {
+	if t.ParentID == nil {
+		return forked(t.NodeKind, t.Question)
+	}
+	return asked(t.Question)
 }
