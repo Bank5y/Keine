@@ -266,9 +266,9 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			answering = true
 			msgs = appendMessages(msgs, Message{Role: RoleUser, Content: softNote})
 		}
-		req := Request{Model: run.Turn.Model, Messages: msgs, Tools: specs, MaxTokens: maxTokens, Thinking: run.Turn.Thinking, ProviderWeb: run.Turn.ProviderWeb}
+		req := Request{Model: run.Turn.Model, Messages: msgs, Tools: specs, MaxTokens: r.form.maxTokens, Thinking: run.Turn.Thinking, ProviderWeb: run.Turn.ProviderWeb}
 		if run.Turn.Thinking {
-			req.MaxTokens = maxTokensThinking
+			req.MaxTokens = r.form.maxThinking
 		}
 		if tools {
 			req.ToolChoice = "auto"
@@ -331,7 +331,7 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			}
 			return c, nil
 		}
-		problems := checkAnalysis(c.raw, c.parser)
+		problems := r.form.check(c.raw, c.parser)
 		if c.result.Finish == FinishLength {
 			problems = append([]string{"答复太长，被截断了"}, problems...)
 		}
@@ -349,7 +349,7 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 		answering = true
 		msgs = appendMessages(msgs,
 			Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, Native: c.result.Native},
-			Message{Role: RoleUser, Content: fmt.Sprintf(remedyFormat, strings.Join(problems, "；"))})
+			Message{Role: RoleUser, Content: fmt.Sprintf(r.form.remedy, strings.Join(problems, "；"))})
 	}
 }
 
@@ -380,6 +380,8 @@ type analysisRun struct {
 	// quiet: the call under way is the linking step's, which the reader
 	// sees only as its activity
 	quiet bool
+	// form is the shape of a tagged answer (an analysis's by default)
+	form *tagForm
 	// calls and toolRuns number the activities
 	calls, toolRuns int
 	breakers        map[string]*breaker
@@ -403,7 +405,7 @@ type breaker struct {
 }
 
 func newAnalysisRun(run Run, out Sink) *analysisRun {
-	r := &analysisRun{run: run, start: run.Now(), tools: map[string]Tool{}, breakers: map[string]*breaker{}}
+	r := &analysisRun{run: run, start: run.Now(), tools: map[string]Tool{}, breakers: map[string]*breaker{}, form: analysisForm}
 	for _, t := range run.Tools {
 		r.tools[t.Spec().Name] = t
 		r.breakers[t.Spec().Name] = &breaker{}
@@ -464,7 +466,7 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	if r.run.Spent != nil {
 		asked = int64(EstimateMessages(req.Messages))
 	}
-	p := newTagParser(func(s Part, text string) error {
+	p := newFormParser(r.form, func(s Part, text string) error {
 		r.streamed = true
 		if err := r.out.Delta(Delta{Part: s, Text: text}); err != nil {
 			return sinkError{err}

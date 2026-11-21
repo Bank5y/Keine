@@ -1584,6 +1584,28 @@ a.rn:hover .t { color: var(--brand); }
 .dlg-head-title { font-size: 14px; font-weight: 600; }
 .dlg-head-sub { font-size: 13px; color: var(--text-3); white-space: nowrap; }
 .dlg-head-count { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.dlg-head-report { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: 12px; color: var(--text-2); white-space: nowrap; cursor: pointer; }
+.dlg-head-report:hover:not(:disabled), .dlg-head-report.on { border-color: var(--explore); color: var(--explore); }
+.dlg-head-report:disabled { opacity: .5; cursor: not-allowed; }
+.dlg-head-report svg { flex: none; width: 14px; height: 14px; }
+@media (max-width: 720px) { .dlg-head-report span { display: none; } }
+
+/* the exploration report's drawer */
+.dlg-report-bar { gap: 6px; }
+.dlg-report-version { height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); font-size: 12px; color: var(--text-2); }
+.dlg-report-bar a.dlg-act { text-decoration: none; }
+.dlg-report-doc { padding: 8px 0 24px; }
+.dlg-report-doc h1 { margin: 6px 0 14px; font-family: var(--serif); font-size: 24px; line-height: 1.35; }
+.dlg-report-doc section > h2 { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--text-3); }
+.dlg-report-summary { margin: 0; font-size: 15px; line-height: 1.8; color: var(--text-2); }
+.dlg-report-doc > .dlg-reply { margin-top: 18px; }
+.dlg-report-refs ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8; }
+.dlg-report-refs a { color: var(--explore); word-break: break-all; }
+.dlg-report-doc h1.caret::after, .dlg-report-summary.caret::after, .dlg-report-doc .caret .prose > :last-child::after {
+  content: ""; display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em;
+  background: var(--brand); animation: blink 1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) { .dlg-report-doc .caret::after, .dlg-report-doc .caret .prose > :last-child::after { animation: none; } }
 .dlg-close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; background: none; color: var(--text-3); cursor: pointer; }
 .dlg-close svg { width: 16px; height: 16px; }
 .dlg-crumbs { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: center; gap: 2px; font-size: 12px; }
@@ -1644,16 +1666,8 @@ a.rn:hover .t { color: var(--brand); }
 .dlg-rule::before, .dlg-rule::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 .dlg-turn { margin-bottom: 8px; }
-.dlg-turn-label { margin: 8px 0 6px; font-size: 11px; font-weight: 500; color: var(--text-3); }
-.dlg-analysis { padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
-.dlg-analysis blockquote { margin: 0 0 10px; padding-left: 10px; border-left: 2px solid var(--explore); }
-.dlg-analysis blockquote span { display: block; font-family: var(--serif); font-size: 13px; color: var(--text-2); }
-.dlg-analysis blockquote small { font-size: 11px; color: var(--text-3); }
-.dlg-analysis-head { display: flex; align-items: flex-start; gap: 16px; }
-.dlg-analysis-head > div { flex: 1; }
-.dlg-analysis-head b { font-family: var(--serif); font-size: 15px; }
-.dlg-analysis-head p { margin: 2px 0 0; font-size: 13px; color: var(--text-2); line-height: 1.6; }
-.dlg-analysis-head button { flex: none; border: 0; background: none; font-size: 12px; color: var(--explore); cursor: pointer; }
+.dlg-carried { margin: 4px 0 0; font-size: 12px; color: var(--text-3); }
+.dlg-analysis .analysis-title { font-size: 17px; }
 .dlg-asked { display: flex; justify-content: flex-end; margin: 18px 0 12px; }
 .dlg-asked-bubble { max-width: 78%; padding: 9px 14px; border-radius: 10px; background: var(--surface-2); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
 .dlg-fragment { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 4px 10px; border: 1px solid var(--line); border-left: 3px solid var(--kind); border-radius: 4px; background: var(--surface); font-size: 12px; color: var(--text-2); }

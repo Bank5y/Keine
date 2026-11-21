@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { courseLinkItems, forksAt, mapLayout, pathTo, prune, restack, seenBy, settle, spine, stepRun, type Layer } from './dialogue';
+import { carried, courseLinkItems, forksAt, mapLayout, pathTo, prune, restack, seenBy, settle, spine, stepRun, type Layer } from './dialogue';
 import type { DialogueNode, NodeKind } from './explorations';
 
 let ids = 0;
@@ -123,5 +123,16 @@ describe('courseLinkItems', () => {
   it('is nothing for a turn without links', () => {
     expect(courseLinkItems(3, undefined)).toEqual([]);
     expect(courseLinkItems(3, [])).toEqual([]);
+  });
+});
+
+describe('carried', () => {
+  it('names the background the main node brings along', () => {
+    expect(carried(tree[0])).toBe('带上了：课程信息 · 选中的原文 · 分析');
+  });
+  it('is nothing on any other node', () => {
+    expect(carried(tree[1])).toBeNull();
+    expect(carried(tree[2])).toBeNull();
+    expect(carried(tree[3])).toBeNull();
   });
 });
