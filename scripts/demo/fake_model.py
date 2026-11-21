@@ -4,7 +4,8 @@ POST <url>/chat/completions streams a reply as Server-Sent Events: a short one
 to the connection test (a request declaring only connection_check), so it
 passes. An analysis first looks up the course (search_course and read_lesson
 at once, so the popover shows its progress), then, with the results back,
-streams some reasoning and a tagged analysis a few characters at a time. The key "bad" gets a 401, to show
+streams some reasoning and a tagged analysis a few characters at a time; a
+follow-up turn of the exploration dialogue gets a Markdown answer instead. The key "bad" gets a 401, to show
 the failed-test state.
 
     python3 scripts/demo/fake_model.py 18999
@@ -29,6 +30,12 @@ flowchart TD
   D -- "否" --> F["重试或回退"]
 ```
 </exp_body>"""
+
+
+# a follow-up turn of the exploration dialogue answers in plain Markdown
+FOLLOWUP = """在文中的最小实现里，planner 的输出本身就带着工具名：每一步是 `{tool, args}`，executor 只负责按名字找到工具并执行，**不再做选择**。
+
+这样选择权集中在规划阶段，执行阶段没有分支，整个过程可以完整重放。代价是 planner 必须在开始前就知道全部工具；下一讲的「动态规划」会让 executor 在失败后把结果交回 planner 重新规划。"""
 
 
 def chunk(delta, finish=None):
@@ -61,8 +68,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(chunk({"reasoning_content": part}).encode())
                 self.wfile.flush()
                 time.sleep(0.5)
-            for i in range(0, len(ANALYSIS), 4):
-                self.wfile.write(chunk({"content": ANALYSIS[i:i + 4]}).encode())
+            followup = "探索对话里继续追问" in (req["messages"][0].get("content") or "")
+            text = FOLLOWUP if followup else ANALYSIS
+            for i in range(0, len(text), 4):
+                self.wfile.write(chunk({"content": text[i:i + 4]}).encode())
                 self.wfile.flush()
                 time.sleep(0.02)
             self.wfile.write((chunk({}, "stop") + "data: [DONE]\n\n").encode())

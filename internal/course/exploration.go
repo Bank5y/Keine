@@ -40,8 +40,10 @@ type Exploration struct {
 	Title  string           `json:"title"`
 	Intro  string           `json:"intro"`
 	// Range is where the quote sits in the lesson text as it is now.
-	Range     *anchor.Range `json:"range"`
-	CreatedAt time.Time     `json:"createdAt"`
+	Range *anchor.Range `json:"range"`
+	// Nodes is how many nodes its dialogue has besides the main one (#137)
+	Nodes     int       `json:"nodes"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // overlaps tells whether two ranges of a text share a character.
@@ -62,7 +64,9 @@ func (s *Service) Explorations(ctx context.Context, viewer auth.User, courseID, 
 }
 
 func placedExplorations(ctx context.Context, q querier, userID, courseID int64, lessonKey string, text anchor.Text) ([]Exploration, error) {
-	rows, err := q.Query(ctx, `SELECT id, quote, prefix, suffix, state, title, intro, created_at FROM explorations
+	rows, err := q.Query(ctx, `SELECT id, quote, prefix, suffix, state, title, intro, created_at,
+			(SELECT count(*) FROM exploration_nodes n WHERE n.exploration_id = e.id AND n.kind <> 'main')
+		FROM explorations e
 		WHERE user_id = $1 AND course_id = $2 AND lesson_key = $3 AND state = 'attached' ORDER BY created_at, id`, userID, courseID, lessonKey)
 	if err != nil {
 		return nil, err
@@ -71,7 +75,7 @@ func placedExplorations(ctx context.Context, q querier, userID, courseID int64, 
 	out := []Exploration{}
 	for rows.Next() {
 		var e Exploration
-		if err := rows.Scan(&e.ID, &e.Quote, &e.Prefix, &e.Suffix, &e.State, &e.Title, &e.Intro, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Quote, &e.Prefix, &e.Suffix, &e.State, &e.Title, &e.Intro, &e.CreatedAt, &e.Nodes); err != nil {
 			return nil, err
 		}
 		if r, ok := text.Locate(anchor.Quote{Exact: e.Quote, Prefix: e.Prefix, Suffix: e.Suffix}); ok {
@@ -140,7 +144,7 @@ func (s *Service) Pin(ctx context.Context, viewer auth.User, courseID, lessonID 
 	if err != nil {
 		return Exploration{}, err
 	}
-	question, _ := json.Marshal(map[string]any{"text": "", "attachments": []map[string]string{{"kind": "selection", "text": in.Quote.Exact}}})
+	question, _ := json.Marshal(Question{Attachments: []Attachment{{Kind: AttachSelection, Text: in.Quote.Exact}}})
 	l, text, err := s.annotatable(ctx, viewer, courseID, lessonID)
 	if err != nil {
 		return Exploration{}, err

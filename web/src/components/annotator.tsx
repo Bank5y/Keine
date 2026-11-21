@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
+import { ExplorationZoom } from '@/components/exploration-zoom';
 import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
@@ -113,6 +114,8 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   // the exploration whose card is picked; reveal: bring its card into view
   const [activeExp, setActiveExp] = useState<number | null>(null);
   const [reveal, setReveal] = useState(0);
+  // the exploration open over the page (#134)
+  const [zoomed, setZoomed] = useState<number | null>(null);
   const [pick, setPick] = useState<{ spot: Spot; quote: Quote; range: Range; overlaps: boolean } | null>(null);
   const [open, setOpen] = useState<{ spot: Spot; ids: number[] } | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -410,12 +413,17 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
           })),
           ...exps.filter((e) => placedExps.has(e.id)).map((e) => ({
             key: `exp-${e.id}`, ranges: placedExps.get(e.id)!, start: e.range?.start ?? 0, active: e.id === activeExp,
-            card: <ExplorationCard e={e} active={e.id === activeExp} onPick={() => { setOpen(null); setEditing(null); setActive(null); setActiveExp(e.id); }} />,
+            card: <ExplorationCard e={e} active={e.id === activeExp} onPick={() => { setOpen(null); setEditing(null); setActive(null); setActiveExp(e.id); setZoomed(e.id); }} />,
           })),
         ]} />
       ) : null}
       {wide && root ? <PinnedPassages root={root} placed={placedExps} active={activeExp} /> : null}
       {floating}
+      {zoomed != null ? (
+        <ExplorationZoom id={zoomed} onClose={() => setZoomed(null)}
+          onDeleted={(id) => { setZoomed(null); setActiveExp(null); setExps((list) => list.filter((x) => x.id !== id)); }}
+          onNodes={(id, nodes) => setExps((list) => list.map((x) => (x.id === id ? { ...x, nodes } : x)))} />
+      ) : null}
       {analysis ? (
         <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)}
           onPinned={(e) => { setExps((list) => [...list, e]); setAnalysis(null); setActive(null); setActiveExp(e.id); }} />
@@ -492,7 +500,7 @@ function ExplorationCard({ e, active, onPick }: { e: Exploration; active: boolea
     <div className={cn('exp-card', active && 'active')} data-exploration={e.id} role="button" tabIndex={0}
       aria-pressed={active} aria-label={`探索：${e.title}`}
       onClick={onPick} onKeyDown={(ev) => { if (ev.key === 'Enter' && ev.target === ev.currentTarget) onPick(); }}>
-      <div className="exp-card-title"><Sparkles aria-hidden />{e.title}</div>
+      <div className="exp-card-title"><Sparkles aria-hidden /><span>{e.title}</span>{e.nodes > 0 ? <span className="exp-card-nodes" title="节点数（不含主节点）">节点 {e.nodes}</span> : null}</div>
       <p className="exp-card-intro">{e.intro}</p>
     </div>
   );

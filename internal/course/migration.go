@@ -125,11 +125,16 @@ func (s *Service) lessonMarkdown(ctx context.Context, files draftFiles, file str
 // annotation on it back where its quote is found with confidence and marks
 // the others pending, and turns the annotations of deleted lessons into
 // excerpts. Every changed text is kept, an empty one too. Each user with annotations it newly marked pending is told so,
-// once (ticket #38).
+// once (ticket #38). Explorations go the same way (ADR 0007, #135), but
+// nobody is told of them.
 func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentDiff) error {
 	if len(d.removed) > 0 {
 		if _, err := tx.Exec(ctx, "UPDATE annotations SET state = $3 WHERE course_id = $1 AND lesson_key = ANY($2)",
 			courseID, d.removed, AnnotationDeleted); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "UPDATE explorations SET state = $3, updated_at = now() WHERE course_id = $1 AND lesson_key = ANY($2)",
+			courseID, d.removed, ExplorationExcerpt); err != nil {
 			return err
 		}
 	}
@@ -145,6 +150,9 @@ func carryAnnotations(ctx context.Context, tx pgx.Tx, courseID int64, d contentD
 			return err
 		}
 		pending = append(pending, ids...)
+		if err := relocateExplorations(ctx, tx, courseID, ch.key, anchor.MarkdownText(ch.new), prev); err != nil {
+			return err
+		}
 	}
 	if err := clearPendingNotices(ctx, tx, courseID, 0); err != nil {
 		return err
@@ -231,6 +239,44 @@ func relocate(ctx context.Context, tx pgx.Tx, courseID int64, key string, text a
 		}
 	}
 	return pending, nil
+}
+
+// relocateExplorations finds the explorations shown in, or awaiting, a
+// lesson again in its new text, as relocate does annotations. Their
+// snapshots stay as they were: the dialogue goes on from the text it was
+// pinned on.
+func relocateExplorations(ctx context.Context, tx pgx.Tx, courseID int64, key string, text anchor.Text, prev int64) error {
+	rows, err := tx.Query(ctx, `SELECT id, state, quote, prefix, suffix FROM explorations
+		WHERE course_id = $1 AND lesson_key = $2 AND state IN ($3, $4)`, courseID, key, ExplorationAttached, ExplorationPending)
+	if err != nil {
+		return err
+	}
+	type found struct {
+		id    int64
+		state ExplorationState
+		q     anchor.Quote
+	}
+	list, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (found, error) {
+		var f found
+		err := r.Scan(&f.id, &f.state, &f.q.Exact, &f.q.Prefix, &f.q.Suffix)
+		return f, err
+	})
+	if err != nil {
+		return err
+	}
+	for _, f := range list {
+		var err error
+		switch _, ok := text.Relocate(f.q); {
+		case ok:
+			_, err = tx.Exec(ctx, "UPDATE explorations SET state = $2, previous_text_id = NULL, updated_at = now() WHERE id = $1", f.id, ExplorationAttached)
+		case f.state == ExplorationAttached:
+			_, err = tx.Exec(ctx, "UPDATE explorations SET state = $2, previous_text_id = $3, updated_at = now() WHERE id = $1", f.id, ExplorationPending, prev)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // PreviousText is the text a lesson had before a course update changed it.

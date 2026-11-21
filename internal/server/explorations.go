@@ -54,6 +54,8 @@ type turnMeta struct {
 	Searches  int                   `json:"searches"`
 	Sources   []assistant.WebSource `json:"sources"`
 	Degraded  []string              `json:"degraded,omitempty"`
+	// Interrupted is why the reply stops short, "" when it is whole (#136)
+	Interrupted course.Interruption `json:"interrupted,omitempty"`
 }
 
 // stagedAnalyses keeps each reader's latest finished analysis, one each: a
@@ -116,6 +118,8 @@ func writeExplorationError(w http.ResponseWriter, r *http.Request, err error) bo
 	switch {
 	case errors.Is(err, course.ErrOverlap):
 		writeError(w, http.StatusConflict, "overlap", "这段文字已有探索。")
+	case errors.Is(err, course.ErrExplorationNotFound):
+		writeError(w, http.StatusNotFound, "exploration_not_found", "探索不存在。")
 	case errors.Is(err, assistant.ErrAnalysisExpired):
 		writeError(w, http.StatusGone, "analysis_expired", "分析结束已超过 30 分钟，或者你又开始了新的分析。重新分析后再固定。")
 	default:
@@ -164,4 +168,33 @@ func (s *Server) pinExploration(w http.ResponseWriter, r *http.Request) {
 	}
 	s.staged.forget(user.ID, in.AnalysisID)
 	writeJSON(w, http.StatusCreated, e)
+}
+
+func explorationIDParam(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	return idParam(w, r, "exploration_not_found", "探索不存在。")
+}
+
+// showExploration is one of the reader's explorations whole: its document
+// and its dialogue (#134).
+func (s *Server) showExploration(w http.ResponseWriter, r *http.Request) {
+	id, ok := explorationIDParam(w, r)
+	if !ok {
+		return
+	}
+	d, err := s.courses.ExplorationDetail(r.Context(), currentUser(r), id)
+	if !writeExplorationError(w, r, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) deleteExploration(w http.ResponseWriter, r *http.Request) {
+	id, ok := explorationIDParam(w, r)
+	if !ok {
+		return
+	}
+	if !writeExplorationError(w, r, s.courses.DeleteExploration(r.Context(), currentUser(r), id)) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

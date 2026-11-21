@@ -141,19 +141,31 @@ export function readEvents(buf: string): { events: AnalysisEvent[]; rest: string
 // (a JSON error) comes as an error event; aborting the signal stops it
 // without one.
 export async function analyze(courseId: number, lessonId: number, quote: { quote: string; prefix: string; suffix: string }, length: Length | undefined, on: (e: AnalysisEvent) => void, signal: AbortSignal) {
+  return postStream(`/api/courses/${courseId}/lessons/${lessonId}/analysis`, { ...quote, length }, on as (e: StreamEvent) => void, signal);
+}
+
+// StreamEvent is an event of any run's stream (analysis or dialogue), as
+// readEvents parses it: its name as type, its data spread.
+export type StreamEvent = { type: string; [k: string]: any };
+
+// postStream posts body to a run's endpoint and hands on each event,
+// ending with 'end' when the stream closes. A refusal before the run (a
+// JSON error) comes as an error event; aborting the signal stops it
+// without one.
+export async function postStream(path: string, body: unknown, on: (e: StreamEvent) => void, signal: AbortSignal) {
   let res: Response;
   try {
-    res = await fetch(`/api/courses/${courseId}/lessons/${lessonId}/analysis`, {
+    res = await fetch(path, {
       method: 'POST', credentials: 'same-origin', signal,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...quote, length }),
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
   } catch {
     if (!signal.aborted) on({ type: 'error', code: 'network', message: BROKEN, kept: false });
     return;
   }
   if (!res.ok || !res.body) {
-    const body = await res.json().catch(() => null);
-    on({ type: 'error', code: body?.error?.code ?? 'network', message: body?.error?.message, kept: false, length: body?.error?.length });
+    const b = await res.json().catch(() => null);
+    on({ type: 'error', code: b?.error?.code ?? 'network', message: b?.error?.message, kept: false, length: b?.error?.length });
     return;
   }
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -164,7 +176,7 @@ export async function analyze(courseId: number, lessonId: number, quote: { quote
       if (done) break;
       const r = readEvents(buf + value);
       buf = r.rest;
-      r.events.forEach(on);
+      r.events.forEach((e) => on(e as StreamEvent));
     }
   } catch {
     if (signal.aborted) return;

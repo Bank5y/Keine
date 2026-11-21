@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { overlapping, type Exploration } from '@/lib/explorations';
 
 const at = (id: number, start: number, end: number): Exploration => ({
-  id, quote: 'q', prefix: '', suffix: '', state: 'attached', title: `探索 ${id}`, intro: '简介', range: { start, end }, createdAt: '',
+  id, quote: 'q', prefix: '', suffix: '', state: 'attached', title: `探索 ${id}`, intro: '简介', range: { start, end }, nodes: 0, createdAt: '',
 });
 
 describe('overlapping', () => {

@@ -44,6 +44,8 @@ function diagrams(draw: boolean): Components {
 }
 const streamingParts = diagrams(false);
 const finishedParts = diagrams(true);
+// documentParts renders a finished document's Markdown, diagrams drawn
+export const documentParts = finishedParts;
 
 // Pinning is where pinning a finished analysis stands: refused, the
 // content stays and the popover says why.
@@ -183,7 +185,7 @@ function writing(state: AnalysisState): Part | null {
 
 // Progress lists the run's lookups, a running one with a pulsing dot and a
 // failed one marked.
-function Progress({ activities }: { activities: ToolActivity[] }) {
+export function Progress({ activities }: { activities: ToolActivity[] }) {
   return (
     <ul className="analysis-progress">
       {progressLines(activities).map((l, i) => (
@@ -196,7 +198,7 @@ function Progress({ activities }: { activities: ToolActivity[] }) {
 }
 
 // Lookups fold into one line once the answer shows; it opens to the list.
-function Lookups({ activities }: { activities: ToolActivity[] }) {
+export function Lookups({ activities }: { activities: ToolActivity[] }) {
   const [open, setOpen] = useState(false);
   const line = summary(activities);
   if (!line) return null;
@@ -274,7 +276,7 @@ function Choose({ length, choice, onChange }: { length: LessonLength; choice: Le
 
 // Notice says what goes to third-party services and what does not (#132);
 // search is where searches go ('' or absent when the run has no web).
-function Notice({ search, className }: { search?: string; className?: string }) {
+export function Notice({ search, className }: { search?: string; className?: string }) {
   return (
     <dl className={cn('notice', className)}>
       <dt>会发送</dt>
@@ -288,7 +290,7 @@ function Notice({ search, className }: { search?: string; className?: string }) 
 }
 
 // Credit names the service that wrote the answer; it opens the notice.
-function Credit({ provider, open, onToggle }: { provider?: string; open: boolean; onToggle: () => void }) {
+export function Credit({ provider, open, onToggle }: { provider?: string; open: boolean; onToggle: () => void }) {
   return (
     <button type="button" className="analysis-credit" aria-expanded={open} aria-controls="analysis-notice" onClick={onToggle}>
       AI 生成 · {provider || '模型服务'}{open ? <ChevronUp /> : <ChevronDown />}
