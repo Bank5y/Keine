@@ -8,6 +8,7 @@ import (
 
 	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/auth"
+	"github.com/Bank5y/keine/internal/credits"
 )
 
 const sessionCookie = "keine_session"
@@ -83,13 +84,20 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w, r, err)
 		return
 	}
+	account, err := s.credits.Account(r.Context(), u.ID)
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, struct {
 		auth.User
 		// AIAvailable: the assistant has a model for every turn kind, so
 		// readers get analysis and exploration.
 		AIAvailable bool `json:"aiAvailable"`
 		assistant.Notice
-	}{u, ai, notice})
+		// Credits are the reader's credits today (ADR 0010).
+		Credits credits.Account `json:"credits"`
+	}{u, ai, notice, account})
 }
 
 // readNotice notes that the reader read the notice of what goes to

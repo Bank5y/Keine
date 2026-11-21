@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from '@/lib/api';
+import type { Account } from '@/lib/credits';
 
 export interface User {
   id: number; username: string; role: 'user' | 'admin'; disabled: boolean; createdAt: string;
@@ -11,6 +12,8 @@ export interface User {
   aiNoticeRead?: boolean;
   aiProvider?: string;
   aiSearch?: string;
+  // the reader's credits today (#130)
+  credits?: Account;
 }
 
 // undefined: still checking; null: signed out

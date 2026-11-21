@@ -77,6 +77,7 @@ describe('step', () => {
     expect(run({ type: 'error', code: 'busy', message: '人多。', kept: false })).toMatchObject({ status: 'error', message: '人多。', refusal: { title: '分析没能开始', retry: true } });
     expect(run({ type: 'error', code: 'run_in_progress', kept: false })).toMatchObject({ refusal: { title: '分析没能开始', retry: true } });
     expect(run({ type: 'error', code: 'context_too_long', kept: false })).toMatchObject({ refusal: { title: '分析没能开始', retry: false } });
+    expect(run({ type: 'error', code: 'credits_insufficient', kept: false })).toMatchObject({ refusal: { title: '今日积分不够这次分析', retry: false } });
     expect(run({ type: 'error', code: 'timeout', kept: false })).not.toHaveProperty('refusal');
   });
 

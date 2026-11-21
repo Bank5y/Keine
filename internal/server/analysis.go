@@ -13,6 +13,7 @@ import (
 	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
+	"github.com/Bank5y/keine/internal/credits"
 )
 
 // analysisRequest is a selection to analyze, as a selection gives it.
@@ -92,7 +93,11 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		writeRunError(w, r, assistant.ErrContextTooLong)
 		return
 	}
-	leave, err := s.runs.Enter(currentUser(r).ID)
+	user := currentUser(r).ID
+	if !writeCreditsError(w, r, s.credits.Afford(ctx, user, credits.Estimate(assistant.EstimateMessages(msgs), turn))) {
+		return
+	}
+	leave, err := s.runs.Enter(user)
 	if !writeRunError(w, r, err) {
 		return
 	}
@@ -114,6 +119,10 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
 		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
 	})
+	// a run is charged as it went, failed or cut short too (ADR 0010)
+	if err := s.credits.RecordRun(context.WithoutCancel(ctx), user, assistant.TurnAnalysis, turn, meta); err != nil {
+		slog.Error("usage not recorded", "user", user, "err", err)
+	}
 	var re *assistant.RunError
 	switch {
 	case err == nil:
