@@ -134,7 +134,7 @@ export function ExplorationZoom({ id, onClose, onDeleted, onNodes }: {
           </>
         ) : (
           <ExplorationDialogue detail={d} onDetail={(x) => { setD(x); onNodes?.(x.id, x.nodes.length - 1); }}
-            onClose={close} escTaken={escTaken} onDocument={() => toLevel(1)} />
+            onClose={close} escTaken={escTaken} />
         )}
       </div>
       <Confirm open={asking} title="删除这个探索？" confirm="删除" onConfirm={remove} onClose={() => setAsking(false)}>

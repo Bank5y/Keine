@@ -7,7 +7,7 @@ import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError, api } from '@/lib/api';
 import {
-  askTurn, DEFAULT_QUESTION, forksAt, INTERRUPTED, KINDS, mapLayout, MAX_NODES, openNode, pathTo, prune, restack, retryTurn,
+  askTurn, carried, DEFAULT_QUESTION, forksAt, INTERRUPTED, KINDS, mapLayout, MAX_NODES, openNode, pathTo, prune, restack, retryTurn,
   seenBy, settle, spine, stepRun, turnAt, type Ended, type Layer, type Run,
 } from '@/lib/dialogue';
 import type { DialogueNode, ExplorationDetail, NodeKind, Question, Turn } from '@/lib/explorations';
@@ -36,9 +36,9 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
 // the right, ‹ or Esc pops it. Covered layers keep a spine on the left,
 // three at most, older ones sliding off; the header's path reaches every
 // one. A read-only map of the whole tree sits on the right.
-export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken, onDocument }: {
+export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: {
   detail: ExplorationDetail; onDetail: (d: ExplorationDetail) => void; onClose: () => void;
-  escTaken: MutableRefObject<() => boolean>; onDocument?: () => void;
+  escTaken: MutableRefObject<() => boolean>;
 }) {
   const main = d.nodes.find((n) => n.kind === 'main')!;
   const [current, setCurrent] = useState(main.id);
@@ -163,7 +163,7 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken, on
                     ) : n ? (
                       <NodeView d={d} node={n} pending={pending?.layer === l.key ? pending : null} refused={refused?.layer === l.key ? refused : null}
                         busy={!!pending} onOpen={open} onFork={(f) => { setRefused(null); setDraft(f); }} onAsk={ask} onRetry={retry}
-                        onBack={pop} onDelete={() => setDeleting(n)} onDocument={onDocument} />
+                        onBack={pop} onDelete={() => setDeleting(n)} />
                     ) : draft ? (
                       <DraftView d={d} draft={draft} pending={pending?.layer === 'draft' ? pending : null} refused={refused?.layer === 'draft' ? refused : null}
                         onCancel={() => setDraft(null)} onStart={start} />
@@ -260,11 +260,12 @@ function Crumbs({ nodes, current, draft, onOpen }: { nodes: DialogueNode[]; curr
 // NodeView is one node's drawer: the way back, where it forked, its turns
 // (with the nodes opened on each), a turn being answered, and the box to
 // ask the next question.
-function NodeView({ d, node, pending, refused, busy, onOpen, onFork, onAsk, onRetry, onBack, onDelete, onDocument }: {
+function NodeView({ d, node, pending, refused, busy, onOpen, onFork, onAsk, onRetry, onBack, onDelete }: {
   d: ExplorationDetail; node: DialogueNode; pending: Pending | null; refused: Refused | null; busy: boolean;
   onOpen: (id: number) => void; onFork: (f: Draft) => void; onAsk: (q: Question) => void; onRetry: (t: Turn) => void;
-  onBack: () => boolean; onDelete: () => void; onDocument?: () => void;
+  onBack: () => boolean; onDelete: () => void;
 }) {
+  const hint = carried(node);
   const parent = node.parentId == null ? null : d.nodes.find((n) => n.id === node.parentId) ?? null;
   const scroller = useRef<HTMLDivElement>(null);
   const last = node.turns[node.turns.length - 1];
@@ -285,11 +286,12 @@ function NodeView({ d, node, pending, refused, busy, onOpen, onFork, onAsk, onRe
       ) : null}
       <div className="dlg-scroll" ref={scroller}>
         <div className="dlg-col">
+          {hint ? <p className="dlg-carried">{hint}</p> : null}
           {parent ? <ForkHead d={d} node={node} /> : null}
           {node.turns.map((t, i) => (
             pending?.retry === t.id ? <Asking key={t.id} question={pending.question} run={pending.run} kind={node.kind} /> : (
               <TurnView key={t.id} d={d} node={node} turn={t} first={node.kind === 'main' && i === 0} last={i === node.turns.length - 1}
-                busy={busy} onOpen={onOpen} onFork={onFork} onRetry={onRetry} onDocument={onDocument} />
+                busy={busy} onOpen={onOpen} onFork={onFork} onRetry={onRetry} />
             )
           ))}
           {pending && pending.retry == null ? <Asking question={pending.question} run={pending.run} kind={node.kind} /> : null}
@@ -325,13 +327,14 @@ function ForkHead({ d, node }: { d: ExplorationDetail; node: DialogueNode }) {
 // plain is the start of a reply as text, for a one-line excerpt.
 const plain = (md: string) => md.replace(/<[^>]+>/g, ' ').replace(/[#*`>|_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
 
-// TurnView is a question and its reply; the analysis (the main node's
-// first turn) shows as the head of the document instead. Under the reply:
+// TurnView is a question and its reply. The main node's first turn is the
+// question the analysis stands for (the server's, ADR 0011) and the
+// analysis in full, as the analysis popover shows it. Under the reply:
 // open a node (a passage selected in the reply goes with it), copy, try
 // again when it failed, and a chip for each node opened on it.
-function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry, onDocument }: {
+function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry }: {
   d: ExplorationDetail; node: DialogueNode; turn: Turn; first: boolean; last: boolean; busy: boolean;
-  onOpen: (id: number) => void; onFork: (f: Draft) => void; onRetry: (t: Turn) => void; onDocument?: () => void;
+  onOpen: (id: number) => void; onFork: (f: Draft) => void; onRetry: (t: Turn) => void;
 }) {
   const [menu, setMenu] = useState<false | 'down' | 'up'>(false);
   const [fragment, setFragment] = useState('');
@@ -356,13 +359,12 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
     <div className="dlg-turn" data-turn={t.id}>
       {first ? (
         <>
-          <div className="dlg-turn-label">第 1 轮 · 分析</div>
-          <div className="dlg-analysis">
-            <blockquote><span>{d.quote}</span>{d.lessonTitle ? <small>出自 {d.lessonTitle}</small> : null}</blockquote>
-            <div className="dlg-analysis-head">
-              <div><b>{d.title}</b><p>{d.concept}</p></div>
-              {onDocument ? <button type="button" onClick={onDocument}>查看探索文档</button> : null}
-            </div>
+          <Asked question={{ text: d.firstQuestion, attachments: [] }} kind={node.kind} />
+          <div className="dlg-reply dlg-analysis" ref={reply} onMouseUp={noteSelection}>
+            <h3 className="analysis-title">{d.title}</h3>
+            <p className="analysis-concept">{d.concept}</p>
+            <div className="analysis-label">概念解释</div>
+            <div className="analysis-explanation"><LazyMarkdown text={d.explanation} components={documentParts} /></div>
           </div>
         </>
       ) : (
