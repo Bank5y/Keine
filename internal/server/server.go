@@ -70,6 +70,8 @@ type Server struct {
 	runs *assistant.Gate
 	// credits keeps what the assistant costs each reader
 	credits *credits.Service
+	// staged keeps each reader's finished analysis until it is pinned
+	staged *stagedAnalyses
 	// generator helps users write a course manifest
 	generator course.Generator
 	files     storage.Store
@@ -106,6 +108,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	s.models = assistant.NewModels(pool, box, opts.AdapterFor, opts.SearchFor)
 	s.runs = assistant.NewGate(opts.MaxRuns)
 	s.credits = credits.NewService(pool, opts.Now)
+	s.staged = newStagedAnalyses()
 	if opts.AdminUsername != "" {
 		if err := s.auth.EnsureAdmin(ctx, opts.AdminUsername, opts.AdminPassword); err != nil {
 			pool.Close()
@@ -207,6 +210,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}/previous-texts", s.signedIn(s.listPreviousTexts))
 	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}/suggestions", s.signedIn(s.listSuggestions))
 	s.mux.HandleFunc("POST /api/courses/{id}/lessons/{lesson}/analysis", s.signedIn(s.analyze))
+	s.mux.HandleFunc("GET /api/courses/{id}/lessons/{lesson}/explorations", s.signedIn(s.listExplorations))
+	s.mux.HandleFunc("POST /api/courses/{id}/lessons/{lesson}/explorations", s.signedIn(s.pinExploration))
 	s.mux.HandleFunc("PATCH /api/annotations/{id}", s.signedIn(s.restyleAnnotation))
 	s.mux.HandleFunc("DELETE /api/annotations/{id}", s.signedIn(s.deleteAnnotation))
 	s.mux.HandleFunc("POST /api/annotations/{id}/place", s.signedIn(s.placeAnnotation))

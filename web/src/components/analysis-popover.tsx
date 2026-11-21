@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronUp, RotateCcw, Sparkles, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Pin, RotateCcw, Sparkles, X } from 'lucide-react';
+import { toast } from 'sonner';
 import type { Components, ExtraProps } from 'react-markdown';
 import { CodeBlock } from '@/components/code-block';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Mermaid } from '@/components/mermaid';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { analyze, hasContent, initial, step, type AnalysisState, type LessonLength, type Length, type Part, type Parts } from '@/lib/analysis';
+import { analyze, hasContent, initial, pinRefusals, step, type AnalysisState, type LessonLength, type Length, type Part, type Parts, type Refusal } from '@/lib/analysis';
+import { ApiError } from '@/lib/api';
+import { pinAnalysis, type Exploration } from '@/lib/explorations';
 import type { Quote } from '@/lib/annotations';
 import { readNotice, useUser } from '@/lib/session';
 import { progressLines, summary, type ToolActivity } from '@/lib/progress';
@@ -42,12 +45,17 @@ function diagrams(draw: boolean): Components {
 const streamingParts = diagrams(false);
 const finishedParts = diagrams(true);
 
+// Pinning is where pinning a finished analysis stands: refused, the
+// content stays and the popover says why.
+type Pinning = { status: 'idle' } | { status: 'pinning' } | ({ status: 'refused'; message: string } & Refusal);
+
 // AnalysisPopover asks the assistant to analyze a selection and shows the
 // answer as it streams: loading, streaming, done, or an error to retry.
-// Closing it (Esc, a press outside, ×) asks first once it shows some of an
-// answer, since an analysis not pinned is thrown away.
-export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
-  courseId: number; lessonId: number; quote: Quote; at: Anchor; onClose: () => void;
+// A finished answer can be pinned (固定探索), which hands the exploration
+// to onPinned. Closing it (Esc, a press outside, ×) asks first once it
+// shows some of an answer, since an analysis not pinned is thrown away.
+export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinned }: {
+  courseId: number; lessonId: number; quote: Quote; at: Anchor; onClose: () => void; onPinned: (e: Exploration) => void;
 }) {
   const user = useUser();
   const [state, dispatch] = useReducer(step, initial);
@@ -61,6 +69,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
   const [length, setLength] = useState<Length>();
   const [choice, setChoice] = useState<Length>('related');
   const box = useRef<HTMLDivElement>(null);
+  const [pinning, setPinning] = useState<Pinning>({ status: 'idle' });
 
   useEffect(() => {
     if (!started) return undefined;
@@ -92,7 +101,17 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
   }, [asking, requestClose]);
 
-  const retry = () => { dispatch({ type: 'start' }); setAttempt((n) => n + 1); };
+  const retry = () => { dispatch({ type: 'start' }); setPinning({ status: 'idle' }); setAttempt((n) => n + 1); };
+
+  const pin = (analysisId: string) => {
+    setPinning({ status: 'pinning' });
+    pinAnalysis(courseId, lessonId, analysisId).then(onPinned).catch((ex: unknown) => {
+      const refusal = ex instanceof ApiError ? pinRefusals[ex.code] : undefined;
+      if (refusal) { setPinning({ status: 'refused', ...refusal, message: (ex as ApiError).message }); return; }
+      toast.error(ex instanceof ApiError ? ex.message : '没能固定，请重试。');
+      setPinning({ status: 'idle' });
+    });
+  };
   const left = Math.max(16, Math.min(at.left - 3, innerWidth - WIDTH - 16) + scrollX);
 
   const credit = <Credit provider={user?.aiProvider} open={noticeOpen} onToggle={() => setNoticeOpen((v) => !v)} />;
@@ -120,7 +139,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose }: {
     );
   } else {
     main = <Body state={state} />;
-    foot = <Foot state={state} onRetry={retry}>{credit}</Foot>;
+    foot = <Foot state={state} pinning={pinning} onRetry={retry} onPin={pin}>{credit}</Foot>;
   }
 
   return (
@@ -278,15 +297,21 @@ function Credit({ provider, open, onToggle }: { provider?: string; open: boolean
 }
 
 // Foot ends the popover: credit (the service that wrote the answer) on the
-// left, what can be done on the right.
-function Foot({ state, onRetry, children: credit }: { state: Exclude<AnalysisState, { status: 'choose' }>; onRetry: () => void; children: ReactNode }) {
-  if (state.status === 'error') {
-    const { title, retry } = state.refusal ?? { title: '分析没能完成', retry: true };
+// left, what can be done on the right: 固定探索 once the answer is done,
+// 重试 after an error.
+function Foot({ state, pinning, onRetry, onPin, children: credit }: {
+  state: Exclude<AnalysisState, { status: 'choose' }>; pinning: Pinning; onRetry: () => void; onPin: (analysisId: string) => void; children: ReactNode;
+}) {
+  const failure = state.status === 'error'
+    ? { message: state.message, ...(state.refusal ?? { title: '分析没能完成', retry: true }) }
+    : pinning.status === 'refused' ? pinning : null;
+  if (failure) {
+    const { title, message, retry } = failure;
     return (
       <>
         <div className={cn('analysis-error', hasContent(state) && 'after-content')} role="alert">
           <div className="analysis-error-title">{title}</div>
-          <div className="analysis-error-text">{state.message}</div>
+          <div className="analysis-error-text">{message}</div>
         </div>
         <div className="analysis-foot">
           {credit}
@@ -301,6 +326,11 @@ function Foot({ state, onRetry, children: credit }: { state: Exclude<AnalysisSta
       <div className="analysis-foot">
         {credit}
         {state.status === 'streaming' ? <span>生成中… Esc 关闭</span> : null}
+        {state.status === 'done' && state.analysisId ? (
+          <Button size="sm" variant="default" disabled={pinning.status === 'pinning'} onClick={() => onPin(state.analysisId!)}>
+            <Pin />{pinning.status === 'pinning' ? '固定中…' : '固定探索'}
+          </Button>
+        ) : null}
       </div>
     </>
   );

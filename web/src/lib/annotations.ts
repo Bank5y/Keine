@@ -135,7 +135,7 @@ export class TextMap {
   // place finds an annotation on the page: where the server says it is, or,
   // should the page's text differ from the server's there, the nearest place
   // on the page that holds its quote.
-  place(a: Annotation): Range[] | null {
+  place(a: { quote: string; range: { start: number; end: number } | null }): Range[] | null {
     if (!a.range) return null;
     const want = strip(a.quote);
     if (this.slice(a.range.start, a.range.end) === want) return this.domRanges(a.range.start, a.range.end);
@@ -187,14 +187,25 @@ export class TextMap {
     if (container.nodeType === Node.TEXT_NODE && this.nodes.some((n) => n.node === container)) {
       offset = wordStart((container as Text).data, offset);
     }
-    const at = this.indexOf(container, offset);
-    // the first visible character at or after the point
+    return dropSpan(this.firstAt(this.indexOf(container, offset)), len, this.chars.length);
+  }
+
+  // rangeOf is where a selection inside the root sits in the visible text,
+  // as the server counts ranges; null when it holds no visible character.
+  rangeOf(sel: Range): { start: number; end: number } | null {
+    const start = this.firstAt(this.indexOf(sel.startContainer, sel.startOffset));
+    const end = this.firstAt(this.indexOf(sel.endContainer, sel.endOffset));
+    return start < end ? { start, end } : null;
+  }
+
+  // firstAt is the first visible character at or after an index into raw
+  private firstAt(at: number) {
     let lo = 0, hi = this.chars.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
       if (this.rawOf(this.chars[mid]) < at) lo = mid + 1; else hi = mid;
     }
-    return dropSpan(lo, len, this.chars.length);
+    return lo;
   }
 
   private rawOf(c: Char) { return this.nodes.find((n) => n.node === c.node)!.start + c.offset; }

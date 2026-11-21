@@ -15,8 +15,8 @@ export type AnalysisEvent =
   | { type: 'activity'; id: string; kind: string; target?: string; status: 'running' | 'done' | 'failed'; reason?: string; ownKey?: boolean }
   // degraded: the web capabilities that went off during the run; sources
   // are the turn's metadata, which the popover does not show, only whether
-  // there are any
-  | { type: 'done'; title: string; intro: string; body: string; degraded?: string[]; sources?: unknown[] }
+  // there are any; analysisId names the analysis to pin it by
+  | { type: 'done'; analysisId?: string; title: string; intro: string; body: string; degraded?: string[]; sources?: unknown[] }
   // message is the server's, in the reader's words; length comes with
   // length_choice_required
   | { type: 'error'; code: string; message?: string; kept: boolean; length?: LessonLength }
@@ -52,8 +52,9 @@ export type AnalysisState =
   | { status: 'loading'; thinking?: boolean; activities: ToolActivity[] }
   | { status: 'streaming'; parts: Parts; activities: ToolActivity[] }
   // noWeb: the run got no web results, which the popover says apart from
-  // the sections (it never goes into the document)
-  | { status: 'done'; parts: Parts; activities: ToolActivity[]; noWeb?: true }
+  // the sections (it never goes into the document); analysisId is what
+  // pinning names it by
+  | { status: 'done'; parts: Parts; activities: ToolActivity[]; noWeb?: true; analysisId?: string }
   | { status: 'error'; message: string; parts: Parts; activities: ToolActivity[]; refusal?: Refusal };
 
 export const initial: AnalysisState = { status: 'loading', activities: [] };
@@ -80,7 +81,7 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
       return { status: 'streaming', parts: { ...parts, [e.section]: parts[e.section] + e.text }, activities };
     }
     case 'done': {
-      const done: AnalysisState = { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body }, activities };
+      const done: AnalysisState = { status: 'done', parts: { title: e.title, intro: e.intro, body: e.body }, activities, ...(e.analysisId ? { analysisId: e.analysisId } : {}) };
       // a capability went off and the run found nothing on the web
       return e.degraded?.length && !e.sources?.length ? { ...done, noWeb: true } : done;
     }
@@ -94,6 +95,15 @@ export function step(s: AnalysisState, e: AnalysisEvent): AnalysisState {
   }
   return s;
 }
+
+// pinRefusals are why an analysis could not be pinned, by the server's
+// code (the server's message says the rest); its content stays in the
+// popover either way. An expired one is analyzed again with 重试; one
+// overlapping an exploration made meanwhile cannot be pinned at all.
+export const pinRefusals: Record<string, Refusal> = {
+  analysis_expired: { title: '分析结果已过期', retry: true },
+  overlap: { title: '不能固定这次分析', retry: false },
+};
 
 // hasContent tells whether the popover shows some of an answer, which
 // closing it would throw away.

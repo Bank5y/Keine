@@ -21,6 +21,9 @@ type Passage struct {
 	// bytes; Marked is false when it could not be told apart there.
 	Start, End int
 	Marked     bool
+	// Range is where the selection sits in the lesson's visible text, as
+	// annotations and explorations are placed.
+	Range anchor.Range
 }
 
 // Passage finds a selection in a lesson the viewer may annotate, the way an
@@ -42,7 +45,7 @@ func (s *Service) Passage(ctx context.Context, viewer auth.User, courseID, lesso
 	if err != nil {
 		return Passage{}, err
 	}
-	p := Passage{Course: d, Lesson: l}
+	p := Passage{Course: d, Lesson: l, Range: r}
 	for _, ch := range d.Chapters {
 		if ch.ID == l.ChapterID {
 			p.Chapter = ch.Title
