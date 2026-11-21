@@ -73,7 +73,7 @@ func CourseTools(lib Library) []Tool {
 	c := &courseTools{lib: lib, texts: map[string]string{}}
 	return []Tool{
 		NewTool(ToolReadLesson,
-			"读本课程某一讲的正文，或其中一个小节。正文很长时先用 list_sections 看小节，再按小节读。本讲全文已经在上下文里，不要再读。",
+			"读本课程某一讲的正文，或其中一个小节。正文很长时先用 list_sections 看小节，再按小节读。",
 			func(a readLessonArgs) string { return c.target(a.Lesson, a.Section) }, c.readLesson),
 		NewTool(ToolListSections,
 			"列出本课程某一讲的小节（正文里的标题）和它们的标识。",

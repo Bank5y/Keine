@@ -6,41 +6,123 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 //go:embed prompts/followup.md
 var followupSystem string
 
-// FollowupPrompt is the prompt of a turn after the analysis (#136). Its
-// context is not a passage but the exploration (FollowupContext).
-var FollowupPrompt = Prompt{
-	Version: "followup-1",
-	System:  strings.TrimSpace(followupSystem),
+// FollowupPrompt is the prompt of a turn after the analysis (#136, ADR
+// 0011): the same for every kind of node. Its context is not a passage but
+// the exploration (FollowupContext).
+var FollowupPrompt = newPrompt("followup-2", followupSystem, DefaultStyle)
+
+// FirstQuestion is the question an exploration's analysis stands for
+// (ADR 0011): to explain the term (by the exploration's title, which keeps
+// how the text writes it), or, when the reader selected a sentence, the
+// sentence itself.
+func FirstQuestion(quote, title string) string {
+	if isTerm(quote) {
+		return "解释「" + title + "」的含义"
+	}
+	return "解释这段话：「" + quote + "」"
 }
 
-// Doc is an exploration document as the model reads it: its sections in
-// their fixed order, the ones after the meaning only when they have items.
-type Doc struct {
-	Title, Intro, Meaning                         string
-	Footnotes, Extensions, Expansions, References []string
+// termMaxRunes is the longest a selection can be and still be a term.
+const termMaxRunes = 24
+
+// isTerm tells a selected term (a concept's name, an abbreviation, a proper
+// noun) from a sentence: a term is short and has no punctuation that ends
+// or splits a clause.
+func isTerm(quote string) bool {
+	q := strings.TrimSpace(quote)
+	if q == "" || utf8.RuneCountInString(q) > termMaxRunes {
+		return false
+	}
+	if strings.ContainsAny(q, "。！？；，：、!?;,:\n") {
+		return false
+	}
+	// a period ends an English sentence, not an abbreviation like "e.g"
+	return !strings.HasSuffix(q, ".") && !strings.Contains(q, ". ")
 }
 
-func (d Doc) markdown() string {
-	var b strings.Builder
-	b.WriteString("【当前探索文档】\n\n# " + d.Title + "\n\n> " + d.Intro + "\n\n## 含义\n\n" + strings.TrimSpace(d.Meaning))
-	for _, s := range []struct {
-		name  string
-		items []string
-	}{{"脚注", d.Footnotes}, {"延伸", d.Extensions}, {"扩展", d.Expansions}, {"参考", d.References}} {
-		if len(s.items) == 0 {
-			continue
-		}
-		b.WriteString("\n\n## " + s.name + "\n")
-		for _, it := range s.items {
-			b.WriteString("\n- " + it)
+// analysisMarkdown is the analysis's reply as the reader saw it: its tags
+// taken out (ADR 0011). A reply without them stays as it is.
+func analysisMarkdown(reply string) string {
+	p := newTagParser(func(Part, string) error { return nil })
+	_ = p.feed(reply)
+	a := p.parts()
+	if a.Title == "" && a.Intro == "" && a.Body == "" {
+		return strings.TrimSpace(reply)
+	}
+	var parts []string
+	if a.Title != "" {
+		parts = append(parts, "# "+a.Title)
+	}
+	for _, s := range []string{a.Intro, a.Body} {
+		if s = strings.TrimSpace(s); s != "" {
+			parts = append(parts, s)
 		}
 	}
-	return b.String()
+	return strings.Join(parts, "\n\n")
+}
+
+// backgroundNote heads the background: what the reader has read.
+const backgroundNote = "以下是读者已经读过的背景。"
+
+// background is the part of the analysis's request a follow-up keeps (ADR
+// 0011): the course info and the selected text, with the note that the
+// reader has read them. The outline and the lesson text are left for the
+// tools. The snapshot itself is not changed.
+func background(snapshot []Message) string {
+	var content string
+	for _, m := range snapshot {
+		if m.Role == RoleUser {
+			content = m.Content
+			break
+		}
+	}
+	var kept []string
+	for _, s := range sections(content) {
+		if strings.HasPrefix(s, headCourseInfo) || strings.HasPrefix(s, headSelection) {
+			kept = append(kept, s)
+		}
+	}
+	return backgroundNote + "\n\n" + strings.Join(kept, "\n\n")
+}
+
+// sectionHeads are the sources' headings in the order AnalysisPrompt
+// puts them; the lesson comes whole or as its sections.
+var sectionHeads = []string{headCourseInfo, headOutline, headSelection, headLesson, headLessonSections}
+
+// sections splits an analysis's request into its sources, in the order
+// AnalysisPrompt puts them: each source begins at the first of the heads
+// still to come, so a heading inside the lesson text does not split it.
+func sections(content string) []string {
+	var starts []int
+	from := 0
+	for _, h := range sectionHeads {
+		i := -1
+		if strings.HasPrefix(content[from:], h) {
+			i = from
+		} else if j := strings.Index(content[from:], "\n\n"+h); j >= 0 {
+			i = from + j + 2
+		}
+		if i < 0 {
+			continue
+		}
+		starts = append(starts, i)
+		from = i + len(h)
+	}
+	var out []string
+	for k, i := range starts {
+		end := len(content)
+		if k+1 < len(starts) {
+			end = starts[k+1]
+		}
+		out = append(out, strings.TrimSpace(content[i:end]))
+	}
+	return out
 }
 
 // Asked is a question of the dialogue: its text and the passages the
@@ -67,32 +149,31 @@ type Exchange struct {
 	Reply string
 }
 
-// FollowupContext is what a turn after the analysis reads (#94, ADR 0009):
-// the request the analysis ran on as it was when pinned (its snapshot),
-// the analysis's reply, the document as it is now, and the turns along the
-// node's chain of ancestors, up to where it is asked.
+// FollowupContext is what a turn after the analysis reads (ADR 0009,
+// ADR 0011): the background kept from the request the analysis ran on as it
+// was when pinned (its snapshot), the first exchange (the question the
+// analysis stands for and its reply), and the turns along the node's chain
+// of ancestors, up to where it is asked.
 type FollowupContext struct {
-	// Snapshot is the analysis's request; its system prompt gives way to
-	// the follow-up's
-	Snapshot   []Message
+	// Snapshot is the analysis's request; only its course info and selected
+	// text are read
+	Snapshot      []Message
+	FirstQuestion string
+	// FirstReply is the analysis's reply as kept, in its tags
 	FirstReply string
-	Doc        Doc
 	History    []Exchange
 }
 
 // Messages puts a question after its context. Everything before the
-// question is the same for every turn of a chain (until a sync changes
-// the document), so the start of the request can be cached.
+// question is the same for every turn of a chain, so a turn's request
+// starts with the one before it and its reply, and can be cached.
 func (c FollowupContext) Messages(q Asked) []Message {
-	msgs := []Message{{Role: RoleSystem, Content: FollowupPrompt.System}}
-	for _, m := range c.Snapshot {
-		if m.Role != RoleSystem {
-			msgs = append(msgs, m)
-		}
+	msgs := []Message{
+		{Role: RoleSystem, Content: FollowupPrompt.System},
+		{Role: RoleUser, Content: background(c.Snapshot)},
+		{Role: RoleUser, Content: c.FirstQuestion},
+		{Role: RoleAssistant, Content: analysisMarkdown(c.FirstReply)},
 	}
-	msgs = append(msgs,
-		Message{Role: RoleAssistant, Content: c.FirstReply},
-		Message{Role: RoleUser, Content: c.Doc.markdown()})
 	for _, e := range c.History {
 		msgs = append(msgs, Message{Role: RoleUser, Content: e.Asked.content()}, Message{Role: RoleAssistant, Content: e.Reply})
 	}

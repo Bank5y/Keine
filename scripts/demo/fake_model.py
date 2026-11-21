@@ -68,7 +68,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(chunk({"reasoning_content": part}).encode())
                 self.wfile.flush()
                 time.sleep(0.5)
-            followup = "探索对话里继续追问" in (req["messages"][0].get("content") or "")
+            # only the analysis's system prompt asks for the tagged format
+            followup = "<exp_title>" not in (req["messages"][0].get("content") or "")
             text = FOLLOWUP if followup else ANALYSIS
             for i in range(0, len(text), 4):
                 self.wfile.write(chunk({"content": text[i:i + 4]}).encode())

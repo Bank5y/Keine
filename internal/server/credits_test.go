@@ -31,7 +31,7 @@ func costly() step {
 func onPlan(t *testing.T, a *app, user *client, daily any) float64 {
 	t.Helper()
 	admin := a.admin()
-	plan := admin.mustOK(admin.do("POST", "/api/admin/plans", map[string]any{"name": fmt.Sprintf("套餐 %v %d", daily, time.Now().UnixNano()), "daily": daily})).json()
+	plan := admin.mustOK(admin.do("POST", "/api/admin/plans", map[string]any{"name": fmt.Sprintf("套餐 %d", time.Now().UnixNano()), "daily": daily})).json()
 	admin.mustOK(admin.do("PUT", fmt.Sprintf("/api/admin/users/%v", me(t, user)["id"]), map[string]any{"planId": plan["id"]}))
 	return plan["id"].(float64)
 }
