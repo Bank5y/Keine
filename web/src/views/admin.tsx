@@ -8,14 +8,15 @@ import { Link } from '@/lib/router';
 import type { User } from '@/lib/session';
 import { cn } from '@/lib/utils';
 import { AdminReviews } from '@/views/admin-reviews';
+import { AdminConcepts } from '@/views/admin-concepts';
 import { AdminModels } from '@/views/admin-models';
 import { AdminPlans } from '@/views/admin-plans';
 import { AdminUsage } from '@/views/admin-usage';
 import { AdminUsers } from '@/views/admin-users';
 
-const TABS: [string, string][] = [['/admin/reviews', '审核'], ['/admin/users', '用户'], ['/admin/models', '模型'], ['/admin/plans', '套餐'], ['/admin/usage', '用量'], ['/admin/site', '站点设置']];
+const TABS: [string, string][] = [['/admin/reviews', '审核'], ['/admin/users', '用户'], ['/admin/models', '模型'], ['/admin/concepts', '概念索引'], ['/admin/plans', '套餐'], ['/admin/usage', '用量'], ['/admin/site', '站点设置']];
 
-const TAB_VIEWS: Record<string, ComponentType> = { '/admin/plans': AdminPlans, '/admin/site': SiteSettings };
+const TAB_VIEWS: Record<string, ComponentType> = { '/admin/plans': AdminPlans, '/admin/concepts': AdminConcepts, '/admin/site': SiteSettings };
 
 // AdminView stays mounted while its tabs change (each has its own address):
 // only the content below the tabs fades over, and the page keeps its place.

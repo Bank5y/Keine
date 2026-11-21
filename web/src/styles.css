@@ -401,6 +401,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .subnav a { padding: 8px 0; color: var(--text-2); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .subnav a:hover { color: var(--text); }
 .subnav a.active { color: var(--text); border-bottom-color: var(--brand); font-weight: 600; }
+@media (max-width: 760px) { .subnav { gap: 4px 16px; flex-wrap: wrap; } .subnav a { white-space: nowrap; } }
 
 /* ---------- ledger rows (users list) ---------- */
 .ledger { border-top: 1.5px solid var(--text); }
@@ -1744,3 +1745,5 @@ a.rn:hover .t { color: var(--brand); }
   .exp-zoom-backdrop, .dlg-layer, .dlg-layer-inner, .dlg-spine, .dlg-spine-tint, .dlg-spine-label, .dlg-map, .dlg-map-inner, .dlg-map-edge path, .dlg-map-node { transition: none !important; animation: none !important; }
   .dlg-map-node .halo { animation: none; }
 }
+.ledger.concepts .ledger-row { grid-template-columns: 1fr 80px 300px 110px; }
+@media (max-width: 760px) { .ledger.concepts .ledger-row { grid-template-columns: 1fr auto auto; } }
