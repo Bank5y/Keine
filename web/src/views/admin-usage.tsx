@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { Empty, ErrorBox } from '@/components/common';
+import { TURN_NAMES } from '@/lib/ai';
 import { api } from '@/lib/api';
 import { allTokens, credits, quota, rangeOf, tokens, type Account, type DateRange, type Day, type Preset, type ReaderUsage, type Run, type Totals } from '@/lib/credits';
 import { Link, match } from '@/lib/router';
@@ -146,7 +147,7 @@ function ReadersUsage({ range }: { range: DateRange }) {
   );
 }
 
-const KINDS: Record<string, string> = { analysis: '分析', followup: '后续轮', sync: '同步' };
+const KINDS: Record<string, string> = TURN_NAMES;
 const n = (v: number | null) => (v === null ? '—' : tokens(v));
 const at = (s: string) => new Date(s).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 

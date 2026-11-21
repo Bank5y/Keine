@@ -143,7 +143,7 @@ func mapModel(t *testing.T, a *app, fields map[string]any, thinking bool) {
 		body[k] = v
 	}
 	created := admin.mustOK(admin.do("POST", "/api/admin/models", body)).json()
-	for _, k := range []string{"analysis", "followup", "sync"} {
+	for _, k := range []string{"analysis", "followup", "report", "concept_index"} {
 		admin.mustOK(admin.do("PUT", "/api/admin/turns/"+k, map[string]any{"modelId": created["id"], "thinking": thinking}))
 	}
 }
