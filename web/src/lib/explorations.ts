@@ -18,6 +18,8 @@ export interface Exploration {
   // where the quote sits in the lesson text as it is now, counted in
   // non-whitespace characters like an annotation's
   range: TextRange | null;
+  // how many nodes its dialogue has besides the main one (#137)
+  nodes: number;
   createdAt: string;
 }
 
@@ -44,3 +46,56 @@ export const listExplorations = (courseId: number, lessonId: number) =>
 // done event gave, as an exploration.
 export const pinAnalysis = (courseId: number, lessonId: number, analysisId: string) =>
   api<Exploration>('POST', path(courseId, lessonId), { analysisId });
+
+// ---- one exploration whole: its document and its dialogue (#134) ----
+
+export type NodeKind = 'main' | 'child' | 'branch' | 'divergent';
+
+export interface Attachment { kind: 'selection'; text: string }
+export interface Question { text: string; attachments: Attachment[] }
+
+// why a reply stops short; absent when it is whole
+export type Interruption = 'credits_exhausted' | 'timeout' | 'truncated' | 'failed';
+
+export interface Turn {
+  id: number;
+  parentId: number | null;
+  question: Question;
+  reply: string;
+  meta: { source: 'site' | 'own'; model: string; degraded?: string[]; sources: unknown[]; interrupted?: Interruption };
+  createdAt: string;
+}
+
+export interface DialogueNode {
+  id: number;
+  kind: NodeKind;
+  name: string;
+  parentId: number | null;
+  forkTurnId: number | null;
+  turns: Turn[];
+  createdAt: string;
+}
+
+export interface DocItem { id: number; text: string }
+
+export interface ExplorationDetail {
+  id: number;
+  courseId: number;
+  quote: string;
+  state: Exploration['state'];
+  lessonTitle: string;
+  title: string;
+  intro: string;
+  meaning: string;
+  docVersion: number;
+  footnotes: DocItem[];
+  extensions: DocItem[];
+  expansions: DocItem[];
+  references: DocItem[];
+  nodes: DialogueNode[];
+  createdAt: string;
+}
+
+export const getExploration = (id: number) => api<ExplorationDetail>('GET', `/api/explorations/${id}`);
+
+export const deleteExploration = (id: number) => api<void>('DELETE', `/api/explorations/${id}`);
