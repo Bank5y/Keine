@@ -58,6 +58,18 @@ const initial: DNode[] = [
     ],
   },
   {
+    id: 'c4', type: 'child', name: '原始目标放在哪', parent: 'c3', forkTurn: 'c3t1',
+    turns: [
+      { id: 'c4t1', fragment: '原始目标', q: '原始目标是每次重新规划都整段带上吗？', a: '是的，原始目标放在系统提示词之后、done 列表之前，每次重新规划都带上，这部分前缀不变，可以命中缓存。' },
+    ],
+  },
+  {
+    id: 'c5', type: 'divergent', name: '提示词缓存', parent: 'c4', forkTurn: 'c4t1',
+    turns: [
+      { id: 'c5t1', fragment: '命中缓存', q: DEFAULT_Q.divergent, a: '课程之外，各家服务商都有前缀缓存：Anthropic 要显式加缓存标记，DeepSeek 和 OpenAI 自动按前缀命中。共同点是前缀必须逐字相同。' },
+    ],
+  },
+  {
     id: 'b1', type: 'branch', name: 'ReAct', parent: 'main', forkTurn: 'm2',
     turns: [
       { id: 'b1t1', q: DEFAULT_Q.branch, a: '课程第 03 讲的 ReAct 是另一种做法：不先出完整计划，而是每一步「想一下 → 做一步 → 看结果」。它和这里的 planner/executor 是两个极端：一个把选择全放在开头，一个把选择分散到每一步。' },

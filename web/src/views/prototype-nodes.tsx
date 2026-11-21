@@ -5,9 +5,10 @@ import { PrototypeSwitcher } from '@/components/prototype-switcher';
 import { useParam } from '@/lib/router';
 import { makeStore } from './prototype-nodes/data';
 import { StateReadout } from './prototype-nodes/shell';
-import { VariantA, VariantB, VariantC, VariantD, useStore } from './prototype-nodes/variants';
+import { VariantC } from './prototype-nodes/variant-c';
+import { VariantA, VariantB, VariantD, useStore } from './prototype-nodes/variants';
 
-const names = { A: '大纲树 + 单栏对话', B: '线程侧面板', C: '行内标记 + 面包屑', D: '画布' };
+const names = { A: '大纲树 + 单栏对话', B: '线程侧面板', C: '行内标记 + 抽屉栈', D: '画布' };
 const seed = makeStore();
 
 export function PrototypeNodes() {

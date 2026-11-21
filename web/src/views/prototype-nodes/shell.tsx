@@ -12,20 +12,20 @@ export function Backdrop() {
   );
 }
 
-export function Zoom({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+export function Zoom({ children, right, head }: { children: React.ReactNode; right?: React.ReactNode; head?: React.ReactNode }) {
   return (
     <>
       <Backdrop />
       <div style={{ position: 'fixed', inset: 0, background: 'rgb(29 27 24 / .42)' }} />
       <div style={{
-        position: 'fixed', left: '15vw', top: '15vh', width: '70vw', height: '70vh', minWidth: 900, minHeight: 560,
+        position: 'fixed', left: '6vw', top: '5vh', width: '88vw', height: '90vh', minWidth: 900, minHeight: 560,
         background: 'var(--surface)', borderRadius: 8, boxShadow: '0 30px 80px rgb(29 27 24 / .35)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden', color: 'var(--text)', fontFamily: 'var(--sans)',
       }}>
         <header style={{ height: 52, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 20px 0 24px', borderBottom: '1px solid var(--line)' }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>展开探索</span>
           <span style={{ fontSize: 13, color: 'var(--text-3)' }}>· {TITLE}</span>
-          <span style={{ flex: 1 }} />
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center' }}>{head}</span>
           {right}
           <span style={{ color: 'var(--text-3)', fontSize: 18, padding: '0 4px' }}>×</span>
         </header>
@@ -45,7 +45,7 @@ export function StateReadout({ nodes, current }: { nodes: DNode[]; current: stri
   const chain = inherited(nodes, current);
   const p = path(nodes, current);
   return (
-    <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 9998, width: 260, padding: '8px 10px', borderRadius: 6, background: '#111d', color: '#eee', font: '11px/1.6 ui-monospace, monospace' }}>
+    <div style={{ position: 'fixed', left: 12, bottom: 12, zIndex: 9998, width: 260, padding: '8px 10px', borderRadius: 6, background: '#111d', color: '#eee', font: '11px/1.6 ui-monospace, monospace' }}>
       <div>current: {current} ({TYPES[p[p.length - 1].type].label})</div>
       <div>path: {p.map((n) => n.id).join(' › ')}</div>
       <div>sees: {chain.map((c) => `${c.node.id}[${c.turns.length}]`).join(' + ') || '—'} + own</div>

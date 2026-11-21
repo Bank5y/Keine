@@ -168,41 +168,6 @@ export function VariantB({ s }: { s: Store }) {
   );
 }
 
-// ---------- C: inline markers, no tree (SillyTavern flags / reply counts) ----------
-// one full-width column; nodes show as chips under the turn they forked from;
-// a breadcrumb with each step's siblings is the only way up.
-export function VariantC({ s }: { s: Store }) {
-  const p = path(s.nodes, s.current);
-  const [sib, setSib] = useState<string>();
-  return (
-    <Zoom right={count(s.nodes)}>
-      <Column s={s} chips>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 13, padding: '10px 0', borderBottom: '1px solid var(--line)', position: 'relative' }}>
-          {p.map((n, i) => {
-            const sibs = n.parent ? childrenOf(s.nodes, n.parent) : [];
-            return (
-              <span key={n.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, position: 'relative' }}>
-                {i ? <span style={{ color: 'var(--text-3)' }}>›</span> : null}
-                <button type="button" onClick={() => s.open(n.id)} style={{ border: 0, background: i === p.length - 1 ? TYPES[n.type].soft : 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', display: 'inline-flex', gap: 6, alignItems: 'center', font: 'inherit', fontWeight: i === p.length - 1 ? 600 : 400 }}>
-                  <TypeDot type={n.type} size={7} />{n.name}
-                </button>
-                {sibs.length > 1 ? <button type="button" onClick={() => setSib(sib === n.id ? undefined : n.id)} style={{ border: 0, background: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: 10 }}>▾</button> : null}
-                {sib === n.id ? (
-                  <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 30, background: '#fff', border: '1px solid var(--line)', borderRadius: 6, boxShadow: '0 8px 24px rgb(0 0 0 / .12)', padding: 4, minWidth: 200 }}>
-                    {sibs.map((x) => <div key={x.id} onClick={() => { setSib(undefined); s.open(x.id); }} style={{ padding: '6px 8px', cursor: 'pointer', display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}><TypeDot type={x.type} />{x.name}</div>)}
-                  </div>
-                ) : null}
-              </span>
-            );
-          })}
-          <span style={{ flex: 1 }} />
-          {p.length > 1 ? <span onClick={() => s.remove(s.current)} style={{ fontSize: 12, color: 'var(--text-3)', cursor: 'pointer' }}>删除节点</span> : null}
-        </div>
-      </Column>
-    </Zoom>
-  );
-}
-
 // ---------- D: canvas (obsidian-chat-stream / Open WebUI overview) ----------
 // the nodes drawn as a graph that fills the card; the chosen node's
 // conversation slides in from the right.
