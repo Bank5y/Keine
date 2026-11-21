@@ -153,6 +153,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/session", s.logout)
 	s.mux.HandleFunc("GET /api/me", s.signedIn(s.me))
 	s.mux.HandleFunc("PUT /api/me/password", s.signedIn(s.changePassword))
+	s.mux.HandleFunc("POST /api/me/ai-notice", s.signedIn(s.readNotice))
 	s.mux.HandleFunc("POST /api/users", s.createUser)
 	s.mux.HandleFunc("GET /api/site", s.getSite)
 	s.mux.HandleFunc("PUT /api/site", s.adminOnly(s.putSite))

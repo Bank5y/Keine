@@ -662,6 +662,17 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .analysis-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 0 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
 .analysis-foot.end { justify-content: flex-end; }
 /* the run got no web results (#128): said here, never in the document */
+.analysis-lead { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: var(--text-2); }
+.notice { margin: 0; font-size: 13px; line-height: 1.6; }
+.notice dt { margin-top: 8px; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.notice dt:first-child { margin-top: 0; }
+.notice dd { margin: 2px 0 0; color: var(--text); }
+.analysis-notice { padding-left: 12px; border-left: 2px solid var(--rule); }
+.analysis-notice-panel { padding: 14px 18px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.analysis-notice-title { margin-bottom: 10px; font-size: 13px; font-weight: 500; color: var(--text); }
+.analysis-credit { display: inline-flex; align-items: center; gap: 4px; height: 24px; font-size: 12px; color: var(--text-3); }
+.analysis-credit:hover, .analysis-credit[aria-expanded="true"] { color: var(--text-2); }
+.analysis-credit svg { width: 12px; height: 12px; }
 .analysis-no-web { margin: 0; padding: 10px 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); }
 .analysis-error { padding: 16px 18px 18px; }
 .analysis-error.after-content { border-top: 1px solid var(--line); }
