@@ -171,6 +171,8 @@ func Estimate(input int, t assistant.Turn) float64 {
 
 // Record is one run's usage, kept apart from any message.
 type Record struct {
+	// UserID is the reader charged; 0 for the site's own runs (building a
+	// concept index), which count in the site's usage and no reader's.
 	UserID    int64
 	Kind      assistant.TurnKind
 	Model     string
@@ -197,7 +199,7 @@ func (s *Service) Record(ctx context.Context, r Record) error {
 	u := r.Usage
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO usage_records (user_id, kind, model, input, cache_read, cache_write, output, reasoning, searches, credits, estimated, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+		VALUES (NULLIF($1, 0), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		r.UserID, r.Kind, r.Model, u.Input, u.CacheRead, u.CacheWrite, u.Output, u.Reasoning, r.Searches, r.Credits, r.Estimated, s.now())
 	return err
 }
