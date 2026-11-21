@@ -2,6 +2,7 @@ package assistant
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"unicode/utf8"
 )
@@ -31,6 +32,46 @@ type Limits struct {
 	Soft  int `json:"soft"`
 	Hard  int `json:"hard"`
 	Input int `json:"-"`
+}
+
+// ErrContextTooLong: what a run would send is past the model's window,
+// or the whole of a lesson past its hard limit was chosen.
+var ErrContextTooLong = errors.New("input past the context window")
+
+// LengthChoiceError is a lesson past the soft limit, sent with no choice
+// of how much of it to send: the limits and the lesson in tokens, its
+// length in characters, and whether the whole of it still fits.
+type LengthChoiceError struct {
+	Limits
+	Lesson int  `json:"lesson"`
+	Chars  int  `json:"chars"`
+	Full   bool `json:"full"`
+}
+
+func (e *LengthChoiceError) Error() string {
+	return fmt.Sprintf("lesson of %d tokens past the soft limit of %d needs a length choice", e.Lesson, e.Soft)
+}
+
+// ChooseLength tells, for a lesson and the reader's choice, whether to
+// send only the sections around the selection: a lesson within the soft
+// limit goes whole whatever the choice; past it, a choice is needed
+// (*LengthChoiceError), and the whole lesson only fits within the hard
+// limit (ErrContextTooLong).
+func ChooseLength(lesson string, choice Length, l Limits) (related bool, err error) {
+	size := EstimateTokens(lesson)
+	if size <= l.Soft {
+		return false, nil
+	}
+	switch choice {
+	case LengthUnset:
+		return false, &LengthChoiceError{Limits: l, Lesson: size, Chars: utf8.RuneCountInString(lesson), Full: size <= l.Hard}
+	case LengthFull:
+		if size > l.Hard {
+			return false, ErrContextTooLong
+		}
+		return false, nil
+	}
+	return true, nil
 }
 
 // LimitsOf are the limits of a turn's model.

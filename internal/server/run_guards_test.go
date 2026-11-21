@@ -167,6 +167,30 @@ func TestALongLessonNeedsTheReadersChoiceOfHowMuchToSend(t *testing.T) {
 	}
 }
 
+func TestASelectionAboveTheFirstSectionTakesWhatIsThereAndTheFirstSection(t *testing.T) {
+	m := newScriptedModel(texts(goodAnswer))
+	a := newApp(t, withModel(m), withMasterKey(masterKey))
+	mapModel(t, a, map[string]any{"searchRoute": "off", "contextWindow": smallWindow}, false)
+	bob := a.user("bob")
+	var b strings.Builder
+	b.WriteString("# 01｜用户输入规范化\n\n这里的 Agent 指的是把目标拆成步骤的程序。\n\n")
+	for i := 1; i <= 5; i++ {
+		fmt.Fprintf(&b, "## 小节%d\n\n正文%d起。%s\n\n", i, i, strings.Repeat("字", 4000))
+	}
+	files := columnFiles(columnManifest())
+	files["01_用户输入.md"] = b.String()
+	id := uploadCourse(t, bob, files)
+	lesson := lessonIDs(t, bob, id)["l01"]
+
+	if events, _ := analyze(t, bob, id, lesson, withLength("related")); lastEvent(t, events).name != "done" {
+		t.Fatalf("related, above the first section: %+v", lastEvent(t, events))
+	}
+	ctx := m.calls()[0].Messages[1].Content
+	if !strings.Contains(ctx, "<selected>Agent</selected>") || !strings.Contains(ctx, "正文1起") || strings.Contains(ctx, "正文2起") {
+		t.Fatal("the text above the first section and the first section should be sent, and no more")
+	}
+}
+
 func TestPastTheHardLimitTheWholeLessonCannotBeChosen(t *testing.T) {
 	m := newScriptedModel(texts(goodAnswer))
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
