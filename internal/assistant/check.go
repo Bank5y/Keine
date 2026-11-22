@@ -104,3 +104,31 @@ func checkMermaid(body string) []string {
 	}
 	return problems
 }
+
+// CheckAnalysis reads a finished answer as the loop does and checks it
+// with the server's rules: the three parts, and what is wrong with it
+// (none when it is valid). keine-eval checks recorded answers with it.
+func CheckAnalysis(raw string) (Analysis, []string) {
+	p := newTagParser(func(Part, string) error { return nil })
+	_ = p.feed(raw)
+	return p.parts(), checkAnalysis(raw, p)
+}
+
+// MermaidBlocks are the Mermaid diagrams of a Markdown text, their source
+// without the fences.
+func MermaidBlocks(md string) []string {
+	var out []string
+	lines := strings.Split(md, "\n")
+	for i := 0; i < len(lines); i++ {
+		m := mermaidOpen.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		var src []string
+		for i++; i < len(lines) && strings.TrimSpace(lines[i]) != m[1]; i++ {
+			src = append(src, lines[i])
+		}
+		out = append(out, strings.Join(src, "\n"))
+	}
+	return out
+}

@@ -94,6 +94,17 @@ func formatOf(id string) (FormatSpec, bool) {
 	return FormatSpec{}, false
 }
 
+// DefaultBaseURL is the address a model of the format and provider is at
+// when none is given: the provider's, else the format's ("" for a plain
+// OpenAI-compatible endpoint, which has none).
+func DefaultBaseURL(format string, provider Provider) string {
+	if p, ok := preset(provider); ok {
+		return p.BaseURL
+	}
+	f, _ := formatOf(format)
+	return f.BaseURL
+}
+
 // providerWeb tells whether models of the format can take the provider
 // route.
 func providerWeb(format string) bool {

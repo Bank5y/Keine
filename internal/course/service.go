@@ -341,6 +341,29 @@ func canView(viewer auth.User, s Summary) bool {
 	return !s.Deleted && (s.Visibility == Public || s.UploaderID == viewer.ID || (viewer.IsAdmin() && s.PublishState == Pending))
 }
 
+// LessonID is the id of the course's lesson with the key.
+func (d Detail) LessonID(key string) (int64, bool) {
+	for _, ch := range d.Chapters {
+		for _, l := range ch.Lessons {
+			if l.Key == key {
+				return l.ID, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// Uploader is who uploaded a course: someone who can read it whether it
+// is public or private (keine-eval reads courses as their uploader).
+func (s *Service) Uploader(ctx context.Context, courseID int64) (auth.User, error) {
+	u := auth.User{Role: auth.RoleUser}
+	err := s.db.QueryRow(ctx, "SELECT uploader_id FROM courses WHERE id = $1 AND deleted_at IS NULL", courseID).Scan(&u.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return u, ErrNotFound
+	}
+	return u, err
+}
+
 // Get returns a course with its chapters and lessons.
 func (s *Service) Get(ctx context.Context, viewer auth.User, id int64) (Detail, error) {
 	var d Detail

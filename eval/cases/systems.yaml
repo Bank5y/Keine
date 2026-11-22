@@ -1,0 +1,107 @@
+# 系统与网络类课程。本机内部环境没有分布式系统课程，这一类先用协议、
+# 网络编程、编译和操作系统课程顶上；加入分布式系统课程后补用例。
+category: 系统与网络
+cases:
+  - id: http-crlf
+    kind: term
+    course: 8
+    version: v1
+    lesson: l10
+    quote: CRLF
+    prefix: 也就是“
+    suffix: ”，十六进制
+    must_include: [空行]
+  - id: http-header-limit
+    kind: sentence
+    course: 8
+    version: v1
+    lesson: l10
+    quote: 虽然HTTP协议对header的大小没有做限制，但各个Web服务器都不允许过大的请求头
+  - id: http-entity
+    # 「实体」在这里是报文的 body，不是数据库或领域模型里的实体
+    kind: misleading
+    course: 8
+    version: v1
+    lesson: l10
+    quote: 实体
+    prefix: 消息正文又称为“
+    suffix: ”，但与
+    must_include: [body]
+    must_not_include: [数据库]
+  - id: http2-minor-version
+    kind: term
+    course: 8
+    version: v1
+    lesson: l31
+    quote: 小版本号
+  - id: http2-semantics-syntax
+    kind: sentence
+    course: 8
+    version: v1
+    lesson: l31
+    quote: 所以HTTP/2把HTTP分解成了“语义”和“语法”两个部分
+  - id: tcpip-link-layer
+    # TCP/IP 的「链接层」容易和 OSI 的数据链路层、或「超链接」混为一谈
+    kind: misleading
+    course: 8
+    version: v1
+    lesson: l06
+    quote: 链接层
+    prefix: 第一层叫“
+    must_include: [MAC]
+  - id: tcpip-units
+    kind: sentence
+    course: 8
+    version: v1
+    lesson: l06
+    quote: MAC层的传输单位是帧（frame），IP层的传输单位是包（packet）
+  - id: http-reverse-proxy
+    kind: term
+    course: 8
+    version: v1
+    lesson: l22
+    quote: 反向代理
+    prefix: 实际工作中最常见的
+    must_include: [源服务器]
+  - id: epoll-rdllist
+    # 代码里的选区
+    kind: code
+    course: 10
+    version: v1
+    lesson: l34
+    quote: rdllist
+    prefix: "struct list_head "
+    suffix: ";"
+  - id: epoll-long
+    # 最长的一讲之一（大部分是源码）。按默认 128k 窗口不到软阈值；用小窗口的
+    # -model（如 contextWindow: 16000）跑时，会走「只看相关小节」
+    kind: long
+    course: 10
+    version: v1
+    lesson: l34
+    quote: 基于epoll的事件分发能力，是Linux下高性能网络编程的不二之选
+    length: related
+  - id: compiler-fsm
+    kind: term
+    course: 9
+    version: v1
+    lesson: l03
+    quote: 有限自动机
+    prefix: 词法分析要用到
+  - id: compiler-first-class
+    # 「一等公民」是编程语言的术语，不是社会意义上的
+    kind: misleading
+    course: 9
+    version: v1
+    lesson: l11
+    quote: 一等公民
+    must_include: [函数]
+  - id: os-numa-long
+    # 很长的一讲，选整讲
+    kind: long
+    course: 12
+    version: v1
+    lesson: l30
+    quote: Non-Uniform Memory Access（NUMA）
+    length: full
+    must_include: [本地内存]

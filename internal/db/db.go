@@ -32,6 +32,21 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// Connect connects to the database as it is, without migrating it: for a
+// tool that only reads (keine-eval), which a read-only account cannot
+// migrate anyway.
+func Connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("connect database: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("connect database: %w", err)
+	}
+	return pool, nil
+}
+
 // migrate applies every migration not yet recorded, in file name order. An
 // advisory lock keeps two instances starting together from racing.
 func migrate(ctx context.Context, pool *pgxpool.Pool) error {

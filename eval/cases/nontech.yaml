@@ -1,0 +1,45 @@
+# 非技术类课程：投资思维、产品。
+category: 非技术
+cases:
+  - id: quant-margin
+    kind: term
+    course: 7
+    version: v1
+    lesson: l08
+    quote: 保证金
+    prefix: 这个支点就是
+    must_include: [杠杆]
+  - id: quant-leverage
+    kind: sentence
+    course: 7
+    version: v1
+    lesson: l08
+    quote: 在期货交易中，你只需要缴纳10%的保证金，就能买卖100万的货物
+  - id: quant-infinite-game
+    # 「无限游戏」是卡斯的有限与无限游戏，不是数学或电子游戏的意思
+    kind: misleading
+    course: 7
+    version: v1
+    lesson: l29
+    quote: 无限游戏
+    prefix: 但本质上，它是一个残酷筛选的
+  - id: quant-winners-curse
+    kind: sentence
+    course: 7
+    version: v1
+    lesson: l29
+    quote: 短期业绩榜单的第一名，往往也是死得最快的那一个
+  - id: pm-fused-production
+    kind: term
+    course: 6
+    version: v1
+    lesson: l03
+    quote: 需求、设计、开发同步开展的融合式生产
+  - id: pm-llm-wiki
+    kind: term
+    course: 6
+    version: v1
+    lesson: l09
+    quote: LLM Wiki
+    suffix: 。它有效地弥补了
+    must_include: [RAG]
