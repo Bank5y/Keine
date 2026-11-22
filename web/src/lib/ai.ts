@@ -2,10 +2,10 @@
 // (/api/me aiProblem, the models page's problem): turn kinds without a
 // model, or models whose search route resolves to nothing.
 
-export type TurnKind = 'analysis' | 'followup' | 'sync';
+export type TurnKind = 'analysis' | 'followup' | 'report' | 'concept_index';
 
 // TURN_NAMES are the turn kinds by name.
-export const TURN_NAMES: Record<TurnKind, string> = { analysis: '分析', followup: '后续轮', sync: '同步' };
+export const TURN_NAMES: Record<TurnKind, string> = { analysis: '分析', followup: '后续轮', report: '报告', concept_index: '概念索引' };
 
 export type AIProblem =
   | { reason: 'turns_unmapped'; turns: TurnKind[] }

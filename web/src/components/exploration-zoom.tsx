@@ -134,7 +134,7 @@ export function ExplorationZoom({ id, onClose, onDeleted, onNodes }: {
           </>
         ) : (
           <ExplorationDialogue detail={d} onDetail={(x) => { setD(x); onNodes?.(x.id, x.nodes.length - 1); }}
-            onClose={close} escTaken={escTaken} onDocument={() => toLevel(1)} />
+            onClose={close} escTaken={escTaken} />
         )}
       </div>
       <Confirm open={asking} title="删除这个探索？" confirm="删除" onConfirm={remove} onClose={() => setAsking(false)}>
@@ -146,8 +146,8 @@ export function ExplorationZoom({ id, onClose, onDeleted, onNodes }: {
 }
 
 // ExplorationDocument is the exploration document, read only: the passage
-// it was made on, then its sections in their fixed order (GLOSSARY 探索文档).
-// The sections after the meaning show only once they have something.
+// it was made on, then its title, concept and concept explanation
+// (GLOSSARY 探索文档).
 export function ExplorationDocument({ d }: { d: ExplorationDetail }) {
   return (
     <div className="exp-doc">
@@ -156,25 +156,10 @@ export function ExplorationDocument({ d }: { d: ExplorationDetail }) {
         {d.lessonTitle ? <small>出自 {d.lessonTitle}</small> : null}
       </blockquote>
       <h2 className="exp-doc-title">{d.title}</h2>
-      <p className="exp-doc-intro">{d.intro}</p>
+      <p className="exp-doc-concept">{d.concept}</p>
       <hr />
-      <div className="analysis-label">含义</div>
-      <div className="analysis-meaning exp-doc-meaning"><LazyMarkdown text={d.meaning} components={documentParts} /></div>
-      <Items label="脚注" items={d.footnotes} ordered />
-      <Items label="延伸" items={d.extensions} ordered />
-      <Items label="扩展" items={d.expansions} />
-      <Items label="参考" items={d.references} />
+      <div className="analysis-label">概念解释</div>
+      <div className="analysis-explanation exp-doc-explanation"><LazyMarkdown text={d.explanation} components={documentParts} /></div>
     </div>
-  );
-}
-
-function Items({ label, items, ordered }: { label: string; items: { id: number; text: string }[]; ordered?: boolean }) {
-  if (!items.length) return null;
-  const List = ordered ? 'ol' : 'ul';
-  return (
-    <section className="exp-doc-items">
-      <div className="analysis-label">{label}</div>
-      <List>{items.map((it) => <li key={it.id}><LazyMarkdown text={it.text} /></li>)}</List>
-    </section>
   );
 }

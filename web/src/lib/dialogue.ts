@@ -3,13 +3,13 @@
 // a stack of drawers; the node map draws the whole tree.
 
 import { postStream, type StreamEvent } from '@/lib/analysis';
-import type { DialogueNode, NodeKind, Question, Turn } from '@/lib/explorations';
+import type { CourseLink, DialogueNode, NodeKind, Question, Turn } from '@/lib/explorations';
 import { track, type ToolActivity } from '@/lib/progress';
 
 export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
   main: { label: '主节点', hint: '' },
   child: { label: '子节点', hint: '沿这一轮继续追问，往深处挖' },
-  branch: { label: '分支节点', hint: '在课程里拓宽这个概念' },
+  branch: { label: '分支节点', hint: '横向拓宽，讲相关的概念和它们的关系' },
   divergent: { label: '发散节点', hint: '走出课程，看同类的其他内容' },
 };
 
@@ -17,11 +17,20 @@ export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
 // change it, and what they send is the node's first question (ADR 0009)
 export const DEFAULT_QUESTION: Record<Exclude<NodeKind, 'main'>, string> = {
   child: '沿着这一点继续往下讲：它具体是怎么做到的，为什么要这样？',
-  branch: '在这门课里，和它相关的还有哪些概念？它们和它是什么关系？',
+  branch: '和它相关的还有哪些概念？它们和它是什么关系？',
   divergent: '课程之外，还有哪些同类的做法？和这里的做法相比有什么异同？',
 };
 
 export const MAX_NODES = 50;
+
+// what the follow-ups bring along as background (ADR 0011): the course,
+// the selected passage and the analysis
+const BACKGROUND = ['课程信息', '选中的原文', '分析'];
+
+// carried is the faint line atop the main node naming that background; it
+// shows once there, on no other node, and is no part of any turn.
+export const carried = (n: DialogueNode): string | null =>
+  n.kind === 'main' ? `带上了：${BACKGROUND.join(' · ')}` : null;
 
 const byId = (nodes: DialogueNode[], id: number) => nodes.find((n) => n.id === id);
 
@@ -116,8 +125,9 @@ export function mapLayout(nodes: DialogueNode[], o: { col: number; row: number; 
 // ---- a run of the dialogue ----
 
 // Run is a turn being answered as it streams: the reply so far, the
-// lookups, and whether the model is thinking.
-export interface Run { text: string; activities: ToolActivity[]; thinking: boolean }
+// lookups, whether the model is thinking, and whether, the answer written,
+// it is linking it to the course (ADR 0011).
+export interface Run { text: string; activities: ToolActivity[]; thinking: boolean; linking?: boolean }
 
 export function stepRun(s: Run | undefined, e: StreamEvent): Run {
   const r = s ?? { text: '', activities: [], thinking: false };
@@ -126,10 +136,25 @@ export function stepRun(s: Run | undefined, e: StreamEvent): Run {
       return e.reset ? { ...r, text: '' } : { ...r, text: r.text + (e.text ?? ''), thinking: false };
     case 'activity':
       if (e.kind === 'thinking') return { ...r, thinking: e.status === 'running' };
+      if (e.kind === 'link_course') return { ...r, linking: e.status === 'running' };
       return { ...r, activities: track(r.activities, e as unknown as ToolActivity) };
     default:
       return r;
   }
+}
+
+// CourseLinkItem is a line of a reply's 「课程里的相关内容」: where in the
+// course, the reader's link there, and how it relates to the answer.
+export interface CourseLinkItem { href: string; place: string; note: string }
+
+// courseLinkItems are a turn's course links as the reply's end lists them,
+// each linked to its lesson and section in the reader.
+export function courseLinkItems(courseId: number, links: CourseLink[] | undefined): CourseLinkItem[] {
+  return (links ?? []).map((l) => ({
+    href: `/courses/${courseId}/lessons/${l.lesson.id}${l.section ? `#${encodeURIComponent(l.section.id)}` : ''}`,
+    place: l.section ? `${l.lesson.title} › ${l.section.title}` : l.lesson.title,
+    note: l.note,
+  }));
 }
 
 // what the stream's last event says: done carries the turn or node kept;

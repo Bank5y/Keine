@@ -13,9 +13,9 @@ import (
 // Analysis is a valid answer: the three allParts of an exploration
 // document that an analysis writes.
 type Analysis struct {
-	Title string `json:"title"`
-	Intro string `json:"intro"`
-	Body  string `json:"body"`
+	Title       string `json:"title"`
+	Concept     string `json:"concept"`
+	Explanation string `json:"explanation"`
 }
 
 // Delta is a piece of a section as it streams in. One with Reset (and no
@@ -127,7 +127,7 @@ var (
 
 // What the run tells the model along the way.
 const (
-	remedyFormat  = "上一次答复不合格：%s。请只按 <exp_title>/<exp_intro>/<exp_body> 格式重新作答，标签外不要写任何文字。"
+	remedyFormat  = "上一次答复不合格：%s。请只按 <exp_title>/<exp_concept>/<exp_explanation> 格式重新作答，标签外不要写任何文字。"
 	lastStepNote  = "还剩 1 次查询。之后必须直接作答。"
 	stepsUsedNote = "查询次数已用完。请不要再调用工具，根据已有资料直接作答。"
 	softNote      = "时间快到了。请不要再调用工具，根据已有资料直接作答。"
@@ -266,9 +266,9 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			answering = true
 			msgs = appendMessages(msgs, Message{Role: RoleUser, Content: softNote})
 		}
-		req := Request{Model: run.Turn.Model, Messages: msgs, Tools: specs, MaxTokens: maxTokens, Thinking: run.Turn.Thinking, ProviderWeb: run.Turn.ProviderWeb}
+		req := Request{Model: run.Turn.Model, Messages: msgs, Tools: specs, MaxTokens: r.form.maxTokens, Thinking: run.Turn.Thinking, ProviderWeb: run.Turn.ProviderWeb}
 		if run.Turn.Thinking {
-			req.MaxTokens = maxTokensThinking
+			req.MaxTokens = r.form.maxThinking
 		}
 		if tools {
 			req.ToolChoice = "auto"
@@ -325,9 +325,13 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			case strings.TrimSpace(c.raw) == "":
 				return c, &RunError{Code: CodeMalformedOutput, Kept: false, Cause: errors.New("empty reply")}
 			}
+			if r.linker != nil {
+				// within the run's deadline, after the answer (ADR 0011)
+				r.links = r.link(runCtx, msgs, c, r.linker)
+			}
 			return c, nil
 		}
-		problems := checkAnalysis(c.raw, c.parser)
+		problems := r.form.check(c.raw, c.parser)
 		if c.result.Finish == FinishLength {
 			problems = append([]string{"答复太长，被截断了"}, problems...)
 		}
@@ -345,7 +349,7 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 		answering = true
 		msgs = appendMessages(msgs,
 			Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, Native: c.result.Native},
-			Message{Role: RoleUser, Content: fmt.Sprintf(remedyFormat, strings.Join(problems, "；"))})
+			Message{Role: RoleUser, Content: fmt.Sprintf(r.form.remedy, strings.Join(problems, "；"))})
 	}
 }
 
@@ -369,6 +373,15 @@ type analysisRun struct {
 	// the reader sees
 	plain bool
 	text  strings.Builder
+	// linker, on the turn a node forks with, links the answer to the
+	// course (ADR 0011); links are what it linked
+	linker Linker
+	links  []CourseLink
+	// quiet: the call under way is the linking step's, which the reader
+	// sees only as its activity
+	quiet bool
+	// form is the shape of a tagged answer (an analysis's by default)
+	form *tagForm
 	// calls and toolRuns number the activities
 	calls, toolRuns int
 	breakers        map[string]*breaker
@@ -392,7 +405,7 @@ type breaker struct {
 }
 
 func newAnalysisRun(run Run, out Sink) *analysisRun {
-	r := &analysisRun{run: run, start: run.Now(), tools: map[string]Tool{}, breakers: map[string]*breaker{}}
+	r := &analysisRun{run: run, start: run.Now(), tools: map[string]Tool{}, breakers: map[string]*breaker{}, form: analysisForm}
 	for _, t := range run.Tools {
 		r.tools[t.Spec().Name] = t
 		r.breakers[t.Spec().Name] = &breaker{}
@@ -443,6 +456,9 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	think := Activity{ID: fmt.Sprintf("thinking-%d", r.calls), Kind: ActivityThinking}
 	activity := func(status ActivityStatus) error {
 		think.Status = status
+		if r.quiet {
+			return nil
+		}
 		return r.out.Activity(think)
 	}
 	// while the call writes, what it costs so far is worked out locally
@@ -450,7 +466,7 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	if r.run.Spent != nil {
 		asked = int64(EstimateMessages(req.Messages))
 	}
-	p := newTagParser(func(s Part, text string) error {
+	p := newFormParser(r.form, func(s Part, text string) error {
 		r.streamed = true
 		if err := r.out.Delta(Delta{Part: s, Text: text}); err != nil {
 			return sinkError{err}
@@ -482,6 +498,9 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 			}
 			raw.WriteString(e.Text)
 			defer r.peek(asked, raw.String())
+			if r.quiet {
+				return nil
+			}
 			if r.plain {
 				if e.Text == "" {
 					return nil

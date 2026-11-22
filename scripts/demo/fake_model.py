@@ -15,11 +15,19 @@ import http.server, json, re, sys, time
 REPLY = ["这是", "演示用的", "模型回复。"]
 
 ANALYSIS = """<exp_title>Agent（智能体）</exp_title>
-<exp_intro>能够自主规划步骤、调用工具，并根据执行结果调整下一步行动的大模型应用。</exp_intro>
-<exp_body>
-Agent 指的是以大模型为核心、能围绕一个目标自己决定下一步做什么的程序：它把目标拆成若干步骤，每一步调用模型或工具，再根据结果决定继续、重试还是换一条路。
+<exp_concept>这一讲里把目标拆成步骤、逐步调用模型和工具完成的程序，和「一个提示词做完所有事」相对。</exp_concept>
+<exp_explanation>
+Agent 在这一讲里是一种把控制流写在代码里的做法：程序围绕一个目标，先拆出步骤，每一步只调用一次模型或工具，再根据结果决定继续、重试还是换一条路。
 
-在这一讲里，Agent 是和「把所有逻辑塞进一个提示词」相对的做法：后者指望模型一次想清楚，前者把控制流写在代码里，每一步只做一件事，更容易调试和评估。
+**基本做法：**
+
+- planner 先给出完整的步骤列表，每一步写明要用的工具。
+- executor 按顺序执行，不再做选择，整个过程可以完整重放。
+
+**和单个提示词的区别：**
+
+- 单个提示词指望模型一次想清楚，出错时很难定位是哪一步。
+- Agent 每一步都有输入和输出，更容易调试和评估。
 
 ```mermaid
 flowchart TD
@@ -29,13 +37,45 @@ flowchart TD
   D -- "是" --> E["下一步"]
   D -- "否" --> F["重试或回退"]
 ```
-</exp_body>"""
+</exp_explanation>"""
 
 
 # a follow-up turn of the exploration dialogue answers in plain Markdown
 FOLLOWUP = """在文中的最小实现里，planner 的输出本身就带着工具名：每一步是 `{tool, args}`，executor 只负责按名字找到工具并执行，**不再做选择**。
 
 这样选择权集中在规划阶段，执行阶段没有分支，整个过程可以完整重放。代价是 planner 必须在开始前就知道全部工具；下一讲的「动态规划」会让 executor 在失败后把结果交回 planner 重新规划。"""
+
+
+# an exploration report (#160) answers in four tagged parts, with no tools
+REPORT = """<rep_title>Agent 的规划与执行</rep_title>
+<rep_summary>Agent 以大模型为核心，围绕一个目标自己决定下一步。它把目标拆成步骤，由 planner 规划、executor 执行。选择权集中在规划阶段，执行过程可以完整重放。</rep_summary>
+<rep_body>
+## 原理
+
+Agent 是和「把所有逻辑塞进一个提示词」相对的做法：控制流写在代码里，每一步只做一件事，更容易调试和评估。
+
+## 机制
+
+planner 的输出本身带着工具名，每一步是 `{tool, args}`；executor 只按名字找到工具并执行，不再做选择。
+
+```mermaid
+flowchart TD
+  A["目标"] --> B["planner 规划"]
+  B --> C["executor 执行一步"]
+  C --> D{"成功？"}
+  D -- "是" --> E["下一步"]
+  D -- "否" --> B
+```
+
+## 取舍
+
+planner 必须在开始前就知道全部工具；失败后把结果交回 planner 重新规划，可以弥补这一点。
+</rep_body>
+<rep_points>
+- Agent 把目标拆成步骤，逐步执行
+- 规划和执行分开，选择权集中在规划阶段
+- 执行阶段没有分支，过程可以完整重放
+</rep_points>"""
 
 
 def chunk(delta, finish=None):
@@ -58,6 +98,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
         tools = [t["function"]["name"] for t in req.get("tools") or []]
+        if "<rep_title>" in (req["messages"][0].get("content") or ""):
+            time.sleep(0.4)
+            for i in range(0, len(REPORT), 4):
+                self.wfile.write(chunk({"content": REPORT[i:i + 4]}).encode())
+                self.wfile.flush()
+                time.sleep(0.03)
+            self.wfile.write((chunk({}, "stop") + "data: [DONE]\n\n").encode())
+            return
         if tools != ["connection_check"] and not any(m.get("role") == "tool" for m in req.get("messages", [])):
             self.look_up(req)
             return

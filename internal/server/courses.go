@@ -195,6 +195,10 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, http.StatusBadRequest, "bad_request", "填写的内容不合法")
 	case errors.Is(err, course.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "没有权限进行这个操作")
+	case errors.Is(err, course.ErrConceptIndexBuilding):
+		writeError(w, http.StatusConflict, "index_building", "这个版本的概念索引正在建立。")
+	case errors.Is(err, course.ErrConceptIndexBuilt):
+		writeError(w, http.StatusConflict, "index_built", "这个版本的概念索引已经建立。")
 	default:
 		writeInternal(w, r, err)
 	}

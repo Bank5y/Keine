@@ -182,7 +182,7 @@ func insertTurn(ctx context.Context, tx pgx.Tx, node int64, parent *int64, in Ne
 		node, parent, question, in.Reply, meta).Scan(&t.ID, &t.CreatedAt); err != nil {
 		return Turn{}, err
 	}
-	return t, json.Unmarshal(meta, &t.Meta)
+	return t, t.readMeta(meta)
 }
 
 // RetryTarget is a turn tried again: where it sits and what it asked.
@@ -251,7 +251,7 @@ func (s *Service) ReplaceTurn(ctx context.Context, viewer auth.User, exploration
 		if err := json.Unmarshal(question, &t.Question); err != nil {
 			return err
 		}
-		return json.Unmarshal(stored, &t.Meta)
+		return t.readMeta(stored)
 	})
 	return t, err
 }

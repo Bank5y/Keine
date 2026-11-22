@@ -143,7 +143,7 @@ func mapModel(t *testing.T, a *app, fields map[string]any, thinking bool) {
 		body[k] = v
 	}
 	created := admin.mustOK(admin.do("POST", "/api/admin/models", body)).json()
-	for _, k := range []string{"analysis", "followup", "sync"} {
+	for _, k := range []string{"analysis", "followup", "report", "concept_index"} {
 		admin.mustOK(admin.do("PUT", "/api/admin/turns/"+k, map[string]any{"modelId": created["id"], "thinking": thinking}))
 	}
 }
@@ -231,7 +231,7 @@ func lastEvent(t *testing.T, events []sseEvent) sseEvent {
 
 var agentQuote = map[string]any{"quote": "Agent", "prefix": "这里的 ", "suffix": " 指的是"}
 
-const goodAnswer = "<exp_title>Agent（智能体）</exp_title>\n<exp_intro>能自主规划步骤、调用工具的大模型应用。</exp_intro>\n<exp_body>\nAgent 是把目标拆成步骤、逐步执行的系统。\n\n在这一讲里，它指把目标拆成步骤的程序。\n</exp_body>"
+const goodAnswer = "<exp_title>Agent（智能体）</exp_title>\n<exp_concept>能自主规划步骤、调用工具的大模型应用。</exp_concept>\n<exp_explanation>\nAgent 是把目标拆成步骤、逐步执行的系统。\n\n在这一讲里，它指把目标拆成步骤的程序。\n</exp_explanation>"
 
 func TestAnalysisStreamsTheThreeSectionsAndEndsWithThem(t *testing.T) {
 	m := newScriptedModel(texts(cut(goodAnswer, 20, 70)...))
@@ -244,9 +244,9 @@ func TestAnalysisStreamsTheThreeSectionsAndEndsWithThem(t *testing.T) {
 
 	got := streamed(events)
 	want := map[string]string{
-		"title": "Agent（智能体）",
-		"intro": "能自主规划步骤、调用工具的大模型应用。",
-		"body":  "Agent 是把目标拆成步骤、逐步执行的系统。\n\n在这一讲里，它指把目标拆成步骤的程序。",
+		"title":       "Agent（智能体）",
+		"concept":     "能自主规划步骤、调用工具的大模型应用。",
+		"explanation": "Agent 是把目标拆成步骤、逐步执行的系统。\n\n在这一讲里，它指把目标拆成步骤的程序。",
 	}
 	for k, v := range want {
 		if got[k] != v {
@@ -259,7 +259,7 @@ func TestAnalysisStreamsTheThreeSectionsAndEndsWithThem(t *testing.T) {
 			order = append(order, e.data["section"].(string))
 		}
 	}
-	if strings.Join(order, ",") != "title,intro,body" {
+	if strings.Join(order, ",") != "title,concept,explanation" {
 		t.Fatalf("sections streamed in order %v", order)
 	}
 	done := lastEvent(t, events)
@@ -277,7 +277,7 @@ func TestTagsCutBetweenChunksAndTextOutsideThemStreamCorrectly(t *testing.T) {
 	answer := "好的，下面是分析。\n" + goodAnswer + "\n希望有帮助。"
 	// every cut lands inside a tag or right at its edge
 	var at []int
-	for _, tag := range []string{"<exp_title>", "</exp_title>", "<exp_intro>", "</exp_body>"} {
+	for _, tag := range []string{"<exp_title>", "</exp_title>", "<exp_concept>", "</exp_explanation>"} {
 		i := strings.Index(answer, tag)
 		at = append(at, len([]rune(answer[:i]))+3)
 	}
@@ -288,8 +288,8 @@ func TestTagsCutBetweenChunksAndTextOutsideThemStreamCorrectly(t *testing.T) {
 
 	events, _ := analyze(t, bob, id, lesson, agentQuote)
 	got := streamed(events)
-	if got["title"] != "Agent（智能体）" || got["intro"] != "能自主规划步骤、调用工具的大模型应用。" ||
-		got["body"] != "Agent 是把目标拆成步骤、逐步执行的系统。\n\n在这一讲里，它指把目标拆成步骤的程序。" {
+	if got["title"] != "Agent（智能体）" || got["concept"] != "能自主规划步骤、调用工具的大模型应用。" ||
+		got["explanation"] != "Agent 是把目标拆成步骤、逐步执行的系统。\n\n在这一讲里，它指把目标拆成步骤的程序。" {
 		t.Fatalf("streamed %q", got)
 	}
 	for _, e := range events {
@@ -314,8 +314,13 @@ func TestTheModelReadsTheCourseThenTheSelectionMarkedInTheLesson(t *testing.T) {
 		t.Fatalf("expected one model call, got %d", len(calls))
 	}
 	msgs := calls[0].Messages
-	if len(msgs) != 2 || msgs[0].Role != assistant.RoleSystem || !strings.Contains(msgs[0].Content, "<exp_title>") {
+	if len(msgs) != 2 || msgs[0].Role != assistant.RoleSystem {
 		t.Fatalf("expected the analysis prompt then the context, got %+v", msgs)
+	}
+	for _, tag := range []string{"<exp_title>", "<exp_concept>", "<exp_explanation>"} {
+		if !strings.Contains(msgs[0].Content, tag) {
+			t.Fatalf("the analysis prompt asks for %s: %q", tag, msgs[0].Content)
+		}
 	}
 	ctx := msgs[1].Content
 	order := []string{
@@ -341,9 +346,9 @@ func TestTheModelReadsTheCourseThenTheSelectionMarkedInTheLesson(t *testing.T) {
 	}
 }
 
-// answer is a tagged answer with the given sections.
-func answer(title, intro, body string) string {
-	return "<exp_title>" + title + "</exp_title><exp_intro>" + intro + "</exp_intro><exp_body>" + body + "</exp_body>"
+// answer is a tagged answer with the given parts.
+func answer(title, concept, explanation string) string {
+	return "<exp_title>" + title + "</exp_title><exp_concept>" + concept + "</exp_concept><exp_explanation>" + explanation + "</exp_explanation>"
 }
 
 const okBody = "Agent 是把目标拆成步骤、逐步执行的系统。"
@@ -351,23 +356,23 @@ const okBody = "Agent 是把目标拆成步骤、逐步执行的系统。"
 func TestEachValidationRuleRejectsAnAnswer(t *testing.T) {
 	long := func(n int) string { return strings.Repeat("字", n) }
 	cases := map[string]string{
-		"unclosed section":  "<exp_title>Agent</exp_title><exp_intro>简介。</exp_intro><exp_body>" + okBody,
-		"empty title":       answer(" ", "简介。", okBody),
-		"empty intro":       answer("Agent", "\n", okBody),
-		"list in intro":     answer("Agent", "- 第一点\n- 第二点", okBody),
-		"heading in intro":  answer("Agent", "## 简介", okBody),
-		"heading in body":   answer("Agent", "简介。", "## 概念\n\n"+okBody),
-		"bold line in body": answer("Agent", "简介。", "**核心要点**\n\n"+okBody),
-		"link in body":      answer("Agent", "简介。", okBody+"见[文档](https://example.com/agent)。"),
-		"bare url in body":  answer("Agent", "简介。", okBody+"见 https://example.com 。"),
-		"svg in body":       answer("Agent", "简介。", okBody+"\n\n<svg viewBox=\"0 0 10 10\"></svg>"),
-		"two diagrams":      answer("Agent", "简介。", okBody+"\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```"),
-		"sideways diagram":  answer("Agent", "简介。", okBody+"\n\n```mermaid\nflowchart LR\nA-->B\n```"),
-		"title too long":    answer(long(101), "简介。", okBody),
-		"intro too long":    answer("Agent", long(301), okBody),
-		"body too long":     answer("Agent", "简介。", long(20001)),
-		"raw tool call":     answer("Agent", "简介。", okBody) + "<｜tool▁calls▁begin｜>",
-		"section twice":     answer("Agent", "简介。", okBody) + "<exp_title>又一个</exp_title>",
+		"unclosed section":           "<exp_title>Agent</exp_title><exp_concept>概念。</exp_concept><exp_explanation>" + okBody,
+		"empty title":                answer(" ", "概念。", okBody),
+		"empty concept":              answer("Agent", "\n", okBody),
+		"list in concept":            answer("Agent", "- 第一点\n- 第二点", okBody),
+		"heading in concept":         answer("Agent", "## 概念", okBody),
+		"heading in explanation":     answer("Agent", "概念。", "# 任期\n\n"+okBody),
+		"sub-heading in explanation": answer("Agent", "概念。", okBody+"\n\n### 基本规则\n\n- 单调递增"),
+		"link in explanation":        answer("Agent", "概念。", okBody+"见[文档](https://example.com/agent)。"),
+		"bare url in explanation":    answer("Agent", "概念。", okBody+"见 https://example.com 。"),
+		"svg in explanation":         answer("Agent", "概念。", okBody+"\n\n<svg viewBox=\"0 0 10 10\"></svg>"),
+		"two diagrams":               answer("Agent", "概念。", okBody+"\n\n```mermaid\nflowchart TD\nA-->B\n```\n\n```mermaid\nsequenceDiagram\nA->>B: x\n```"),
+		"sideways diagram":           answer("Agent", "概念。", okBody+"\n\n```mermaid\nflowchart LR\nA-->B\n```"),
+		"title too long":             answer(long(101), "概念。", okBody),
+		"concept too long":           answer("Agent", long(301), okBody),
+		"explanation too long":       answer("Agent", "概念。", long(20001)),
+		"raw tool call":              answer("Agent", "概念。", okBody) + "<｜tool▁calls▁begin｜>",
+		"section twice":              answer("Agent", "概念。", okBody) + "<exp_title>又一个</exp_title>",
 	}
 	for name, bad := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -388,21 +393,38 @@ func TestEachValidationRuleRejectsAnAnswer(t *testing.T) {
 	}
 }
 
-func TestADiagramOfAnAllowedKindIsValid(t *testing.T) {
-	body := okBody + "\n\n```mermaid\nstateDiagram-v2\n[*] --> 运行\n```"
-	m := newScriptedModel(texts(answer("Agent", "简介。", body)))
+// A concept explanation may group what it says under bold phrases, each
+// with its list, as many groups as the content needs (#157).
+func TestBoldPhrasesGroupAConceptExplanation(t *testing.T) {
+	explanation := "任期是 Raft 里单调递增的逻辑时钟，把时间切成一段段，每段最多一个 Leader。\n\n" +
+		"**基本规则：**\n\n- 每个节点保存当前任期号，持久化存储。\n- 发现更大的任期号时立即更新，并退回 Follower。\n\n" +
+		"**关键细节**：\n\n1. 候选人发起选举前先把任期加一。\n2. 带着过期任期的请求直接拒绝。"
+	m := newScriptedModel(texts(answer("任期（term）", "Raft 里给每一段 Leader 统治期编号的逻辑时钟。", explanation)))
 	a := aiApp(t, m)
 	bob := a.user("bob")
 	id, lesson := analysisColumn(t, bob)
 
 	events, _ := analyze(t, bob, id, lesson, agentQuote)
-	if last := lastEvent(t, events); last.name != "done" || last.data["body"] != body {
+	if last := lastEvent(t, events); last.name != "done" || last.data["explanation"] != explanation {
+		t.Fatalf("expected done with the grouped explanation, got %+v", last)
+	}
+}
+
+func TestADiagramOfAnAllowedKindIsValid(t *testing.T) {
+	body := okBody + "\n\n```mermaid\nstateDiagram-v2\n[*] --> 运行\n```"
+	m := newScriptedModel(texts(answer("Agent", "概念。", body)))
+	a := aiApp(t, m)
+	bob := a.user("bob")
+	id, lesson := analysisColumn(t, bob)
+
+	events, _ := analyze(t, bob, id, lesson, agentQuote)
+	if last := lastEvent(t, events); last.name != "done" || last.data["explanation"] != body {
 		t.Fatalf("expected done with the diagram, got %+v", last)
 	}
 }
 
 func TestACutOffAnswerThatStreamedEndsTruncated(t *testing.T) {
-	s := texts("<exp_title>Agent</exp_title><exp_intro>简介。</exp_intro><exp_body>Agent 是")
+	s := texts("<exp_title>Agent</exp_title><exp_concept>简介。</exp_concept><exp_explanation>Agent 是")
 	s.result = assistant.Result{Finish: assistant.FinishLength}
 	m := newScriptedModel(s)
 	a := aiApp(t, m)
@@ -490,7 +512,7 @@ func TestAProviderFailingTwiceEndsTheRun(t *testing.T) {
 }
 
 func TestAProviderFailureAfterADeltaEndsTheRunKeepingWhatStreamed(t *testing.T) {
-	s := texts("<exp_title>Agent</exp_title><exp_intro>能自主")
+	s := texts("<exp_title>Agent</exp_title><exp_concept>能自主")
 	s.err = &assistant.Error{Category: assistant.ErrUnavailable, Detail: "connection reset"}
 	m := newScriptedModel(s, texts(goodAnswer))
 	a := aiApp(t, m)
@@ -498,7 +520,7 @@ func TestAProviderFailureAfterADeltaEndsTheRunKeepingWhatStreamed(t *testing.T) 
 	id, lesson := analysisColumn(t, bob)
 
 	events, _ := analyze(t, bob, id, lesson, agentQuote)
-	if got := streamed(events); got["title"] != "Agent" || got["intro"] != "能自主" {
+	if got := streamed(events); got["title"] != "Agent" || got["concept"] != "能自主" {
 		t.Fatalf("streamed %q", got)
 	}
 	if last := lastEvent(t, events); last.name != "error" || last.data["code"] != "provider_error" || last.data["kept"] != true {

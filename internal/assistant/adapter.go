@@ -35,7 +35,8 @@ type Request struct {
 	Model    string
 	Messages []Message
 	Tools    []ToolSpec
-	// ToolChoice is "" (provider default), "auto" or "none".
+	// ToolChoice is "" (provider default), "auto", "none" or "required"
+	// (some tool must be called; never with Thinking).
 	ToolChoice string
 	// MaxTokens caps the output; 0 leaves it to the provider.
 	MaxTokens int

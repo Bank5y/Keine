@@ -135,6 +135,6 @@ model = admin.req("POST", "/api/admin/models", {"format": "openai", "baseUrl": o
     "rates": {"input": 200, "cacheRead": 4, "cacheWrite": 0, "output": 800, "search": 0.5},
     # the demo reaches no web: no search service runs offline
     "searchRoute": "off"})["id"]
-for kind in ["analysis", "followup", "sync"]: admin.req("PUT", f"/api/admin/turns/{kind}", {"modelId": model, "thinking": False})
+for kind in ["analysis", "followup", "report", "concept_index"]: admin.req("PUT", f"/api/admin/turns/{kind}", {"modelId": model, "thinking": False})
 
 print(json.dumps({"model": model, "agent": agent, "k8s": k8s, "others": others, "private": private, "l01": ids["l01"], "ids": ids}))

@@ -215,6 +215,19 @@ func TestAnAnsweringCallKeepsTheToolsButMayNotUseThem(t *testing.T) {
 	}
 }
 
+func TestARequiredToolChoiceMustCallATool(t *testing.T) {
+	rp := newReplay(t, "text.sse")
+	req := hello
+	req.Tools = []assistant.ToolSpec{readLesson}
+	req.ToolChoice = "required"
+	if _, _, err := collect(t, rp.adapter(), req); err != nil {
+		t.Fatal(err)
+	}
+	if tc, _ := rp.requests()[0]["tool_choice"].(map[string]any); tc["type"] != "any" {
+		t.Errorf("tool_choice = %s", jsonOf(rp.requests()[0]["tool_choice"]))
+	}
+}
+
 func TestToolResultsGoBackInOneUserTurn(t *testing.T) {
 	rp := newReplay(t, "text.sse")
 	req := hello

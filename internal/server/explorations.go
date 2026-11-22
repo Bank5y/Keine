@@ -59,6 +59,12 @@ type turnMeta struct {
 	Degraded     []string              `json:"degraded,omitempty"`
 	// Interrupted is why the reply stops short, "" when it is whole (#136)
 	Interrupted course.Interruption `json:"interrupted,omitempty"`
+	// CourseLinks are what the turn a node forks with linked of the course
+	// (ADR 0011)
+	CourseLinks []course.CourseLink `json:"courseLinks,omitempty"`
+	// NodeNote is the note the turn a node forks with was asked with, kept
+	// as it was so its history does not change with the wording (#164)
+	NodeNote string `json:"nodeNote,omitempty"`
 }
 
 // newTurnMeta is the metadata of a turn the site ran with p on model.
@@ -169,7 +175,7 @@ func (s *Server) pinExploration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	e, err := s.courses.Pin(r.Context(), user, id, lessonID, course.Pin{
-		Quote: a.quote, Title: a.analysis.Title, Intro: a.analysis.Intro, Meaning: a.analysis.Body,
+		Quote: a.quote, Title: a.analysis.Title, Concept: a.analysis.Concept, Explanation: a.analysis.Explanation,
 		Snapshot: a.snapshot, Reply: a.analysis.Reply(), Meta: a.meta,
 	})
 	if !writeExplorationError(w, r, err) {

@@ -14,7 +14,8 @@ export interface Exploration {
   suffix: string;
   state: 'attached' | 'pending' | 'excerpt';
   title: string;
-  intro: string;
+  // the document's one sentence, which the card shows
+  concept: string;
   // where the quote sits in the lesson text as it is now, counted in
   // non-whitespace characters like an annotation's
   range: TextRange | null;
@@ -64,6 +65,17 @@ export interface Turn {
   reply: string;
   meta: { source: 'site' | 'own'; model: string; degraded?: string[]; sources: unknown[]; interrupted?: Interruption };
   createdAt: string;
+  // what the turn a node forks with linked of the course (ADR 0011)
+  courseLinks?: CourseLink[];
+}
+
+// CourseLink is a concept of another lesson a turn's answer linked: where
+// it is (the section null for the lesson's top) and how it relates.
+export interface CourseLink {
+  concept: string;
+  note: string;
+  lesson: { id: number; key: string; title: string };
+  section: { id: string; title: string } | null;
 }
 
 export interface DialogueNode {
@@ -76,24 +88,19 @@ export interface DialogueNode {
   createdAt: string;
 }
 
-export interface DocItem { id: number; text: string }
-
 export interface ExplorationDetail {
   id: number;
   courseId: number;
   quote: string;
   state: Exploration['state'];
   lessonTitle: string;
+  // the exploration document (ADR 0012): title, concept and concept
+  // explanation, fixed once pinned
   title: string;
-  intro: string;
-  meaning: string;
+  concept: string;
+  explanation: string;
   // the question the analysis stands for, which opens the dialogue (ADR 0011)
   firstQuestion: string;
-  docVersion: number;
-  footnotes: DocItem[];
-  extensions: DocItem[];
-  expansions: DocItem[];
-  references: DocItem[];
   nodes: DialogueNode[];
   createdAt: string;
 }

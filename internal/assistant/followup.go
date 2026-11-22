@@ -46,20 +46,27 @@ func isTerm(quote string) bool {
 	return !strings.HasSuffix(q, ".") && !strings.Contains(q, ". ")
 }
 
+// legacyTags reads an analysis kept before the concept explanation (#157)
+// in the tags of now: its intro was the concept, its meaning ("body") the
+// concept explanation.
+var legacyTags = strings.NewReplacer(
+	"<exp_intro>", openTag(PartConcept), "</exp_intro>", closeTag(PartConcept),
+	"<exp_body>", openTag(PartExplanation), "</exp_body>", closeTag(PartExplanation))
+
 // analysisMarkdown is the analysis's reply as the reader saw it: its tags
 // taken out (ADR 0011). A reply without them stays as it is.
 func analysisMarkdown(reply string) string {
 	p := newTagParser(func(Part, string) error { return nil })
-	_ = p.feed(reply)
+	_ = p.feed(legacyTags.Replace(reply))
 	a := p.parts()
-	if a.Title == "" && a.Intro == "" && a.Body == "" {
+	if a.Title == "" && a.Concept == "" && a.Explanation == "" {
 		return strings.TrimSpace(reply)
 	}
 	var parts []string
 	if a.Title != "" {
 		parts = append(parts, "# "+a.Title)
 	}
-	for _, s := range []string{a.Intro, a.Body} {
+	for _, s := range []string{a.Concept, a.Explanation} {
 		if s = strings.TrimSpace(s); s != "" {
 			parts = append(parts, s)
 		}
@@ -125,15 +132,32 @@ func sections(content string) []string {
 	return out
 }
 
-// Asked is a question of the dialogue: its text and the passages the
-// reader selected for it.
+// nodeNotes say which way to answer the turn a node of each kind forks
+// with (ADR 0011), by the node's kind; they bind only this answer.
+var nodeNotes = map[string]string{
+	"child":     "此次作答沿上面讨论的这一点往深处讲：机制、原因、细节和边界情况。",
+	"branch":    "此次作答从上面讨论的概念横向展开：讲和它相关的概念，以及它们之间的关系。",
+	"divergent": "此次作答跳出当前主题：讲同类的做法和其他领域的类比，并和这里的做法对照；需要时用网络搜索。",
+}
+
+// NodeNote is the note the turn a node of kind forks with begins with; ""
+// for the main node, whose turns carry none.
+func NodeNote(kind string) string { return nodeNotes[kind] }
+
+// Asked is a question of the dialogue: its text, the passages the reader
+// selected for it, and, on the turn a node forks with, the node's note.
 type Asked struct {
 	Text      string
 	Fragments []string
+	// Note heads the question; the reader does not see it
+	Note string
 }
 
 func (q Asked) content() string {
 	var parts []string
+	if q.Note != "" {
+		parts = append(parts, q.Note)
+	}
 	for _, f := range q.Fragments {
 		parts = append(parts, "【选中片段】\n「"+f+"」")
 	}
@@ -182,9 +206,12 @@ func (c FollowupContext) Messages(q Asked) []Message {
 
 // Followup runs a turn after the analysis on the turn's model: the same
 // loop, tools and limits as an analysis (ADR 0008), but the reply is
-// Markdown that streams to out as it is written. It returns the reply; on
-// a *RunError or a cancelled context, what of it the reader already saw.
-func Followup(ctx context.Context, run Run, msgs []Message, out Sink) (string, Meta, error) {
+// Markdown that streams to out as it is written. With link (the turn a
+// node forks with, ADR 0011), the run goes on after the answer to link it
+// to the course, and the links come with the reply; that step never takes
+// the answer away. It returns the reply; on a *RunError or a cancelled
+// context, what of it the reader already saw.
+func Followup(ctx context.Context, run Run, msgs []Message, out Sink, link Linker) (Reply, Meta, error) {
 	if run.Now == nil {
 		run.Now = time.Now
 	}
@@ -197,10 +224,10 @@ func Followup(ctx context.Context, run Run, msgs []Message, out Sink) (string, M
 		run.Tools = append(slices.Clip(run.Tools), web.Tools()...)
 	}
 	r := newAnalysisRun(run, out)
-	r.web, r.plain = web, true
+	r.web, r.plain, r.linker = web, true, link
 	c, err := r.loop(ctx, msgs)
 	if err != nil {
-		return r.text.String(), r.meta(), err
+		return Reply{Text: r.text.String()}, r.meta(), err
 	}
-	return c.raw, r.meta(), nil
+	return Reply{Text: c.raw, Links: r.links}, r.meta(), nil
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { forksAt, mapLayout, pathTo, prune, restack, seenBy, settle, spine, stepRun, type Layer } from './dialogue';
+import { carried, courseLinkItems, forksAt, mapLayout, pathTo, prune, restack, seenBy, settle, spine, stepRun, type Layer } from './dialogue';
 import type { DialogueNode, NodeKind } from './explorations';
 
 let ids = 0;
@@ -96,5 +96,43 @@ describe('stepRun', () => {
     const s = stepRun(undefined, { type: 'activity', id: 'thinking-1', kind: 'thinking', status: 'running' });
     expect(s.thinking).toBe(true);
     expect(s.activities).toHaveLength(0);
+  });
+  it('notes linking to the course after the answer, which is no lookup', () => {
+    let s = stepRun(undefined, { type: 'delta', text: '答复' });
+    s = stepRun(s, { type: 'activity', id: 'link_course-1', kind: 'link_course', status: 'running' });
+    expect(s.linking).toBe(true);
+    expect(s.activities).toHaveLength(0);
+    s = stepRun(s, { type: 'activity', id: 'link_course-1', kind: 'link_course', status: 'done' });
+    expect(s.linking).toBe(false);
+    expect(s.text).toBe('答复');
+  });
+});
+
+describe('courseLinkItems', () => {
+  const lesson = { id: 7, key: 'l05', title: '05｜动态数据传输' };
+  it('links each to its lesson and section in the reader', () => {
+    expect(courseLinkItems(3, [{ concept: 'Nagle 算法', note: '小数据包合并发送就是这里讲的做法。', lesson, section: { id: 'nagle-算法', title: 'Nagle 算法' } }])).toEqual([
+      { href: '/courses/3/lessons/7#nagle-%E7%AE%97%E6%B3%95', place: '05｜动态数据传输 › Nagle 算法', note: '小数据包合并发送就是这里讲的做法。' },
+    ]);
+  });
+  it('links to the top of the lesson when the concept is in no section', () => {
+    expect(courseLinkItems(3, [{ concept: '数据传输', note: '说明', lesson, section: null }])).toEqual([
+      { href: '/courses/3/lessons/7', place: '05｜动态数据传输', note: '说明' },
+    ]);
+  });
+  it('is nothing for a turn without links', () => {
+    expect(courseLinkItems(3, undefined)).toEqual([]);
+    expect(courseLinkItems(3, [])).toEqual([]);
+  });
+});
+
+describe('carried', () => {
+  it('names the background the main node brings along', () => {
+    expect(carried(tree[0])).toBe('带上了：课程信息 · 选中的原文 · 分析');
+  });
+  it('is nothing on any other node', () => {
+    expect(carried(tree[1])).toBeNull();
+    expect(carried(tree[2])).toBeNull();
+    expect(carried(tree[3])).toBeNull();
   });
 });

@@ -12,12 +12,18 @@ import (
 
 // writeCreditsError answers a credits failure; it returns true for none.
 func writeCreditsError(w http.ResponseWriter, r *http.Request, err error) bool {
+	return writeRunCreditsError(w, r, err, "分析")
+}
+
+// writeRunCreditsError is writeCreditsError for a run named run (分析,
+// 生成报告).
+func writeRunCreditsError(w http.ResponseWriter, r *http.Request, err error, run string) bool {
 	var short *credits.InsufficientError
 	switch {
 	case err == nil:
 		return true
 	case errors.As(err, &short):
-		msg := fmt.Sprintf("这次分析预计用 %s 积分，今天还剩 %s 积分。积分在每天 0 点重置。", creditText(short.Estimate), creditText(short.Remaining))
+		msg := fmt.Sprintf("这次%s预计用 %s 积分，今天还剩 %s 积分。积分在每天 0 点重置。", run, creditText(short.Estimate), creditText(short.Remaining))
 		if short.Remaining <= 0 {
 			msg = "今天的积分已经用完。积分在每天 0 点重置。"
 		}

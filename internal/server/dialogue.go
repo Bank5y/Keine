@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
@@ -65,7 +67,7 @@ func (s *Server) askTurn(w http.ResponseWriter, r *http.Request) {
 	if !writeDialogueError(w, r, err) {
 		return
 	}
-	if !s.converse(w, r, d, in.After, in.Question, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
+	if !s.converse(w, r, d, in.After, asked(in.Question), nil, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
 		return s.courses.AddTurn(ctx, user, id, in.After, course.NewTurn{Question: in.Question, Reply: reply, Meta: meta})
 	}, func() error {
 		// checked before the run too, so a question after a turn that is not
@@ -99,7 +101,7 @@ func (s *Server) openNode(w http.ResponseWriter, r *http.Request) {
 	if !writeDialogueError(w, r, err) {
 		return
 	}
-	s.converse(w, r, d, in.Fork, in.Question, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
+	s.converse(w, r, d, in.Fork, forked(in.Kind, in.Question), s.linksFor(user, d), func(ctx context.Context, reply string, meta turnMeta) (any, error) {
 		return s.courses.OpenNode(ctx, user, id, in.Fork, in.Kind, course.NewTurn{Question: in.Question, Reply: reply, Meta: meta})
 	}, func() error {
 		if _, ok := d.Chain(in.Fork); !ok {
@@ -145,7 +147,12 @@ func (s *Server) retryTurn(w http.ResponseWriter, r *http.Request) {
 		writeDialogueError(w, r, course.ErrNotRetriable) // the analysis is never asked again
 		return
 	}
-	s.converse(w, r, d, before, target.Turn.Question, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
+	// a node's first turn tried again is the turn it forks with still
+	var links *courseLinks
+	if target.Turn.ParentID == nil {
+		links = s.linksFor(user, d)
+	}
+	s.converse(w, r, d, before, askedIn(target.Turn), links, func(ctx context.Context, reply string, meta turnMeta) (any, error) {
 		return s.courses.ReplaceTurn(ctx, user, id, turnID, reply, meta)
 	}, nil)
 }
@@ -178,8 +185,9 @@ type keep func(ctx context.Context, reply string, meta turnMeta) (any, error)
 // reply streams as Server-Sent Events and is kept by keep however it
 // ends: done carries what was kept, error says why the reply stops short
 // and carries it too. A run that spends the reader's last credits is
-// cancelled and kept as interrupted.
-func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.ExplorationDetail, after int64, q course.Question, save keep, check func() error) bool {
+// cancelled and kept as interrupted. With links (the turn a node forks
+// with), the answer is linked to the course after it is written (ADR 0011).
+func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.ExplorationDetail, after int64, q assistant.Asked, links *courseLinks, save keep, check func() error) bool {
 	ctx := r.Context()
 	user := currentUser(r)
 	if check != nil && !writeDialogueError(w, r, check()) {
@@ -211,17 +219,12 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	if !writeAnnotationError(w, r, err) {
 		return false
 	}
-	leave, err := s.runs.Enter(user.ID)
-	if !writeRunError(w, r, err) {
+	sse, leave, ok := s.streamRun(w, r, user.ID)
+	if !ok {
 		return false
 	}
 	defer leave()
 
-	sse, ok := startEvents(w)
-	if !ok {
-		writeInternal(w, r, errors.New("response cannot stream"))
-		return false
-	}
 	runCtx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	run := assistant.Run{
@@ -236,38 +239,38 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 			}
 		},
 	}
-	reply, meta, err := assistant.Followup(runCtx, run, msgs, assistant.Sink{
+	var linker assistant.Linker
+	if links != nil {
+		linker = links.linker(ctx, c)
+	}
+	out, meta, err := assistant.Followup(runCtx, run, msgs, assistant.Sink{
 		Delta:    func(d assistant.Delta) error { return sse.send("delta", d) },
 		Activity: func(a assistant.Activity) error { return sse.send("activity", a) },
-	})
+	}, linker)
+	reply := out.Text
+	s.recordRun(ctx, user.ID, assistant.TurnFollowup, turn, meta)
 	keepCtx := context.WithoutCancel(ctx)
-	if err := s.credits.RecordRun(keepCtx, user.ID, assistant.TurnFollowup, turn, meta); err != nil {
-		slog.Error("usage not recorded", "user", user.ID, "err", err)
-	}
 	tm := newTurnMeta(turn.Model, assistant.FollowupPrompt, meta)
+	tm.NodeNote = q.Note
+	if links != nil {
+		tm.CourseLinks = links.chosen(out.Links)
+	}
 	code := ""
-	var re *assistant.RunError
 	switch {
 	case err == nil:
 		// a reply that finished as the credits ran out is whole
 	case errors.Is(context.Cause(runCtx), errCreditsOut):
 		tm.Interrupted, code = course.InterruptedCredits, string(course.InterruptedCredits)
-	case errors.As(err, &re):
-		code = re.Code
-		switch re.Code {
+	default:
+		// the reader going away or the server failing keeps the question too
+		code, _ = runFailure(ctx, "follow-up turn", err)
+		switch code {
 		case assistant.CodeTimeout:
 			tm.Interrupted = course.InterruptedTimeout
 		case assistant.CodeOutputTruncated:
 			tm.Interrupted = course.InterruptedTruncated
 		default:
 			tm.Interrupted = course.InterruptedFailed
-		}
-		slog.Info("follow-up turn stopped short", "code", re.Code, "err", re.Cause)
-	default:
-		// the reader went away, or the server failed: keep the question
-		tm.Interrupted, code = course.InterruptedFailed, assistant.CodeProviderError
-		if ctx.Err() == nil {
-			slog.Error("follow-up turn failed", "err", err)
 		}
 	}
 	kept, kerr := save(keepCtx, reply, tm)
@@ -289,10 +292,74 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	return true
 }
 
+// maxCandidates is how many concepts an answer's linking step looks at.
+const maxCandidates = 5
+
+// courseLinks links the answer of the turn a node forks with to the
+// course (ADR 0011), and remembers the entries it offered the model.
+type courseLinks struct {
+	s       *Server
+	viewer  auth.User
+	d       course.ExplorationDetail
+	offered []course.ConceptEntry
+}
+
+func (s *Server) linksFor(viewer auth.User, d course.ExplorationDetail) *courseLinks {
+	return &courseLinks{s: s, viewer: viewer, d: d}
+}
+
+// linker finds, in an answer, the concepts of the course's other lessons,
+// by the index of the version the reader reads: none when it has no index
+// built.
+func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Linker {
+	x, err := l.s.courses.ConceptIndexOf(ctx, l.d.CourseID, c.FilesDir)
+	if err != nil {
+		slog.Error("concept index not read", "course", l.d.CourseID, "err", err)
+		return nil
+	}
+	if x.Status != course.ConceptIndexBuilt {
+		return nil
+	}
+	lib := &courseLibrary{l.s.courses, l.viewer, c}
+	return func(ctx context.Context, answer string) ([]assistant.LinkCandidate, error) {
+		var out []assistant.LinkCandidate
+		for _, e := range x.Mentioned(answer, l.d.LessonKey, maxCandidates) {
+			text, err := lib.Text(ctx, e.Lesson.Key)
+			if err != nil {
+				// a lesson the reader cannot read now is not linked
+				continue
+			}
+			lc := assistant.LinkCandidate{Concept: e.Name, Lesson: e.Lesson.Title, Text: text}
+			if e.Section != nil {
+				lc.Section = e.Section.Title
+				for _, sec := range anchor.Sections(text) {
+					if sec.ID == e.Section.ID {
+						lc.Text = text[sec.Start:sec.End]
+						break
+					}
+				}
+			}
+			l.offered = append(l.offered, e)
+			out = append(out, lc)
+		}
+		return out, nil
+	}
+}
+
+// chosen is the course links the model picked of the entries offered.
+func (l *courseLinks) chosen(picked []assistant.CourseLink) []course.CourseLink {
+	var out []course.CourseLink
+	for _, p := range picked {
+		e := l.offered[p.Candidate]
+		out = append(out, course.CourseLink{Concept: e.Name, Note: p.Note, Lesson: e.Lesson, Section: e.Section})
+	}
+	return out
+}
+
 // followupMessages assembles a question's context (ADR 0011): the
 // background from the analysis's snapshot, the first exchange, and the
 // dialogue along the question's chain after the analysis.
-func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d course.ExplorationDetail, after int64, q course.Question) ([]assistant.Message, error) {
+func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d course.ExplorationDetail, after int64, q assistant.Asked) ([]assistant.Message, error) {
 	chain, ok := d.Chain(after)
 	if !ok || len(chain) == 0 {
 		return nil, course.ErrTurnNotFound
@@ -310,9 +377,27 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 		fc.Snapshot = append(fc.Snapshot, assistant.Message{Role: m.Role, Content: m.Content})
 	}
 	for _, t := range chain[1:] {
-		fc.History = append(fc.History, assistant.Exchange{Asked: asked(t.Question), Reply: t.Reply})
+		fc.History = append(fc.History, assistant.Exchange{Asked: askedIn(t), Reply: withLinks(t)})
 	}
-	return fc.Messages(asked(q)), nil
+	return fc.Messages(q), nil
+}
+
+// withLinks is a kept turn's reply as the reader saw it: the answer, then
+// what it linked of the course, if anything (ADR 0011).
+func withLinks(t course.Turn) string {
+	if len(t.CourseLinks) == 0 {
+		return t.Reply
+	}
+	var b strings.Builder
+	b.WriteString(t.Reply + "\n\n课程里的相关内容：")
+	for _, l := range t.CourseLinks {
+		where := "讲「" + l.Lesson.Title + "」"
+		if l.Section != nil {
+			where += " › 小节「" + l.Section.Title + "」"
+		}
+		b.WriteString("\n- " + where + "：" + l.Note)
+	}
+	return b.String()
 }
 
 // firstQuestion is the question an exploration's analysis stands for.
@@ -322,4 +407,26 @@ func firstQuestion(d course.ExplorationDetail) string {
 
 func asked(q course.Question) assistant.Asked {
 	return assistant.Asked{Text: q.Text, Fragments: q.Selections()}
+}
+
+// forked is the question a node of kind forks with: headed by the kind's
+// note (ADR 0011).
+func forked(kind course.NodeKind, q course.Question) assistant.Asked {
+	a := asked(q)
+	a.Note = assistant.NodeNote(string(kind))
+	return a
+}
+
+// askedIn is what a kept turn asked, as it was asked: the turn a node
+// forked with (its node's first) headed by the note kept with it, or its
+// kind's note when it was kept before notes were.
+func askedIn(t course.Turn) assistant.Asked {
+	if t.ParentID == nil {
+		a := forked(t.NodeKind, t.Question)
+		if t.NodeNote != "" {
+			a.Note = t.NodeNote
+		}
+		return a
+	}
+	return asked(t.Question)
 }
