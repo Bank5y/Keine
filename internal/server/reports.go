@@ -47,8 +47,8 @@ func (s *Server) generateReport(w http.ResponseWriter, r *http.Request) {
 	if !writeExplorationError(w, r, err) {
 		return
 	}
-	turn, err := s.models.ForTurn(ctx, assistant.TurnReport)
-	if !writeModelError(w, r, err) {
+	turn, err := s.readerTurn(ctx, user.ID, assistant.TurnReport)
+	if !writeOwnModelError(w, r, err) {
 		return
 	}
 	msgs, taken, refs, err := s.reportMessages(ctx, user, d)
@@ -60,7 +60,7 @@ func (s *Server) generateReport(w http.ResponseWriter, r *http.Request) {
 		writeRunError(w, r, assistant.ErrReportTooLong)
 		return
 	}
-	if !writeRunCreditsError(w, r, s.credits.Afford(ctx, user.ID, credits.Estimate(size, turn)), "生成报告") {
+	if !turn.Own && !writeRunCreditsError(w, r, s.credits.Afford(ctx, user.ID, credits.Estimate(size, turn)), "生成报告") {
 		return
 	}
 	sse, leave, ok := s.streamRun(w, r, user.ID)
@@ -80,12 +80,12 @@ func (s *Server) generateReport(w http.ResponseWriter, r *http.Request) {
 	})
 	s.recordRun(ctx, user.ID, assistant.TurnReport, turn, meta)
 	if err != nil {
-		_ = sse.send("error", runError(runFailure(ctx, "report", err)))
+		_ = sse.send("error", failedRunEvent(ctx, turn, "report", err))
 		return
 	}
 	kept, err := s.courses.AddReport(context.WithoutCancel(ctx), user, id, course.NewReport{
 		Title: rep.Title, Summary: rep.Summary, Body: rep.Body, Points: rep.Points,
-		References: refs, TurnIDs: taken, Meta: newTurnMeta(turn.Model, assistant.ReportPrompt, meta),
+		References: refs, TurnIDs: taken, Meta: newTurnMeta(turn, assistant.ReportPrompt, meta),
 	})
 	if err != nil {
 		slog.Error("report not kept", "user", user.ID, "err", err)

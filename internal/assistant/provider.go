@@ -1,5 +1,7 @@
 package assistant
 
+import "net/http"
+
 // Provider is a provider configuration (ADR 0008): not an adapter of its
 // own, but defaults and rules the generic adapter applies for one
 // provider: its default address and display name, the thinking switch,
@@ -43,6 +45,13 @@ type Endpoint struct {
 	Provider Provider
 	BaseURL  string
 	Key      string
+	// Client is what the adapter calls through; nil is the default
+	// client. A reader's own model gets the SSRF guard's (ADR 0010).
+	Client *http.Client
+	// Conservative takes the capabilities an endpoint of unknown make is
+	// sure to have (ADR 0010): an OpenAI-compatible one is asked for no
+	// parallel tool calls.
+	Conservative bool
 }
 
 // FormatSpec is an interface format as its adapter declares it (ADR

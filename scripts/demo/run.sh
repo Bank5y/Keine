@@ -12,6 +12,8 @@
 # AI: a stand-in model endpoint (scripts/demo/fake_model.py, on DEMO_MODEL_PORT)
 # is the site model "演示模型", serving every run kind, so the assistant is
 # available; the admin's 模型 tab shows it. Its key "bad" fails the connection test.
+# Own models are open, with loopback let through, so a reader can set the same
+# endpoint ($DEMO_MODEL_URL) up as their own model on the 我的 page.
 #
 # Sample data (scripts/demo/seed.py): six public courses, one private course
 # with a pending publish request; bob subscribed to "Agent 系统设计 40 讲" with
@@ -31,6 +33,7 @@ PG=${DEMO_PG_NAME:-keine-demo-pg}
 STATE=${DEMO_DIR:-${TMPDIR:-/tmp}/keine-demo}
 export KEINE_ADMIN_USERNAME=admin KEINE_ADMIN_PASSWORD=admin-password
 export KEINE_MASTER_KEY=demo-master-key-not-a-secret-0123456789
+export KEINE_OWN_MODELS=true KEINE_OWN_MODEL_NETWORKS=127.0.0.0/8
 export DEMO_URL=http://127.0.0.1:$PORT DEMO_MODEL_URL=http://127.0.0.1:$MODEL_PORT/v1
 
 stop() {

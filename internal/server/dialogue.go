@@ -193,8 +193,8 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	if check != nil && !writeDialogueError(w, r, check()) {
 		return false
 	}
-	turn, err := s.models.ForTurn(ctx, assistant.TurnFollowup)
-	if !writeModelError(w, r, err) {
+	turn, err := s.readerTurn(ctx, user.ID, assistant.TurnFollowup)
+	if !writeOwnModelError(w, r, err) {
 		return false
 	}
 	msgs, err := s.followupMessages(ctx, user, d, after, q)
@@ -210,6 +210,10 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	if err != nil {
 		writeInternal(w, r, err)
 		return false
+	}
+	if turn.Own {
+		// the reader's own model is not charged (ADR 0010)
+		account.Remaining = nil
 	}
 	if account.Remaining != nil && *account.Remaining <= 0 {
 		writeCreditsError(w, r, &credits.InsufficientError{Remaining: *account.Remaining})
@@ -250,7 +254,7 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	reply := out.Text
 	s.recordRun(ctx, user.ID, assistant.TurnFollowup, turn, meta)
 	keepCtx := context.WithoutCancel(ctx)
-	tm := newTurnMeta(turn.Model, assistant.FollowupPrompt, meta)
+	tm := newTurnMeta(turn, assistant.FollowupPrompt, meta)
 	tm.NodeNote = q.Note
 	if links != nil {
 		tm.CourseLinks = links.chosen(out.Links)
@@ -264,6 +268,7 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	default:
 		// the reader going away or the server failing keeps the question too
 		code, _ = runFailure(ctx, "follow-up turn", err)
+		code = ownFailure(turn, code)
 		switch code {
 		case assistant.CodeTimeout:
 			tm.Interrupted = course.InterruptedTimeout
@@ -284,6 +289,7 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 		return true
 	}
 	ev := runError(code, reply != "")
+	ownDetail(ev, turn, err)
 	if code == string(course.InterruptedCredits) {
 		ev["message"] = "今天的积分已经用完，回复在这里中断了。积分在每天 0 点重置。"
 	}

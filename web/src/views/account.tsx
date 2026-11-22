@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ErrorBox, PageHead } from '@/components/common';
+import { OwnModelSection } from '@/components/own-model';
 import { api, ApiError } from '@/lib/api';
 import { Link } from '@/lib/router';
 import { credits, quota } from '@/lib/credits';
@@ -55,6 +56,7 @@ export function AccountView({ user }: { user: User }) {
           </Link>
         ) : null}
         {user.credits ? <Credits account={user.credits} /> : null}
+        {user.ownModels?.enabled ? <OwnModelSection /> : null}
         <section className="me-section" aria-labelledby="pw-head">
           <h2 id="pw-head">修改密码</h2>
           <p>修改后, 其他设备上的登录不受影响。</p>

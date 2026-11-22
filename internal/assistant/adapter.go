@@ -192,6 +192,9 @@ const (
 	// ErrBadResponse: the endpoint answered, but not with a stream Keine
 	// can read.
 	ErrBadResponse Category = "bad_response"
+	// ErrBlocked: the address is one Keine may not connect to (a reader's
+	// own model at an inside address, ADR 0010).
+	ErrBlocked Category = "blocked_address"
 )
 
 // Error is a provider failure. Detail is for the server log only.

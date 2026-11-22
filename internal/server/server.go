@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/credits"
 	"github.com/Bank5y/keine/internal/db"
+	"github.com/Bank5y/keine/internal/netguard"
 	"github.com/Bank5y/keine/internal/notify"
 	"github.com/Bank5y/keine/internal/secret"
 	"github.com/Bank5y/keine/internal/storage"
@@ -57,6 +59,11 @@ type Options struct {
 	// MaxRuns is how many assistant runs go at once (default
 	// assistant.DefaultMaxRuns); one more is turned away as busy.
 	MaxRuns int
+	// OwnModels opens readers' own models (ADR 0010); it needs MasterKey.
+	OwnModels bool
+	// OwnModelNetworks are the CIDRs a reader's own model may be at besides
+	// the public internet, over http too (a model on the local network).
+	OwnModelNetworks []string
 }
 
 type Server struct {
@@ -66,6 +73,8 @@ type Server struct {
 	courses       *course.Service
 	notifications *notify.Service
 	models        *assistant.Models
+	// own keeps the readers' own models
+	own *assistant.OwnModels
 	// runs keeps the assistant runs within MaxRuns, one a reader
 	runs *assistant.Gate
 	// credits keeps what the assistant costs each reader
@@ -96,6 +105,13 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 			return nil, err
 		}
 	}
+	if opts.OwnModels && box == nil {
+		return nil, errors.New("own models need a master key to seal readers' keys with")
+	}
+	networks, err := netguard.ParseNetworks(opts.OwnModelNetworks)
+	if err != nil {
+		return nil, err
+	}
 	pool, err := db.Open(ctx, opts.DatabaseURL)
 	if err != nil {
 		return nil, err
@@ -111,6 +127,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		opts.SearchFor = search.For
 	}
 	s.models = assistant.NewModels(pool, box, opts.AdapterFor, opts.SearchFor)
+	s.own = assistant.NewOwnModels(pool, box, opts.AdapterFor, opts.SearchFor, netguard.Policy{Networks: networks}, opts.OwnModels)
 	s.runs = assistant.NewGate(opts.MaxRuns)
 	s.credits = credits.NewService(pool, opts.Now)
 	s.staged = newStagedAnalyses()
@@ -180,6 +197,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/me", s.signedIn(s.me))
 	s.mux.HandleFunc("PUT /api/me/password", s.signedIn(s.changePassword))
 	s.mux.HandleFunc("POST /api/me/ai-notice", s.signedIn(s.readNotice))
+	s.mux.HandleFunc("GET /api/me/own-model", s.signedIn(s.getOwnModel))
+	s.mux.HandleFunc("PUT /api/me/own-model", s.signedIn(s.saveOwnModel))
+	s.mux.HandleFunc("DELETE /api/me/own-model", s.signedIn(s.deleteOwnModel))
+	s.mux.HandleFunc("PUT /api/me/own-model/use", s.signedIn(s.useOwnModel))
 	s.mux.HandleFunc("POST /api/users", s.createUser)
 	s.mux.HandleFunc("GET /api/site", s.getSite)
 	s.mux.HandleFunc("PUT /api/site", s.adminOnly(s.putSite))

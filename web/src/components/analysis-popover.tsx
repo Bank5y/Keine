@@ -14,6 +14,7 @@ import { pinAnalysis, type Exploration } from '@/lib/explorations';
 import type { Quote } from '@/lib/annotations';
 import { readNotice, useUser } from '@/lib/session';
 import { progressLines, summary, type ToolActivity } from '@/lib/progress';
+import { creditLine, type OwnModelsState } from '@/lib/own-model';
 import { cn } from '@/lib/utils';
 
 const WIDTH = 440;
@@ -116,7 +117,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
   };
   const left = Math.max(16, Math.min(at.left - 3, innerWidth - WIDTH - 16) + scrollX);
 
-  const credit = <Credit provider={user?.aiProvider} open={noticeOpen} onToggle={() => setNoticeOpen((v) => !v)} />;
+  const credit = <Credit provider={user?.aiProvider} own={user?.ownModels} open={noticeOpen} onToggle={() => setNoticeOpen((v) => !v)} />;
   let main: ReactNode, foot: ReactNode;
   if (!started) {
     main = (
@@ -127,7 +128,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
     );
     foot = (
       <div className="analysis-foot">
-        <span>AI 生成 · {user?.aiProvider || '模型服务'}</span>
+        <span>{creditLine(user?.aiProvider, user?.ownModels)}</span>
         <Button size="sm" variant="default" onClick={start}><Sparkles />分析</Button>
       </div>
     );
@@ -290,10 +291,10 @@ export function Notice({ search, className }: { search?: string; className?: str
 }
 
 // Credit names the service that wrote the answer; it opens the notice.
-export function Credit({ provider, open, onToggle }: { provider?: string; open: boolean; onToggle: () => void }) {
+export function Credit({ provider, own, open, onToggle }: { provider?: string; own?: OwnModelsState; open: boolean; onToggle: () => void }) {
   return (
     <button type="button" className="analysis-credit" aria-expanded={open} aria-controls="analysis-notice" onClick={onToggle}>
-      AI 生成 · {provider || '模型服务'}{open ? <ChevronUp /> : <ChevronDown />}
+      {creditLine(provider, own)}{open ? <ChevronUp /> : <ChevronDown />}
     </button>
   );
 }

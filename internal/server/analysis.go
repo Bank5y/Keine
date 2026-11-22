@@ -68,8 +68,8 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	turn, err := s.models.ForTurn(ctx, assistant.TurnAnalysis)
-	if !writeModelError(w, r, err) {
+	turn, err := s.readerTurn(ctx, currentUser(r).ID, assistant.TurnAnalysis)
+	if !writeOwnModelError(w, r, err) {
 		return
 	}
 	p, err := s.courses.Passage(ctx, currentUser(r), id, lessonID, anchor.Quote{Exact: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix})
@@ -99,7 +99,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := currentUser(r).ID
-	if !writeCreditsError(w, r, s.credits.Afford(ctx, user, credits.Estimate(assistant.EstimateMessages(msgs), turn))) {
+	if !turn.Own && !writeCreditsError(w, r, s.credits.Afford(ctx, user, credits.Estimate(assistant.EstimateMessages(msgs), turn))) {
 		return
 	}
 	sse, leave, ok := s.streamRun(w, r, user)
@@ -123,7 +123,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	})
 	s.recordRun(ctx, user, assistant.TurnAnalysis, turn, meta)
 	if err != nil {
-		_ = sse.send("error", runError(runFailure(ctx, "analysis", err)))
+		_ = sse.send("error", failedRunEvent(ctx, turn, "analysis", err))
 		return
 	}
 	lessonText := "full"
@@ -137,7 +137,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 	analysisID := s.staged.keep(user, stagedAnalysis{
 		courseID: id, lessonID: lessonID, quote: anchor.Quote{Exact: in.Quote, Prefix: in.Prefix, Suffix: in.Suffix},
 		analysis: a, snapshot: snapshot, until: s.opts.Now().Add(analysisTTL),
-		meta: newTurnMeta(turn.Model, assistant.AnalysisPrompt, meta),
+		meta: newTurnMeta(turn, assistant.AnalysisPrompt, meta),
 	})
 	_ = sse.send("done", analysisDone{AnalysisID: analysisID, Analysis: a, Degraded: meta.Degraded, Sources: meta.Sources})
 }
@@ -161,12 +161,23 @@ var runMessages = map[string]string{
 	assistant.CodeTimeout:         "模型太久没有回应，请稍后再试。",
 	assistant.CodeMalformedOutput: "助手的回答格式不对，请重试。",
 	assistant.CodeOutputTruncated: "回答太长被截断了，请重试。",
+	assistant.CodeOwnModelError:   "你的自带模型出错了，没有改用站点的模型。请检查自带模型的设置，或稍后再试。",
 }
 
 // runError is the error event of a run: its code, what it means, and
 // whether what streamed before it stays.
 func runError(code string, kept bool) map[string]any {
 	return map[string]any{"code": code, "message": runMessages[code], "kept": kept}
+}
+
+// failedRunEvent is the error event of a run on turn that failed with
+// err: runError, with the kind of failure when it was the reader's own
+// model's.
+func failedRunEvent(ctx context.Context, turn assistant.Turn, what string, err error) map[string]any {
+	code, kept := runFailure(ctx, what, err)
+	ev := runError(ownFailure(turn, code), kept)
+	ownDetail(ev, turn, err)
+	return ev
 }
 
 // passage is a course passage as the assistant reads it.

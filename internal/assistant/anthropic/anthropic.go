@@ -15,6 +15,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
 
 	"github.com/Bank5y/keine/internal/assistant"
+	"github.com/Bank5y/keine/internal/netguard"
 )
 
 // defaultMaxTokens caps a call that leaves the output to the provider: the
@@ -30,12 +31,16 @@ type Adapter struct {
 // is saved).
 func New(e assistant.Endpoint) *Adapter {
 	base := strings.TrimRight(e.BaseURL, "/")
-	return &Adapter{client: sdk.NewClient(
-		option.WithBaseURL(base+"/"),
+	opts := []option.RequestOption{
+		option.WithBaseURL(base + "/"),
 		option.WithAPIKey(e.Key),
 		// the loop decides what is tried again (ADR 0008)
 		option.WithMaxRetries(0),
-	)}
+	}
+	if e.Client != nil {
+		opts = append(opts, option.WithHTTPClient(e.Client))
+	}
+	return &Adapter{client: sdk.NewClient(opts...)}
 }
 
 // maxResumes bounds how often one call resumes a paused turn.
@@ -351,6 +356,9 @@ func assistantBlocks(m assistant.Message) []sdk.ContentBlockParamUnion {
 // --- errors
 
 func callError(ctx context.Context, err error) error {
+	if netguard.Blocked(err) {
+		return &assistant.Error{Category: assistant.ErrBlocked, Detail: err.Error()}
+	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return &assistant.Error{Category: assistant.ErrTimeout, Detail: err.Error()}
 	}

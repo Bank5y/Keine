@@ -67,9 +67,14 @@ type turnMeta struct {
 	NodeNote string `json:"nodeNote,omitempty"`
 }
 
-// newTurnMeta is the metadata of a turn the site ran with p on model.
-func newTurnMeta(model string, p assistant.Prompt, m assistant.Meta) turnMeta {
-	return turnMeta{Source: "site", Model: model, Prompt: p.Version, Style: p.Style.ID, StyleVersion: p.Style.Version,
+// newTurnMeta is the metadata of a turn run with p on t, the site's model
+// or the reader's own.
+func newTurnMeta(t assistant.Turn, p assistant.Prompt, m assistant.Meta) turnMeta {
+	source := "site"
+	if t.Own {
+		source = "own"
+	}
+	return turnMeta{Source: source, Model: t.Model, Prompt: p.Version, Style: p.Style.ID, StyleVersion: p.Style.Version,
 		Usage: m.Usage, Estimated: m.Estimated, Searches: m.Searches, Sources: m.Sources, Degraded: m.Degraded}
 }
 
