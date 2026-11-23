@@ -41,16 +41,18 @@ func run() error {
 		return err
 	}
 	s, err := server.New(ctx, server.Options{
-		DatabaseURL:    cfg.DatabaseURL,
-		Storage:        files,
-		AdminUsername:  cfg.AdminUsername,
-		AdminPassword:  cfg.AdminPassword,
-		SecureCookies:  cfg.SecureCookies,
-		MaxUploadBytes: cfg.MaxUploadMB << 20,
-		Web:            webFS,
-		MasterKey:      cfg.MasterKey,
-		RunDeadline:    time.Duration(cfg.RunDeadlineSeconds) * time.Second,
-		MaxRuns:        int(cfg.MaxRuns),
+		DatabaseURL:      cfg.DatabaseURL,
+		Storage:          files,
+		AdminUsername:    cfg.AdminUsername,
+		AdminPassword:    cfg.AdminPassword,
+		SecureCookies:    cfg.SecureCookies,
+		MaxUploadBytes:   cfg.MaxUploadMB << 20,
+		Web:              webFS,
+		MasterKey:        cfg.MasterKey,
+		RunDeadline:      time.Duration(cfg.RunDeadlineSeconds) * time.Second,
+		MaxRuns:          int(cfg.MaxRuns),
+		OwnModels:        cfg.OwnModels,
+		OwnModelNetworks: cfg.OwnModelNetworks,
 	})
 	if err != nil {
 		return err

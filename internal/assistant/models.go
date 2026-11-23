@@ -605,11 +605,20 @@ const testTimeout = 30 * time.Second
 // turn kind needs from the endpoint: auth, streaming, and tools accepted;
 // and on the provider route its search, which the model has to support.
 func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
+	route, _ := Resolve(in.SearchRoute, in.Format, in.Provider, false)
+	adapter := s.adapterFor(Endpoint{Format: in.Format, Provider: in.Provider, BaseURL: in.BaseURL, Key: key})
+	return testModel(ctx, adapter, in.Model, route == RouteProvider, key)
+}
+
+// testModel is the connection test of a model (a site's or a reader's
+// own): one streaming call declaring a tool, with the provider's own
+// search when the model searches with it. A failure is a
+// *TestFailedError whose cause has the key taken out.
+func testModel(ctx context.Context, adapter Adapter, model string, providerWeb bool, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
-	route, _ := Resolve(in.SearchRoute, in.Format, in.Provider, false)
-	_, err := s.adapterFor(Endpoint{Format: in.Format, Provider: in.Provider, BaseURL: in.BaseURL, Key: key}).Stream(ctx, Request{
-		Model: in.Model,
+	_, err := adapter.Stream(ctx, Request{
+		Model: model,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "This is a connection test. Do not call any tool."},
 			{Role: RoleUser, Content: "Reply with OK."},
@@ -621,7 +630,7 @@ func (s *Models) test(ctx context.Context, in ModelInput, key string) error {
 		}},
 		ToolChoice:  "auto",
 		MaxTokens:   64,
-		ProviderWeb: route == RouteProvider,
+		ProviderWeb: providerWeb,
 	}, func(Event) error { return nil })
 	if err == nil {
 		return nil
@@ -647,6 +656,9 @@ var ErrAssistantUnavailable = errors.New("assistant unavailable")
 // Turn is what a run calls: the adapter of the model serving a turn kind,
 // with the settings read when the run starts.
 type Turn struct {
+	// Own: the reader's own model (ADR 0010), which is not charged and
+	// whose failures are the reader's model's, never the site's.
+	Own      bool
 	Adapter  Adapter
 	Model    string
 	Thinking bool

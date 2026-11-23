@@ -1274,6 +1274,12 @@ a.rn:hover .t { color: var(--brand); }
 .me-section > p { margin: 6px 0 18px; font-size: 12px; color: var(--text-3); }
 .me-section .form-rows { gap: 18px; }
 .me-section .field { margin-bottom: 0; }
+.own-switch { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; padding: 12px 14px; border: 1px solid var(--line); cursor: pointer; }
+.own-switch .switch { margin-top: 2px; }
+.own-switch > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.own-switch b { font-size: 14px; font-weight: 500; }
+.own-switch small { font-size: 12px; color: var(--text-3); overflow-wrap: anywhere; }
+.own-note { font-size: 12px; line-height: 1.6; color: var(--text-3); }
 @media (max-width: 760px) { .account .page-head .kicker { display: none; } .account .page-head h1 { margin-top: 0; } }
 
 /* ---------- notifications ---------- */

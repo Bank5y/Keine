@@ -9,6 +9,10 @@ services:
       KEINE_ADMIN_PASSWORD: ${KEINE_ADMIN_PASSWORD:?set KEINE_ADMIN_PASSWORD (at least 8 characters)}
       # encrypts stored model keys (at least 32 characters); without it no key can be saved
       KEINE_MASTER_KEY: ${KEINE_MASTER_KEY:-}
+      # readers' own models (off by default; needs KEINE_MASTER_KEY), and the CIDRs
+      # besides the public internet their address may be in, over http too
+      KEINE_OWN_MODELS: ${KEINE_OWN_MODELS:-false}
+      KEINE_OWN_MODEL_NETWORKS: ${KEINE_OWN_MODEL_NETWORKS:-}
     volumes:
       - keine-data:/data
     depends_on:

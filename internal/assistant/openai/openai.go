@@ -16,12 +16,15 @@ import (
 	"strings"
 
 	"github.com/Bank5y/keine/internal/assistant"
+	"github.com/Bank5y/keine/internal/netguard"
 )
 
 type Adapter struct {
 	baseURL, key string
 	rules        rules
 	client       *http.Client
+	// serial asks for no parallel tool calls
+	serial bool
 }
 
 // rules are what a provider configuration (ADR 0008) changes on the wire.
@@ -44,7 +47,11 @@ var providerRules = map[assistant.Provider]rules{
 // /chat/completions, Key may be empty for endpoints without auth, and the
 // provider configuration (ADR 0008) adds that provider's rules.
 func New(e assistant.Endpoint) *Adapter {
-	return &Adapter{baseURL: strings.TrimRight(e.BaseURL, "/"), key: e.Key, rules: providerRules[e.Provider], client: http.DefaultClient}
+	client := e.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return &Adapter{baseURL: strings.TrimRight(e.BaseURL, "/"), key: e.Key, rules: providerRules[e.Provider], client: client, serial: e.Conservative}
 }
 
 func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
@@ -135,6 +142,9 @@ func (a *Adapter) wireRequest(req assistant.Request) map[string]any {
 			tools[i].Function.Name, tools[i].Function.Description, tools[i].Function.Parameters = t.Name, t.Description, t.Parameters
 		}
 		body["tools"] = tools
+		if a.serial {
+			body["parallel_tool_calls"] = false
+		}
 		if req.ToolChoice != "" {
 			body["tool_choice"] = req.ToolChoice
 		}
@@ -387,6 +397,9 @@ func (a *callAssembler) start(index *int) *assistant.ToolCall {
 // --- errors
 
 func transportError(ctx context.Context, err error) error {
+	if netguard.Blocked(err) {
+		return &assistant.Error{Category: assistant.ErrBlocked, Detail: err.Error()}
+	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return &assistant.Error{Category: assistant.ErrTimeout, Detail: err.Error()}
 	}

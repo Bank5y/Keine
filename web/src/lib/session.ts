@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from '@/lib/api';
 import type { AIProblem } from '@/lib/ai';
 import type { Account } from '@/lib/credits';
+import type { OwnModelsState } from '@/lib/own-model';
 
 export interface User {
   id: number; username: string; role: 'user' | 'admin'; disabled: boolean; createdAt: string;
@@ -17,6 +18,9 @@ export interface User {
   aiSearch?: string;
   // the reader's credits today (#130)
   credits?: Account;
+  // own models: opened by the deployer, and whether the reader runs on
+  // theirs, offline when it reaches no web (ADR 0010)
+  ownModels?: OwnModelsState;
 }
 
 // undefined: still checking; null: signed out

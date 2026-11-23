@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/Bank5y/keine/internal/secret"
 )
@@ -24,6 +25,11 @@ type Config struct {
 	// MaxRuns is how many assistant runs go at once; one more is turned
 	// away as busy, not queued.
 	MaxRuns int64
+	// OwnModels opens readers' own models; it needs MasterKey.
+	OwnModels bool
+	// OwnModelNetworks are the CIDRs an own model may be at besides the
+	// public internet, over plain http too.
+	OwnModelNetworks []string
 
 	// Storage is "local" (files under DataDir) or "s3".
 	Storage string
@@ -75,6 +81,15 @@ func FromEnv() (Config, error) {
 	}
 	if c.MaxRuns, err = intEnv("KEINE_MAX_RUNS", 16); err != nil {
 		return c, err
+	}
+	if c.OwnModels, err = boolEnv("KEINE_OWN_MODELS", false); err != nil {
+		return c, err
+	}
+	if c.OwnModels && c.MasterKey == "" {
+		return c, fmt.Errorf("KEINE_OWN_MODELS needs KEINE_MASTER_KEY to seal readers' keys with")
+	}
+	if v := os.Getenv("KEINE_OWN_MODEL_NETWORKS"); v != "" {
+		c.OwnModelNetworks = strings.Split(v, ",")
 	}
 	switch c.Storage {
 	case "local":

@@ -84,6 +84,9 @@ const (
 	CodeTimeout         = "timeout"
 	CodeMalformedOutput = "malformed_output"
 	CodeOutputTruncated = "output_truncated"
+	// CodeOwnModelError: the reader's own model failed (ADR 0010); the run
+	// does not fall back to the site's.
+	CodeOwnModelError = "own_model_error"
 )
 
 // RunError ends a run that could not finish. Kept tells whether the reader

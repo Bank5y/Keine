@@ -89,6 +89,17 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w, r, err)
 		return
 	}
+	own, inUse, err := s.own.InUse(r.Context(), u.ID)
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	available := problem == nil
+	if inUse {
+		// the reader's runs go to their own model, set up or not the site's
+		available = true
+		notice.Provider, notice.Search = own.Model+"（自带模型）", own.SearchName()
+	}
 	writeJSON(w, http.StatusOK, struct {
 		auth.User
 		// AIAvailable: every turn kind has a model whose search route
@@ -100,7 +111,18 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		assistant.Notice
 		// Credits are the reader's credits today (ADR 0010).
 		Credits credits.Account `json:"credits"`
-	}{u, problem == nil, adminOnly(u, problem), notice, account})
+		// OwnModels: whether the deployer opened own models, and whether
+		// the reader runs on theirs (ADR 0010)
+		OwnModels ownModelsState `json:"ownModels"`
+	}{u, available, adminOnly(u, problem), notice, account, ownModelsState{Enabled: s.own.Open(), InUse: inUse, Offline: inUse && own.Search == assistant.RouteOff}})
+}
+
+// ownModelsState is what /api/me says of own models: Offline when the
+// reader's runs reach no web, which the page tells them.
+type ownModelsState struct {
+	Enabled bool `json:"enabled"`
+	InUse   bool `json:"inUse"`
+	Offline bool `json:"offline"`
 }
 
 // adminOnly is p for the admin, nil for anyone else.

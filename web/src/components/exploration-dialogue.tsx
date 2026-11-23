@@ -558,7 +558,7 @@ function CreditLine() {
   const user = useUser();
   return (
     <div className="dlg-composer dlg-credit">
-      <Credit provider={user?.aiProvider} open={notice} onToggle={() => setNotice((v) => !v)} />
+      <Credit provider={user?.aiProvider} own={user?.ownModels} open={notice} onToggle={() => setNotice((v) => !v)} />
       {notice ? <Notice search={user?.aiSearch} className="dlg-notice" /> : null}
     </div>
   );

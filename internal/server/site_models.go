@@ -20,6 +20,7 @@ var testFailureMessages = map[assistant.Category]string{
 	assistant.ErrTimeout:        "端点太久没有回应",
 	assistant.ErrInvalidRequest: "端点拒绝了请求, 可能不支持流式或工具调用",
 	assistant.ErrBadResponse:    "端点的回应不是能读懂的流式格式",
+	assistant.ErrBlocked:        "这个地址不允许访问, 只能用公网的 https 地址, 内网地址要部署者放行",
 }
 
 func (s *Server) modelsState(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {

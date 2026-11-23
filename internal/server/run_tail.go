@@ -29,6 +29,10 @@ func (s *Server) streamRun(w http.ResponseWriter, r *http.Request, userID int64)
 // recordRun records what a run spent, failed or cut short too (ADR 0010),
 // even when the reader went away. The site's own runs are user 0.
 func (s *Server) recordRun(ctx context.Context, userID int64, kind assistant.TurnKind, turn assistant.Turn, meta assistant.Meta) {
+	if turn.Own {
+		// the reader's own model costs the site nothing (ADR 0010)
+		return
+	}
 	if err := s.credits.RecordRun(context.WithoutCancel(ctx), userID, kind, turn, meta); err != nil {
 		slog.Error("usage not recorded", "user", userID, "kind", kind, "err", err)
 	}
