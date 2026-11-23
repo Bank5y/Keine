@@ -9,6 +9,7 @@ import (
 )
 
 func TestManifestPromptTemplateDownloads(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -29,6 +30,7 @@ func TestManifestPromptTemplateDownloads(t *testing.T) {
 
 // The example in the template must stay a manifest the importer accepts.
 func TestManifestPromptExampleImports(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	body := string(alice.mustOK(alice.do("GET", "/api/manifest/prompt", nil)).body)
@@ -71,6 +73,7 @@ func TestManifestPromptExampleImports(t *testing.T) {
 }
 
 func TestManifestPromptRequiresSignIn(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 
 	expectError(t, a.client().do("GET", "/api/manifest/prompt", nil), http.StatusUnauthorized, "unauthenticated")
@@ -79,6 +82,7 @@ func TestManifestPromptRequiresSignIn(t *testing.T) {
 // The template also shows an ongoing course's outline: an upcoming lesson
 // and an empty chapter, which the importer accepts.
 func TestManifestPromptShowsAnOutlineThatImports(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	body := string(alice.mustOK(alice.do("GET", "/api/manifest/prompt", nil)).body)

@@ -234,6 +234,7 @@ var agentQuote = map[string]any{"quote": "Agent", "prefix": "这里的 ", "suffi
 const goodAnswer = "<exp_title>Agent（智能体）</exp_title>\n<exp_concept>能自主规划步骤、调用工具的大模型应用。</exp_concept>\n<exp_explanation>\nAgent 是把目标拆成步骤、逐步执行的系统。\n\n在这一讲里，它指把目标拆成步骤的程序。\n</exp_explanation>"
 
 func TestAnalysisStreamsTheThreeSectionsAndEndsWithThem(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(cut(goodAnswer, 20, 70)...))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -274,6 +275,7 @@ func TestAnalysisStreamsTheThreeSectionsAndEndsWithThem(t *testing.T) {
 }
 
 func TestTagsCutBetweenChunksAndTextOutsideThemStreamCorrectly(t *testing.T) {
+	t.Parallel()
 	answer := "好的，下面是分析。\n" + goodAnswer + "\n希望有帮助。"
 	// every cut lands inside a tag or right at its edge
 	var at []int
@@ -303,6 +305,7 @@ func TestTagsCutBetweenChunksAndTextOutsideThemStreamCorrectly(t *testing.T) {
 }
 
 func TestTheModelReadsTheCourseThenTheSelectionMarkedInTheLesson(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -354,6 +357,7 @@ func answer(title, concept, explanation string) string {
 const okBody = "Agent 是把目标拆成步骤、逐步执行的系统。"
 
 func TestEachValidationRuleRejectsAnAnswer(t *testing.T) {
+	t.Parallel()
 	long := func(n int) string { return strings.Repeat("字", n) }
 	cases := map[string]string{
 		"unclosed section":           "<exp_title>Agent</exp_title><exp_concept>概念。</exp_concept><exp_explanation>" + okBody,
@@ -396,6 +400,7 @@ func TestEachValidationRuleRejectsAnAnswer(t *testing.T) {
 // A concept explanation may group what it says under bold phrases, each
 // with its list, as many groups as the content needs (#157).
 func TestBoldPhrasesGroupAConceptExplanation(t *testing.T) {
+	t.Parallel()
 	explanation := "任期是 Raft 里单调递增的逻辑时钟，把时间切成一段段，每段最多一个 Leader。\n\n" +
 		"**基本规则：**\n\n- 每个节点保存当前任期号，持久化存储。\n- 发现更大的任期号时立即更新，并退回 Follower。\n\n" +
 		"**关键细节**：\n\n1. 候选人发起选举前先把任期加一。\n2. 带着过期任期的请求直接拒绝。"
@@ -411,6 +416,7 @@ func TestBoldPhrasesGroupAConceptExplanation(t *testing.T) {
 }
 
 func TestADiagramOfAnAllowedKindIsValid(t *testing.T) {
+	t.Parallel()
 	body := okBody + "\n\n```mermaid\nstateDiagram-v2\n[*] --> 运行\n```"
 	m := newScriptedModel(texts(answer("Agent", "概念。", body)))
 	a := aiApp(t, m)
@@ -424,6 +430,7 @@ func TestADiagramOfAnAllowedKindIsValid(t *testing.T) {
 }
 
 func TestACutOffAnswerThatStreamedEndsTruncated(t *testing.T) {
+	t.Parallel()
 	s := texts("<exp_title>Agent</exp_title><exp_concept>简介。</exp_concept><exp_explanation>Agent 是")
 	s.result = assistant.Result{Finish: assistant.FinishLength}
 	m := newScriptedModel(s)
@@ -438,6 +445,7 @@ func TestACutOffAnswerThatStreamedEndsTruncated(t *testing.T) {
 }
 
 func TestAnAnswerInvalidBeforeAnythingStreamedIsAskedForOnceMore(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts("Agent 就是智能体，它会规划步骤。"), texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -462,6 +470,7 @@ func TestAnAnswerInvalidBeforeAnythingStreamedIsAskedForOnceMore(t *testing.T) {
 }
 
 func TestARemedyIsTriedOnlyOnce(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts("没有标签。"), texts("还是没有标签。"), texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -481,6 +490,7 @@ func unavailable() step {
 }
 
 func TestAProviderFailureBeforeAnyDeltaIsRetriedOnce(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(unavailable(), texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -496,6 +506,7 @@ func TestAProviderFailureBeforeAnyDeltaIsRetriedOnce(t *testing.T) {
 }
 
 func TestAProviderFailingTwiceEndsTheRun(t *testing.T) {
+	t.Parallel()
 	limited := step{err: &assistant.Error{Category: assistant.ErrRateLimited, Detail: "429"}}
 	m := newScriptedModel(limited, limited, texts(goodAnswer))
 	a := aiApp(t, m)
@@ -512,6 +523,7 @@ func TestAProviderFailingTwiceEndsTheRun(t *testing.T) {
 }
 
 func TestAProviderFailureAfterADeltaEndsTheRunKeepingWhatStreamed(t *testing.T) {
+	t.Parallel()
 	s := texts("<exp_title>Agent</exp_title><exp_concept>能自主")
 	s.err = &assistant.Error{Category: assistant.ErrUnavailable, Detail: "connection reset"}
 	m := newScriptedModel(s, texts(goodAnswer))
@@ -534,6 +546,7 @@ func TestAProviderFailureAfterADeltaEndsTheRunKeepingWhatStreamed(t *testing.T) 
 }
 
 func TestTheReaderGoingAwayCancelsTheModelCall(t *testing.T) {
+	t.Parallel()
 	s := texts("<exp_title>Agent</exp_title>")
 	s.hold = true
 	m := newScriptedModel(s)
@@ -562,6 +575,7 @@ func TestTheReaderGoingAwayCancelsTheModelCall(t *testing.T) {
 }
 
 func TestAnalysisIsRefusedBeforeItStarts(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel()
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -587,6 +601,7 @@ func TestAnalysisIsRefusedBeforeItStarts(t *testing.T) {
 }
 
 func TestAnalysisNeedsTheAssistantAvailable(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withModel(newScriptedModel()))
 	bob := a.user("bob")
 	id, lesson := analysisColumn(t, bob)
@@ -596,6 +611,7 @@ func TestAnalysisNeedsTheAssistantAvailable(t *testing.T) {
 }
 
 func TestThinkingOnAllowsALongerAnswer(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := aiAppThinking(t, m, true)
 	bob := a.user("bob")
@@ -608,6 +624,7 @@ func TestThinkingOnAllowsALongerAnswer(t *testing.T) {
 }
 
 func TestAConnectionTimingOutBeforeAnyDeltaIsRetried(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(step{err: &assistant.Error{Category: assistant.ErrTimeout, Detail: "dial tcp: i/o timeout"}}, texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -630,6 +647,7 @@ func thinking(s step, reasoning ...string) step {
 }
 
 func TestReasoningShowsAsThinkingAndNeverStreamsAsText(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(thinking(texts(cut(goodAnswer, 30)...), "先想一想任期", "再想想定义"))
 	a := aiAppThinking(t, m, true)
 	bob := a.user("bob")
@@ -662,6 +680,7 @@ func TestReasoningShowsAsThinkingAndNeverStreamsAsText(t *testing.T) {
 }
 
 func TestReasoningGoesBackWithinARunButNotIntoTheNext(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(thinking(texts("没有标签。"), "第一步的推理"), texts(goodAnswer), texts(goodAnswer))
 	a := aiAppThinking(t, m, true)
 	bob := a.user("bob")

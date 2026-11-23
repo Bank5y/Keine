@@ -64,6 +64,7 @@ func near(a any, b float64) bool {
 }
 
 func TestARunIsChargedAtTheRatesOfItsTime(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(costly())
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -98,6 +99,7 @@ func TestARunIsChargedAtTheRatesOfItsTime(t *testing.T) {
 }
 
 func TestARunThatMayCostMoreThanIsLeftDoesNotStart(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel()
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -117,6 +119,7 @@ func TestARunThatMayCostMoreThanIsLeftDoesNotStart(t *testing.T) {
 }
 
 func TestARunMayOverdrawButTheNextWaitsForTheResetAtMidnight(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(costly(), texts(goodAnswer))
 	y, mo, d := time.Now().Date()
 	clock := &fakeClock{now: time.Date(y, mo, d, 23, 0, 0, 0, time.Local)}
@@ -142,6 +145,7 @@ func TestARunMayOverdrawButTheNextWaitsForTheResetAtMidnight(t *testing.T) {
 }
 
 func TestChangingThePlanTakesEffectAtOnceAndUnlimitedIsStillMetered(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(costly(), costly())
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -167,6 +171,7 @@ func TestChangingThePlanTakesEffectAtOnceAndUnlimitedIsStillMetered(t *testing.T
 }
 
 func TestTheAdminStartsUnlimitedAndNewReadersOnTheDefaultPlan(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	admin := a.admin()
 	if cr := credits(t, admin); cr["daily"] != nil || cr["plan"] != "不限" {
@@ -180,6 +185,7 @@ func TestTheAdminStartsUnlimitedAndNewReadersOnTheDefaultPlan(t *testing.T) {
 }
 
 func TestAReaderMadeTheAdminMovesToUnlimited(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	boss := a.user("boss")
 	if cr := credits(t, boss); cr["plan"] != "基础" {
@@ -193,6 +199,7 @@ func TestAReaderMadeTheAdminMovesToUnlimited(t *testing.T) {
 }
 
 func TestARunCutShortIsChargedByEstimate(t *testing.T) {
+	t.Parallel()
 	s := texts("<exp_title>Agent</exp_title>")
 	s.hold = true
 	m := newScriptedModel(s)
@@ -227,6 +234,7 @@ func TestARunCutShortIsChargedByEstimate(t *testing.T) {
 }
 
 func TestPlansAreTheAdminsToManage(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	admin := a.admin()
 	bob := a.user("bob")
@@ -262,6 +270,7 @@ func TestPlansAreTheAdminsToManage(t *testing.T) {
 }
 
 func TestTheAdminsUsersListShowsEachPlanAndWhatWasUsedToday(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(costly())
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -285,6 +294,7 @@ func TestTheAdminsUsersListShowsEachPlanAndWhatWasUsedToday(t *testing.T) {
 }
 
 func TestUsageAddsUpByDayAndByReaderOverTheChosenDays(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(costly(), costly(), costly())
 	clock := &fakeClock{now: time.Date(2026, 11, 20, 10, 0, 0, 0, time.Local)}
 	a := aiAppWith(t, m, false, func(o *server.Options) { o.Now = clock.Now })
@@ -323,6 +333,7 @@ func TestUsageAddsUpByDayAndByReaderOverTheChosenDays(t *testing.T) {
 }
 
 func TestOnlyTheAdminSeesPlansAndUsage(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	bob := a.user("bob")
 	id := me(t, bob)["id"]

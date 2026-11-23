@@ -101,6 +101,7 @@ func aiAvailable(t *testing.T, c *client) bool {
 }
 
 func TestAdminAddsSiteModel(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -154,6 +155,7 @@ func TestAdminAddsSiteModel(t *testing.T) {
 }
 
 func TestOnlyAdminsConfigureModels(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	id := addModel(t, a.admin(), modelBody(f, "sk-1"))
@@ -174,6 +176,7 @@ func TestOnlyAdminsConfigureModels(t *testing.T) {
 }
 
 func TestKeyNeedsMasterKey(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -191,6 +194,7 @@ func TestKeyNeedsMasterKey(t *testing.T) {
 }
 
 func TestFailedConnectionTestSavesNothing(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -223,6 +227,7 @@ func TestFailedConnectionTestSavesNothing(t *testing.T) {
 }
 
 func TestEditKeepsKeyWhenLeftBlank(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -246,6 +251,7 @@ func TestEditKeepsKeyWhenLeftBlank(t *testing.T) {
 }
 
 func TestInvalidModelsAreRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -271,6 +277,7 @@ func TestInvalidModelsAreRejected(t *testing.T) {
 }
 
 func TestUnratedModelCannotBeMapped(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -290,6 +297,7 @@ func TestUnratedModelCannotBeMapped(t *testing.T) {
 }
 
 func TestAIAvailableOnceEveryTurnKindIsMapped(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -330,6 +338,7 @@ func TestAIAvailableOnceEveryTurnKindIsMapped(t *testing.T) {
 }
 
 func TestAdminDeletesModel(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -344,6 +353,7 @@ func TestAdminDeletesModel(t *testing.T) {
 }
 
 func TestChoosingDeepSeekFillsInItsAddressAndName(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel()
 	var endpoints []assistant.Endpoint
 	var mu sync.Mutex

@@ -45,6 +45,7 @@ func textRange(a map[string]any) []int {
 }
 
 func TestAnnotationIsSavedAndFoundInTheText(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -84,6 +85,7 @@ func annotate(t *testing.T, c *client, courseID, lessonID int, body map[string]a
 //	funcmain(){ 68 run() 73 } 74 最后一段再说一次 82 Agent 87 。
 
 func TestRepeatedTextIsToldApartByItsSurroundings(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -96,6 +98,7 @@ func TestRepeatedTextIsToldApartByItsSurroundings(t *testing.T) {
 }
 
 func TestSelectionsMayCrossParagraphsAndInlineFormatting(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -121,6 +124,7 @@ func annotationPath(a map[string]any) string {
 }
 
 func TestAnnotationsAreRestyledAndDeleted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -144,6 +148,7 @@ func TestAnnotationsAreRestyledAndDeleted(t *testing.T) {
 }
 
 func TestAnnotationStylesAreUnderlineOrAHighlightColour(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -161,6 +166,7 @@ func TestAnnotationStylesAreUnderlineOrAHighlightColour(t *testing.T) {
 }
 
 func TestOverlappingAnnotationsAreKeptApart(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -178,6 +184,7 @@ func TestOverlappingAnnotationsAreKeptApart(t *testing.T) {
 }
 
 func TestAnnotationsAreTheirOwnersAlone(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -202,6 +209,7 @@ func TestAnnotationsAreTheirOwnersAlone(t *testing.T) {
 }
 
 func TestVideoLessonsTakeNoAnnotations(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := videoCourse(t, alice)
@@ -215,6 +223,7 @@ func TestVideoLessonsTakeNoAnnotations(t *testing.T) {
 }
 
 func TestTextIsMatchedAsTheReaderShowsIt(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	files := columnFiles(columnManifest())
@@ -229,6 +238,7 @@ func TestTextIsMatchedAsTheReaderShowsIt(t *testing.T) {
 }
 
 func TestQuoteMustBeInTheLessonText(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -247,6 +257,7 @@ func notePath(a map[string]any) string {
 }
 
 func TestNotesAreWrittenEditedAndDeletedWithoutTheAnnotation(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -278,6 +289,7 @@ func TestNotesAreWrittenEditedAndDeletedWithoutTheAnnotation(t *testing.T) {
 }
 
 func TestBlankNotesAreNotNotes(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -293,6 +305,7 @@ func TestBlankNotesAreNotNotes(t *testing.T) {
 }
 
 func TestNotesAreTheirOwnersAlone(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

@@ -31,6 +31,7 @@ func lessonVideo(t *testing.T, c *client, courseID, lessonID int) map[string]any
 }
 
 func TestVideoSourcesAreClassified(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := videoCourse(t, alice)
@@ -56,6 +57,7 @@ func TestVideoSourcesAreClassified(t *testing.T) {
 }
 
 func TestTextLessonsHaveNoVideo(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -67,6 +69,7 @@ func TestTextLessonsHaveNoVideo(t *testing.T) {
 }
 
 func TestPackagedVideosSupportRanges(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := videoCourse(t, alice)
@@ -82,6 +85,7 @@ func TestPackagedVideosSupportRanges(t *testing.T) {
 }
 
 func TestVideoPositionIsSecondsAndMayExceedOne(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := videoCourse(t, alice)

@@ -84,6 +84,7 @@ func readPinned(t *testing.T, a *app, explorationID int) pinnedRows {
 }
 
 func TestAPinnedAnalysisBecomesAnExplorationOfTheLesson(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -133,6 +134,7 @@ func sharedAnalysisColumn(t *testing.T, a *app, alice *client) (courseID, lesson
 }
 
 func TestAnAnalysisCanBePinnedForHalfAnHour(t *testing.T) {
+	t.Parallel()
 	clock := &fakeClock{now: time.Now()}
 	m := newScriptedModel(texts(goodAnswer), texts(goodAnswer))
 	a := aiAppWith(t, m, false, func(o *server.Options) { o.Now = clock.Now })
@@ -151,6 +153,7 @@ func TestAnAnalysisCanBePinnedForHalfAnHour(t *testing.T) {
 }
 
 func TestANewAnalysisReplacesTheOneNotPinned(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -163,6 +166,7 @@ func TestANewAnalysisReplacesTheOneNotPinned(t *testing.T) {
 }
 
 func TestOnlyItsReaderPinsAnAnalysisAndOnlyOnItsLesson(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -180,6 +184,7 @@ func TestOnlyItsReaderPinsAnAnalysisAndOnlyOnItsLesson(t *testing.T) {
 }
 
 func TestAnAnalysisOverlappingAnExplorationMadeMeanwhileIsNotPinned(t *testing.T) {
+	t.Parallel()
 	var a *app
 	// while the model answers, another tab of the reader's pins an
 	// exploration over the same text: written past the API, since the
@@ -210,6 +215,7 @@ func TestAnAnalysisOverlappingAnExplorationMadeMeanwhileIsNotPinned(t *testing.T
 }
 
 func TestASelectionOverlappingAnExplorationIsNotAnalyzed(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -226,6 +232,7 @@ func TestASelectionOverlappingAnExplorationIsNotAnalyzed(t *testing.T) {
 }
 
 func TestAFailedAnalysisHasNoIDAndLeavesNothingToPin(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("没有标签。"), texts("还是没有标签。"), unavailable(), unavailable())
 	a := aiApp(t, m)
 	bob := a.user("bob")

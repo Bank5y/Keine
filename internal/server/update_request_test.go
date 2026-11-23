@@ -41,6 +41,7 @@ func updateReviews(t *testing.T, admin *client, courseID int) []map[string]any {
 }
 
 func TestUploaderUpdatesAPublishedCourseThroughReview(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -86,6 +87,7 @@ func TestUploaderUpdatesAPublishedCourseThroughReview(t *testing.T) {
 }
 
 func TestAnyoneMayCompleteAnIncompleteOrOngoingCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -109,6 +111,7 @@ func TestAnyoneMayCompleteAnIncompleteOrOngoingCourse(t *testing.T) {
 }
 
 func TestUpdateRequestsAreCheckedWhenSubmitted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -124,6 +127,7 @@ func TestUpdateRequestsAreCheckedWhenSubmitted(t *testing.T) {
 }
 
 func TestRejectedUpdateShowsItsReasonAndMayBeResubmitted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -146,6 +150,7 @@ func TestRejectedUpdateShowsItsReasonAndMayBeResubmitted(t *testing.T) {
 }
 
 func TestRequesterWithdrawsAnUpdate(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -172,6 +177,7 @@ func TestRequesterWithdrawsAnUpdate(t *testing.T) {
 }
 
 func TestApprovingOneUpdateFlagsTheOthersAsStale(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -195,6 +201,7 @@ func TestApprovingOneUpdateFlagsTheOthersAsStale(t *testing.T) {
 }
 
 func TestPrivateCoursesAreUpdatedDirectlyNotByRequest(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -206,6 +213,7 @@ func TestPrivateCoursesAreUpdatedDirectlyNotByRequest(t *testing.T) {
 }
 
 func TestAdminUpdatesAPublishedCourseDirectly(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -220,6 +228,7 @@ func TestAdminUpdatesAPublishedCourseDirectly(t *testing.T) {
 }
 
 func TestUnpublishingSettlesPendingUpdateRequests(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -241,6 +250,7 @@ func TestUnpublishingSettlesPendingUpdateRequests(t *testing.T) {
 }
 
 func TestAdminDoesNotUpdateOthersPrivateCourses(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()

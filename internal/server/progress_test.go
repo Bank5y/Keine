@@ -35,6 +35,7 @@ func setProgress(c *client, courseID, lessonID int, body map[string]any) resp {
 }
 
 func TestLessonsStartUnstudied(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -51,6 +52,7 @@ func TestLessonsStartUnstudied(t *testing.T) {
 }
 
 func TestOpeningALessonKeepsItUnstartedButRemembersIt(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -67,6 +69,7 @@ func TestOpeningALessonKeepsItUnstartedButRemembersIt(t *testing.T) {
 }
 
 func TestFinishedLessonsCountTowardsChapterAndCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -93,6 +96,7 @@ func TestFinishedLessonsCountTowardsChapterAndCourse(t *testing.T) {
 }
 
 func TestUndoingDoneGoesBackToUnstarted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -110,6 +114,7 @@ func TestUndoingDoneGoesBackToUnstarted(t *testing.T) {
 }
 
 func TestVisitingAgainKeepsALessonDone(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -124,6 +129,7 @@ func TestVisitingAgainKeepsALessonDone(t *testing.T) {
 }
 
 func TestPositionInALessonIsRemembered(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -142,6 +148,7 @@ func TestPositionInALessonIsRemembered(t *testing.T) {
 }
 
 func TestNegativePositionIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -151,6 +158,7 @@ func TestNegativePositionIsRejected(t *testing.T) {
 }
 
 func TestMyCoursesPutTheLastStudiedFirst(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	first := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -166,6 +174,7 @@ func TestMyCoursesPutTheLastStudiedFirst(t *testing.T) {
 }
 
 func TestProgressOnOthersPrivateCoursesIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

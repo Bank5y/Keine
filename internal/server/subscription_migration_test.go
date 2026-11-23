@@ -12,6 +12,7 @@ import (
 // subscriptions existed: every course in my courses was an enrollment, and
 // removing one only marked it removed.
 func TestEnrollmentsBecomeSubscriptions(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	kept := publishAs(t, a, columnFiles(columnManifest()))

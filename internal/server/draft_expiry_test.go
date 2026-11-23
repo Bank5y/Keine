@@ -49,6 +49,7 @@ func (a *app) sweep() {
 }
 
 func TestADraftUntouchedFor25DaysRemindsItsOwnerOnce(t *testing.T) {
+	t.Parallel()
 	a, clock := newClockedApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -87,6 +88,7 @@ func draftAreaKeys(a *app, id int) []string {
 }
 
 func TestADraftUntouchedFor30DaysIsDeletedWithItsFiles(t *testing.T) {
+	t.Parallel()
 	a, clock := newClockedApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -114,6 +116,7 @@ func TestADraftUntouchedFor30DaysIsDeletedWithItsFiles(t *testing.T) {
 }
 
 func TestWorkingOnADraftStartsItsTimeOver(t *testing.T) {
+	t.Parallel()
 	a, clock := newClockedApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -165,6 +168,7 @@ func deleteUser(t *testing.T, a *app, name string) {
 }
 
 func TestTheSweepRemovesFilesOfDraftsWhoseOwnerIsGone(t *testing.T) {
+	t.Parallel()
 	a, _ := newClockedApp(t)
 	alice := a.user("alice")
 	id := publishedWith(t, a, alice, func(m map[string]any) { m["completion"] = "ongoing" })

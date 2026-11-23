@@ -31,6 +31,7 @@ var (
 )
 
 func TestAnAnthropicModelSearchesWithTheProvidersOwnTools(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	answer := texts(goodAnswer)
 	answer.events = append([]assistant.Event{
@@ -101,6 +102,7 @@ func TestAnAnthropicModelSearchesWithTheProvidersOwnTools(t *testing.T) {
 }
 
 func TestAProvidersSearchErrorIsAFailedActivityAndTurnsNothingOff(t *testing.T) {
+	t.Parallel()
 	first := toolStep([]assistant.ToolCall{call("list_sections", map[string]any{"lesson": "l01"})})
 	first.events = append([]assistant.Event{
 		webStep("srv_1", "web_search", "Raft", assistant.ActivityRunning, ""),
@@ -140,6 +142,7 @@ func TestAProvidersSearchErrorIsAFailedActivityAndTurnsNothingOff(t *testing.T) 
 }
 
 func TestTheRunPassesTheProvidersTurnBackAsItWas(t *testing.T) {
+	t.Parallel()
 	lookup := call("list_sections", map[string]any{"lesson": "l01"})
 	first := toolStep([]assistant.ToolCall{lookup})
 	first.result.Native = "turn 1 as the provider wrote it"
@@ -163,6 +166,7 @@ func TestTheRunPassesTheProvidersTurnBackAsItWas(t *testing.T) {
 }
 
 func TestTheProvidersSearchIsOnlyForAFormatThatHasIt(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withModel(newScriptedModel()), withMasterKey(masterKey), withSearch(newFakeSearch()))
 	admin := a.admin()
 	r := admin.do("POST", "/api/admin/models", map[string]any{
@@ -182,6 +186,7 @@ func TestTheProvidersSearchIsOnlyForAFormatThatHasIt(t *testing.T) {
 }
 
 func TestTheConnectionTestOfAProviderRoutedModelDeclaresItsSearch(t *testing.T) {
+	t.Parallel()
 	m := &recordingTests{scriptedModel: newScriptedModel()}
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
 	admin := a.admin()

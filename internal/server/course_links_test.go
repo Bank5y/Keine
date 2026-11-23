@@ -82,6 +82,7 @@ func toolNames(req assistant.Request) []string {
 }
 
 func TestAForkAnswerNamingAnotherLessonsConceptIsFollowedByTheCandidates(t *testing.T) {
+	t.Parallel()
 	const answer = "子节点的回答：目标拆解之后，要先做意图识别，再用 function calling 执行。"
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(answer), linkCall())...)
 	a := aiApp(t, m)
@@ -113,6 +114,7 @@ func TestAForkAnswerNamingAnotherLessonsConceptIsFollowedByTheCandidates(t *test
 }
 
 func TestTheLinkingStepMustCallLinkCourse(t *testing.T) {
+	t.Parallel()
 	const answer = "子节点的回答：先做意图识别。"
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(answer), linkCall())...)
 	a := aiApp(t, m)
@@ -127,6 +129,7 @@ func TestTheLinkingStepMustCallLinkCourse(t *testing.T) {
 }
 
 func TestTheLinksKeptAreTheCandidatesTheModelPickedWithTheirPlaces(t *testing.T) {
+	t.Parallel()
 	const answer = "子节点的回答：先做意图识别，再用 function calling 执行。"
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(answer),
 		linkCall(link("c1", "这里的第一步就是那一讲的意图识别。"), link("c9", "编出来的条目"), link("c2", "执行靠工具调用。")))...)
@@ -158,6 +161,7 @@ func TestTheLinksKeptAreTheCandidatesTheModelPickedWithTheirPlaces(t *testing.T)
 }
 
 func TestAnEmptyListLinksNothing(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(linkSteps(linkedLessons(), texts("先做意图识别。"), linkCall())...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
@@ -173,6 +177,7 @@ func TestAnEmptyListLinksNothing(t *testing.T) {
 const mentioning = "回答：先做意图识别，再用 function calling 执行。"
 
 func TestOnlyTheForkTurnIsLinked(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("c1", "相关。")), texts(mentioning), texts(mentioning))...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
@@ -200,6 +205,7 @@ func TestOnlyTheForkTurnIsLinked(t *testing.T) {
 }
 
 func TestWithoutAnIndexTheForkTurnEndsWithItsAnswer(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts(mentioning))
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, false)
@@ -215,6 +221,7 @@ func TestWithoutAnIndexTheForkTurnEndsWithItsAnswer(t *testing.T) {
 }
 
 func TestTheReaderSeesTheLinkingStepAsAnActivityAndNoneOfItsText(t *testing.T) {
+	t.Parallel()
 	linking := linkCall(link("c1", "相关。"))
 	linking.events = append([]assistant.Event{{Kind: assistant.EventText, Text: "我来判断一下。"}}, linking.events...)
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linking)...)
@@ -246,6 +253,7 @@ func TestTheReaderSeesTheLinkingStepAsAnActivityAndNoneOfItsText(t *testing.T) {
 }
 
 func TestALinkingStepPastTheDeadlineKeepsTheAnswerWhole(t *testing.T) {
+	t.Parallel()
 	clock := &fakeClock{now: time.Now()}
 	linking := linkCall(link("c1", "相关。"))
 	linking.before = func() { clock.advance(3 * time.Minute) }
@@ -262,6 +270,7 @@ func TestALinkingStepPastTheDeadlineKeepsTheAnswerWhole(t *testing.T) {
 }
 
 func TestRunningOutOfCreditsWhileLinkingKeepsTheAnswerWhole(t *testing.T) {
+	t.Parallel()
 	linking := texts(strings.Repeat("判断", 100_000))
 	linking.hold = true
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linking)...)
@@ -283,6 +292,7 @@ func TestRunningOutOfCreditsWhileLinkingKeepsTheAnswerWhole(t *testing.T) {
 }
 
 func TestALaterTurnReadsTheForkTurnWithItsLinks(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("c1", "第一步就是意图识别。")), texts("答二"))...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
@@ -299,6 +309,7 @@ func TestALaterTurnReadsTheForkTurnWithItsLinks(t *testing.T) {
 }
 
 func TestTheReportReadsTheForkTurnWithItsLinks(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("c1", "第一步就是意图识别。")), texts(goodReport))...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
@@ -317,6 +328,7 @@ func TestTheReportReadsTheForkTurnWithItsLinks(t *testing.T) {
 }
 
 func TestAForkTurnTriedAgainIsLinked(t *testing.T) {
+	t.Parallel()
 	down := step{err: &assistant.Error{Category: assistant.ErrUnavailable, Detail: "down"}}
 	m := newScriptedModel(linkSteps(linkedLessons(), down, down, texts(mentioning), linkCall(link("c1", "相关。")))...)
 	a := aiApp(t, m)
@@ -333,6 +345,7 @@ func TestAForkTurnTriedAgainIsLinked(t *testing.T) {
 }
 
 func TestAtMostFiveCandidatesAreShown(t *testing.T) {
+	t.Parallel()
 	var more []map[string]any
 	var answer strings.Builder
 	answer.WriteString("回答：")

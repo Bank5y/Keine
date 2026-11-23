@@ -69,6 +69,7 @@ func expectAttached(t *testing.T, a map[string]any, start, end int) {
 }
 
 func TestAnnotationsOnAnUnchangedLessonStayAsTheyWere(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -87,6 +88,7 @@ func TestAnnotationsOnAnUnchangedLessonStayAsTheyWere(t *testing.T) {
 }
 
 func TestAnnotationsFollowTheirTextWhenOtherParagraphsChange(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -110,6 +112,7 @@ func TestAnnotationsFollowTheirTextWhenOtherParagraphsChange(t *testing.T) {
 }
 
 func TestAnnotationsWhoseTextChangedAwaitMigration(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -154,6 +157,7 @@ func TestAnnotationsWhoseTextChangedAwaitMigration(t *testing.T) {
 }
 
 func TestAnnotationsOfADeletedLessonBecomeExcerpts(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -176,6 +180,7 @@ func TestAnnotationsOfADeletedLessonBecomeExcerpts(t *testing.T) {
 }
 
 func TestNotesPageShowsPendingAnnotations(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -194,6 +199,7 @@ func TestNotesPageShowsPendingAnnotations(t *testing.T) {
 }
 
 func TestPreviousTextsAreReadOnlyByWhoeverMayReadTheLesson(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -211,6 +217,7 @@ func TestPreviousTextsAreReadOnlyByWhoeverMayReadTheLesson(t *testing.T) {
 }
 
 func TestAnEmptyTextThatChangedIsKeptToo(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, annotatedFiles(""))

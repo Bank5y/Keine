@@ -28,6 +28,7 @@ func placePath(ann map[string]any) string   { return annotationPath(ann) + "/pla
 func excerptPath(ann map[string]any) string { return annotationPath(ann) + "/excerpt" }
 
 func TestPendingAnnotationIsPlacedOnASelectionOfTheNewText(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id, l00, ann := pendingAfterRewording(t, a, bob)
@@ -50,6 +51,7 @@ func TestPendingAnnotationIsPlacedOnASelectionOfTheNewText(t *testing.T) {
 }
 
 func TestPlacingNeedsTextThatIsInTheLesson(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id, l00, ann := pendingAfterRewording(t, a, bob)
@@ -62,6 +64,7 @@ func TestPlacingNeedsTextThatIsInTheLesson(t *testing.T) {
 }
 
 func TestPendingAnnotationIsKeptAsAnExcerpt(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id, l00, ann := pendingAfterRewording(t, a, bob)
@@ -82,6 +85,7 @@ func TestPendingAnnotationIsKeptAsAnExcerpt(t *testing.T) {
 }
 
 func TestAnExcerptMayStillBePlaced(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id, l00, ann := pendingAfterRewording(t, a, bob)
@@ -92,6 +96,7 @@ func TestAnExcerptMayStillBePlaced(t *testing.T) {
 }
 
 func TestPendingAnnotationIsDeleted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id, l00, ann := pendingAfterRewording(t, a, bob)
@@ -103,6 +108,7 @@ func TestPendingAnnotationIsDeleted(t *testing.T) {
 }
 
 func TestAnAttachedAnnotationIsNotPlacedAgain(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)

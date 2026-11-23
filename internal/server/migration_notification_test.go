@@ -14,6 +14,7 @@ func rewordedOpening() string {
 }
 
 func TestAnnotatorsAreToldHowManyAnnotationsAwaitMigration(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -37,6 +38,7 @@ func TestAnnotatorsAreToldHowManyAnnotationsAwaitMigration(t *testing.T) {
 }
 
 func TestAnnotatorsWhoseAnnotationsAllReattachAreNotTold(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	carol := a.user("carol")
@@ -53,6 +55,7 @@ func TestAnnotatorsWhoseAnnotationsAllReattachAreNotTold(t *testing.T) {
 }
 
 func TestFormerSubscribersAreToldOfTheirPendingAnnotations(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	erin := a.user("erin")
@@ -73,6 +76,7 @@ func TestFormerSubscribersAreToldOfTheirPendingAnnotations(t *testing.T) {
 }
 
 func TestEachUpdateTellsAnAnnotatorAtMostOnce(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

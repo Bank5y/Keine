@@ -6,6 +6,7 @@ import (
 )
 
 func TestVisitorCanRegisterAndSignIn(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	c := a.client()
 
@@ -20,6 +21,7 @@ func TestVisitorCanRegisterAndSignIn(t *testing.T) {
 }
 
 func TestUsernamesAreUniqueIgnoringCase(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	a.user("alice")
 
@@ -28,6 +30,7 @@ func TestUsernamesAreUniqueIgnoringCase(t *testing.T) {
 }
 
 func TestShortPasswordIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 
 	r := a.client().do("POST", "/api/users", map[string]any{"username": "alice", "password": "short"})
@@ -35,6 +38,7 @@ func TestShortPasswordIsRejected(t *testing.T) {
 }
 
 func TestRegistrationIsOpenByDefault(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 
 	s := a.client().mustOK(a.client().do("GET", "/api/site", nil)).json()
@@ -44,6 +48,7 @@ func TestRegistrationIsOpenByDefault(t *testing.T) {
 }
 
 func TestAdminCanCloseRegistration(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	admin := a.admin()
 
@@ -62,6 +67,7 @@ func TestAdminCanCloseRegistration(t *testing.T) {
 }
 
 func TestOnlyAdminsChangeSiteSettings(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -70,6 +76,7 @@ func TestOnlyAdminsChangeSiteSettings(t *testing.T) {
 }
 
 func TestUserCanChangeOwnPassword(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -80,6 +87,7 @@ func TestUserCanChangeOwnPassword(t *testing.T) {
 }
 
 func TestChangingPasswordRequiresTheCurrentOne(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 

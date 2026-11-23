@@ -78,6 +78,7 @@ func draftKeys(t *testing.T, c *client, id int) map[string]string {
 }
 
 func TestADraftStartsEmptyAndCollectsOperations(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -98,6 +99,7 @@ func TestADraftStartsEmptyAndCollectsOperations(t *testing.T) {
 }
 
 func TestADraftIsSeenOnlyByItsOwner(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -117,6 +119,7 @@ func TestADraftIsSeenOnlyByItsOwner(t *testing.T) {
 }
 
 func TestOnlyThoseWhoMayChangeACourseKeepADraft(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -129,6 +132,7 @@ func TestOnlyThoseWhoMayChangeACourseKeepADraft(t *testing.T) {
 }
 
 func TestDraftOperationsReshapeTheCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -164,6 +168,7 @@ func TestDraftOperationsReshapeTheCourse(t *testing.T) {
 // A recorded lesson move names the chapter the lesson came from, so the
 // editor can tell moving it to another chapter from reordering its own.
 func TestALessonMoveRecordsTheChapterItCameFrom(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -182,6 +187,7 @@ func TestALessonMoveRecordsTheChapterItCameFrom(t *testing.T) {
 }
 
 func TestDraftChangesCourseInformation(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -205,6 +211,7 @@ func errorMessage(r resp) string {
 }
 
 func TestDeletingAChapterTakesItsLessonsButNeverTheLastChapter(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -224,6 +231,7 @@ func TestDeletingAChapterTakesItsLessonsButNeverTheLastChapter(t *testing.T) {
 }
 
 func TestAFinishedCourseCannotGetUpcomingLessonsInADraft(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest())) // finished
@@ -240,6 +248,7 @@ func TestAFinishedCourseCannotGetUpcomingLessonsInADraft(t *testing.T) {
 }
 
 func TestBadOperationsAreRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -262,6 +271,7 @@ func TestBadOperationsAreRejected(t *testing.T) {
 }
 
 func TestUndoGoesBackOneStepAtATimeToAnEmptyDraft(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -280,6 +290,7 @@ func TestUndoGoesBackOneStepAtATimeToAnEmptyDraft(t *testing.T) {
 }
 
 func TestDiscardingADraftDropsEveryOperation(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -296,6 +307,7 @@ func TestDiscardingADraftDropsEveryOperation(t *testing.T) {
 }
 
 func TestADraftSurvivesARestart(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))

@@ -47,6 +47,7 @@ func ints(list any) []int {
 }
 
 func TestEachReportIsANewVersionAndTheOldOnesStay(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("第一个后续回复。"), texts(cut(goodReport, 30, 90)...), texts("第二个后续回复。"),
 		texts(strings.Replace(goodReport, "Agent 的分工", "Agent 的分工与出错", 1)))
 	a := aiApp(t, m)
@@ -130,6 +131,7 @@ func reportMetas(t *testing.T, a *app, exp int) []map[string]any {
 }
 
 func TestAReportReadsTheWholeTreeAndIsNoTurn(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("主节点的答"), texts("子节点的答"), texts("子节点接着的答"), texts("分支的答"), texts("发散的答"), texts(goodReport))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -181,6 +183,7 @@ func TestAReportReadsTheWholeTreeAndIsNoTurn(t *testing.T) {
 }
 
 func TestAReportsReferencesAreOnlyWhatTheTurnsLookedUp(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	search := call("web_search", map[string]any{"query": "Raft 任期"})
 	written := strings.Replace(goodReport, "planner 和 executor 分工。", "planner 和 executor 分工，见 [编造的资料](https://made.up/paper)。\n\n## 参考\n\n- [另一份编造的](https://made.up/other)", 1)
@@ -221,6 +224,7 @@ func TestAReportsReferencesAreOnlyWhatTheTurnsLookedUp(t *testing.T) {
 }
 
 func TestAReportOfATreeTooLongIsRefusedAndCostsNothing(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("长", 1500)
 	m := newScriptedModel(texts(goodAnswer), texts(long), texts(long), texts(long))
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
@@ -251,6 +255,7 @@ func TestAReportOfATreeTooLongIsRefusedAndCostsNothing(t *testing.T) {
 }
 
 func TestAReportIsChargedAsAReport(t *testing.T) {
+	t.Parallel()
 	s := texts(goodReport)
 	s.result.Usage = assistant.Usage{Input: n64(1_000_000), CacheRead: n64(0), CacheWrite: n64(0), Output: n64(500_000)}
 	m := newScriptedModel(texts(goodAnswer), s)
@@ -278,6 +283,7 @@ func TestAReportIsChargedAsAReport(t *testing.T) {
 }
 
 func TestAReportThatMayCostMoreThanIsLeftDoesNotStart(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")

@@ -53,6 +53,7 @@ func gate(t *testing.T) (open chan struct{}, release func()) {
 }
 
 func TestWhenEveryRunIsTakenTheNextIsTurnedAwayAtOnce(t *testing.T) {
+	t.Parallel()
 	open, release := gate(t)
 	m := newScriptedModel(gated(open), texts(goodAnswer))
 	a := aiAppWith(t, m, false, withMaxRuns(1))
@@ -74,6 +75,7 @@ func TestWhenEveryRunIsTakenTheNextIsTurnedAwayAtOnce(t *testing.T) {
 }
 
 func TestAReaderRunsOneAnalysisAtATime(t *testing.T) {
+	t.Parallel()
 	open, release := gate(t)
 	m := newScriptedModel(gated(open), texts(goodAnswer), texts(goodAnswer))
 	a := aiApp(t, m)
@@ -129,6 +131,7 @@ func withLength(choice string) map[string]any {
 }
 
 func TestALongLessonNeedsTheReadersChoiceOfHowMuchToSend(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts(goodAnswer))
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
 	mapModel(t, a, map[string]any{"searchRoute": "off", "contextWindow": smallWindow}, false)
@@ -168,6 +171,7 @@ func TestALongLessonNeedsTheReadersChoiceOfHowMuchToSend(t *testing.T) {
 }
 
 func TestASelectionAboveTheFirstSectionTakesWhatIsThereAndTheFirstSection(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
 	mapModel(t, a, map[string]any{"searchRoute": "off", "contextWindow": smallWindow}, false)
@@ -192,6 +196,7 @@ func TestASelectionAboveTheFirstSectionTakesWhatIsThereAndTheFirstSection(t *tes
 }
 
 func TestPastTheHardLimitTheWholeLessonCannotBeChosen(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
 	mapModel(t, a, map[string]any{"searchRoute": "off", "contextWindow": smallWindow}, false)
@@ -214,6 +219,7 @@ func TestPastTheHardLimitTheWholeLessonCannotBeChosen(t *testing.T) {
 }
 
 func TestAShortLessonNeedsNoChoice(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
 	mapModel(t, a, map[string]any{"searchRoute": "off", "contextWindow": smallWindow}, false)
@@ -226,6 +232,7 @@ func TestAShortLessonNeedsNoChoice(t *testing.T) {
 }
 
 func TestInputPastTheContextWindowIsRefusedBeforeTheModelIsCalled(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel()
 	a := newApp(t, withModel(m), withMasterKey(masterKey))
 	mapModel(t, a, map[string]any{"searchRoute": "off", "contextWindow": 3000}, false)
@@ -240,6 +247,7 @@ func TestInputPastTheContextWindowIsRefusedBeforeTheModelIsCalled(t *testing.T) 
 }
 
 func TestAnUnknownLengthChoiceIsABadRequest(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	bob := a.user("bob")
 	id, lesson := analysisColumn(t, bob)

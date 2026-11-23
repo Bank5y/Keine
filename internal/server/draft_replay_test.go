@@ -13,6 +13,7 @@ func approve(admin *client, review map[string]any) resp {
 }
 
 func TestApprovingADraftRequestKeepsTheUpdatesThatCameFirst(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -32,6 +33,7 @@ func TestApprovingADraftRequestKeepsTheUpdatesThatCameFirst(t *testing.T) {
 }
 
 func TestADraftRequestFiledBeforeAnUpdateBringsItsUploadedLesson(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -58,6 +60,7 @@ func TestADraftRequestFiledBeforeAnUpdateBringsItsUploadedLesson(t *testing.T) {
 }
 
 func TestADraftRequestThatNoLongerAppliesCannotBeApproved(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -81,6 +84,7 @@ func TestADraftRequestThatNoLongerAppliesCannotBeApproved(t *testing.T) {
 }
 
 func TestAMissingFileDoesNotHideTheReviews(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -105,6 +109,7 @@ func TestAMissingFileDoesNotHideTheReviews(t *testing.T) {
 }
 
 func TestADraftIsCommittedThoughAFileOfTheCourseIsMissing(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -121,6 +126,7 @@ func TestADraftIsCommittedThoughAFileOfTheCourseIsMissing(t *testing.T) {
 }
 
 func TestUndoingTheOnlyOperationKeepsUploadsInProgress(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -137,6 +143,7 @@ func TestUndoingTheOnlyOperationKeepsUploadsInProgress(t *testing.T) {
 }
 
 func TestALessonZipMayNotUnpackPastTheUploadLimit(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withUploadLimit(1<<10))
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, map[string]string{"course.json": manifestJSON(map[string]any{

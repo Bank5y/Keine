@@ -12,6 +12,7 @@ func deleteCourse(c *client, id int) resp {
 }
 
 func TestSubscriberKeepsDoneLessonsOfADeletedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	admin := a.admin()
@@ -49,6 +50,7 @@ func TestSubscriberKeepsDoneLessonsOfADeletedCourse(t *testing.T) {
 }
 
 func TestDeletingACourseNobodyRetainsCleansItAtOnce(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -74,6 +76,7 @@ func TestDeletingACourseNobodyRetainsCleansItAtOnce(t *testing.T) {
 }
 
 func TestDeletingAnUnpublishedCourseKeepsItsFreezeAndDropsTheNewerFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	unpublish(t, a, id)
@@ -104,6 +107,7 @@ func TestDeletingAnUnpublishedCourseKeepsItsFreezeAndDropsTheNewerFiles(t *testi
 }
 
 func TestTheLastRetainerLeavingRemovesADeletedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	dave := a.user("dave")
@@ -130,6 +134,7 @@ func TestTheLastRetainerLeavingRemovesADeletedCourse(t *testing.T) {
 }
 
 func TestSubscriberKeepsAnnotatedLessonsOfADeletedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	ann := annotate(t, bob, id, lessons["l02"], map[string]any{"style": "underline", "quote": "02"}) // annotated, not done

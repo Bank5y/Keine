@@ -83,6 +83,7 @@ func toolColumn(t *testing.T, c *client, l02 string) (courseID, lessonID int) {
 }
 
 func TestCourseToolsReadTheReadersCourse(t *testing.T) {
+	t.Parallel()
 	list := call("list_sections", map[string]any{"lesson": "l02"})
 	read := call("read_lesson", map[string]any{"lesson": "l02", "section": "意图的三层"})
 	search := call("search_course", map[string]any{"query": "agent"})
@@ -157,6 +158,7 @@ func TestCourseToolsReadTheReadersCourse(t *testing.T) {
 }
 
 func TestCourseToolsSayHowToFixAWrongCall(t *testing.T) {
+	t.Parallel()
 	noLesson := call("read_lesson", map[string]any{"lesson": "l99"})
 	noSection := call("read_lesson", map[string]any{"lesson": "l02", "section": "不存在"})
 	upcoming := call("list_sections", map[string]any{"lesson": "l03"})
@@ -189,6 +191,7 @@ func TestCourseToolsSayHowToFixAWrongCall(t *testing.T) {
 }
 
 func TestCourseToolsReadOnlyTheVersionTheReaderSees(t *testing.T) {
+	t.Parallel()
 	other := call("read_lesson", map[string]any{"lesson": "x9"})
 	notKept := call("read_lesson", map[string]any{"lesson": "l02"})
 	searchOther := call("search_course", map[string]any{"query": "别处独有"})
@@ -226,6 +229,7 @@ func TestCourseToolsReadOnlyTheVersionTheReaderSees(t *testing.T) {
 }
 
 func TestALongLessonIsCutAndTheModelToldToReadItBySection(t *testing.T) {
+	t.Parallel()
 	long := "# 02\n\n## 很长\n\n" + strings.Repeat("长", 31_000) + "\n"
 	read := call("read_lesson", map[string]any{"lesson": "l02"})
 	m := newScriptedModel(toolStep([]assistant.ToolCall{read}), texts(goodAnswer))
@@ -241,6 +245,7 @@ func TestALongLessonIsCutAndTheModelToldToReadItBySection(t *testing.T) {
 }
 
 func TestAfterSixStepsWithToolsTheRunAnswersWithoutThem(t *testing.T) {
+	t.Parallel()
 	var steps []step
 	for i := range 6 {
 		steps = append(steps, toolStep([]assistant.ToolCall{call("search_course", map[string]any{"query": fmt.Sprintf("词%d", i)})}))
@@ -277,6 +282,7 @@ func TestAfterSixStepsWithToolsTheRunAnswersWithoutThem(t *testing.T) {
 }
 
 func TestAStepCarriesOutAtMostFiveToolCalls(t *testing.T) {
+	t.Parallel()
 	var cs []assistant.ToolCall
 	for i := range 7 {
 		cs = append(cs, call("search_course", map[string]any{"query": fmt.Sprintf("词%d", i)}))
@@ -306,6 +312,7 @@ func TestAStepCarriesOutAtMostFiveToolCalls(t *testing.T) {
 }
 
 func TestAfterTheSoftDeadlineTheRunAnswersWithoutTools(t *testing.T) {
+	t.Parallel()
 	clock := &fakeClock{now: time.Now()}
 	first := toolStep([]assistant.ToolCall{call("search_course", map[string]any{"query": "Agent"})})
 	first.before = func() { clock.advance(95 * time.Second) }
@@ -328,6 +335,7 @@ func TestAfterTheSoftDeadlineTheRunAnswersWithoutTools(t *testing.T) {
 }
 
 func TestAtTheHardDeadlineTheRunTimesOut(t *testing.T) {
+	t.Parallel()
 	clock := &fakeClock{now: time.Now()}
 	first := toolStep([]assistant.ToolCall{call("search_course", map[string]any{"query": "Agent"})}, "<exp_title>Agent</exp_title>")
 	first.before = func() { clock.advance(121 * time.Second) }
@@ -346,6 +354,7 @@ func TestAtTheHardDeadlineTheRunTimesOut(t *testing.T) {
 }
 
 func TestTheDeadlineCanBeSet(t *testing.T) {
+	t.Parallel()
 	clock := &fakeClock{now: time.Now()}
 	first := toolStep([]assistant.ToolCall{call("search_course", map[string]any{"query": "Agent"})})
 	first.before = func() { clock.advance(31 * time.Second) }
@@ -372,6 +381,7 @@ func countingTool(name string, fail func() error) (assistant.Tool, *atomic.Int64
 }
 
 func TestAToolPanickingIsToldAsAnInternalErrorAndTheRunGoesOn(t *testing.T) {
+	t.Parallel()
 	boom, _ := countingTool("boom", func() error { panic("database on fire: secret detail") })
 	c := call("boom", "{}")
 	m := newScriptedModel(toolStep([]assistant.ToolCall{c}), texts(goodAnswer))
@@ -399,6 +409,7 @@ func TestAToolPanickingIsToldAsAnInternalErrorAndTheRunGoesOn(t *testing.T) {
 }
 
 func TestATransientFailureIsTriedOnceMoreAndTwiceInARowTurnsTheToolOff(t *testing.T) {
+	t.Parallel()
 	flaky, tries := countingTool("flaky", func() error {
 		return assistant.Transient(assistant.ErrUnavailable, fmt.Errorf("502"))
 	})
@@ -443,6 +454,7 @@ func TestATransientFailureIsTriedOnceMoreAndTwiceInARowTurnsTheToolOff(t *testin
 }
 
 func TestAnAccountFailureTurnsTheToolOffAtOnce(t *testing.T) {
+	t.Parallel()
 	broke, tries := countingTool("paid", func() error {
 		return assistant.AccountFailure(assistant.ErrQuotaExhausted, fmt.Errorf("402"))
 	})
@@ -462,6 +474,7 @@ func TestAnAccountFailureTurnsTheToolOffAtOnce(t *testing.T) {
 }
 
 func TestADraftFollowedByToolCallsIsReset(t *testing.T) {
+	t.Parallel()
 	c := call("search_course", map[string]any{"query": "Agent"})
 	m := newScriptedModel(toolStep([]assistant.ToolCall{c}, "<exp_title>草稿标题</exp_title><exp_concept>草稿"), texts(goodAnswer))
 	a := aiApp(t, m)
@@ -496,6 +509,7 @@ func TestADraftFollowedByToolCallsIsReset(t *testing.T) {
 }
 
 func TestToolCallsWithoutADraftSendNoReset(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(toolStep([]assistant.ToolCall{call("search_course", map[string]any{"query": "Agent"})}, "我先查一下。"), texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -510,6 +524,7 @@ func TestToolCallsWithoutADraftSendNoReset(t *testing.T) {
 }
 
 func TestAToolWhoseTargetPanicsDoesNotStopTheServer(t *testing.T) {
+	t.Parallel()
 	odd := assistant.NewTool("odd", "a test tool", func(struct{}) string { panic("no target") },
 		func(context.Context, struct{}) (string, error) { return "结果", nil })
 	c := call("odd", "{}")

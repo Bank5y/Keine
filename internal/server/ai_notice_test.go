@@ -12,6 +12,7 @@ func me(t *testing.T, c *client) map[string]any {
 }
 
 func TestTheNoticeShowsUntilTheReaderFirstAnalyzesOnAnyDevice(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	bob := a.user("bob")
 	if got := me(t, bob); got["aiNoticeRead"] != false {
@@ -34,6 +35,7 @@ func TestTheNoticeShowsUntilTheReaderFirstAnalyzesOnAnyDevice(t *testing.T) {
 }
 
 func TestTheNoticeNamesTheAnalysisModelAndItsSearchService(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	a := newApp(t, withModel(newScriptedModel()), withMasterKey(masterKey), withSearch(f))
 	bob := a.user("bob")
@@ -60,6 +62,7 @@ func TestTheNoticeNamesTheAnalysisModelAndItsSearchService(t *testing.T) {
 }
 
 func TestReadingTheNoticeNeedsASignedInReader(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	expectError(t, a.client().do("POST", "/api/me/ai-notice", nil), http.StatusUnauthorized, "unauthenticated")
 }

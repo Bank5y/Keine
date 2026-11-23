@@ -21,6 +21,7 @@ func modelsProblem(t *testing.T, admin *client) map[string]any {
 }
 
 func TestTheAdminIsToldWhyTheAssistantIsUnavailable(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withModel(newScriptedModel()), withMasterKey(masterKey))
 	admin := a.admin()
 	if p := aiProblem(t, admin); p["reason"] != "turns_unmapped" || fmt.Sprint(p["turns"]) != "[analysis followup report concept_index]" {
@@ -67,6 +68,7 @@ func TestTheAdminIsToldWhyTheAssistantIsUnavailable(t *testing.T) {
 }
 
 func TestAReaderIsNotToldTheDetails(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withModel(newScriptedModel()), withMasterKey(masterKey))
 	got := me(t, a.user("bob"))
 	if got["aiAvailable"] != false || got["aiProblem"] != nil {

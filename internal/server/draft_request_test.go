@@ -58,6 +58,7 @@ func approveUpdateOf(t *testing.T, admin *client, courseID int) {
 }
 
 func TestTheReviewListsRenamedAndMovedLessonsByChapter(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	carol := a.user("carol")
@@ -94,6 +95,7 @@ func TestTheReviewListsRenamedAndMovedLessonsByChapter(t *testing.T) {
 }
 
 func TestSubmittingAgainReplacesTheRequestersPendingRequest(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -139,6 +141,7 @@ func TestSubmittingAgainReplacesTheRequestersPendingRequest(t *testing.T) {
 }
 
 func TestAPublicCoursesUploaderCommitsADraftAsAnUpdateRequest(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -176,6 +179,7 @@ func TestAPublicCoursesUploaderCommitsADraftAsAnUpdateRequest(t *testing.T) {
 }
 
 func TestARequestedDraftCarriesItsUploadedLessons(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

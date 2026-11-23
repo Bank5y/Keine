@@ -39,6 +39,7 @@ func chaptersByKey(d map[string]any) map[string]map[string]any {
 }
 
 func TestAnOutlineWithUpcomingLessonsAndAnEmptyChapterImports(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -62,6 +63,7 @@ func TestAnOutlineWithUpcomingLessonsAndAnEmptyChapterImports(t *testing.T) {
 }
 
 func TestAFinishedCourseCannotHaveUpcomingLessons(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := outlineManifest()
@@ -76,6 +78,7 @@ func TestAFinishedCourseCannotHaveUpcomingLessons(t *testing.T) {
 }
 
 func TestUpcomingLessonsAreLeftOutOfProgress(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, outlineFiles(outlineManifest()))
@@ -97,6 +100,7 @@ func TestUpcomingLessonsAreLeftOutOfProgress(t *testing.T) {
 }
 
 func TestAnUpcomingLessonCannotBeRead(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, outlineFiles(outlineManifest()))
@@ -120,6 +124,7 @@ func filledOutline() map[string]string {
 }
 
 func TestFillingAnUpcomingLessonCountsAsAddingIt(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -146,6 +151,7 @@ func TestFillingAnUpcomingLessonCountsAsAddingIt(t *testing.T) {
 }
 
 func TestAnUpdateRequestFillingAnUpcomingLessonShowsItAsAdded(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

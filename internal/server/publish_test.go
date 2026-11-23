@@ -51,6 +51,7 @@ func publishedCourse(t *testing.T, a *app, alice *client) int {
 }
 
 func TestUploaderRequestsPublishingAndAdminApproves(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -74,6 +75,7 @@ func TestUploaderRequestsPublishingAndAdminApproves(t *testing.T) {
 }
 
 func TestAdminReadsCoursesUnderReviewOnly(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -91,6 +93,7 @@ func TestAdminReadsCoursesUnderReviewOnly(t *testing.T) {
 }
 
 func TestUploaderWithdrawsARequest(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -106,6 +109,7 @@ func TestUploaderWithdrawsARequest(t *testing.T) {
 }
 
 func TestRejectionNeedsAReasonTheUploaderCanRead(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -125,6 +129,7 @@ func TestRejectionNeedsAReasonTheUploaderCanRead(t *testing.T) {
 }
 
 func TestOnlyTheUploaderRequestsAndOnlyFromTheRightState(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -140,6 +145,7 @@ func TestOnlyTheUploaderRequestsAndOnlyFromTheRightState(t *testing.T) {
 }
 
 func TestPublishedCourseIsReadOnlyForTheUploader(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := publishedCourse(t, a, alice)
@@ -159,6 +165,7 @@ func TestPublishedCourseIsReadOnlyForTheUploader(t *testing.T) {
 }
 
 func TestAdminPublishesDirectly(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	admin := a.admin()
 	alice := a.user("alice")
@@ -171,6 +178,7 @@ func TestAdminPublishesDirectly(t *testing.T) {
 }
 
 func TestAdminPublishesAPendingCourseDirectly(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	admin := a.admin()
 	alice := a.user("alice")
@@ -186,6 +194,7 @@ func TestAdminPublishesAPendingCourseDirectly(t *testing.T) {
 }
 
 func TestAdminUnpublishesBackToTheUploader(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -201,6 +210,7 @@ func TestAdminUnpublishesBackToTheUploader(t *testing.T) {
 }
 
 func TestAdminEditsAPublishedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -219,6 +229,7 @@ func TestAdminEditsAPublishedCourse(t *testing.T) {
 }
 
 func TestAdminDeletesAnyCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -233,6 +244,7 @@ func TestAdminDeletesAnyCourse(t *testing.T) {
 }
 
 func TestUsersCannotModerate(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -244,6 +256,7 @@ func TestUsersCannotModerate(t *testing.T) {
 }
 
 func TestAdminEditsOnlyPublishedCourses(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()

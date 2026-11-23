@@ -13,6 +13,7 @@ import (
 func explorationPath(id int) string { return fmt.Sprintf("/api/explorations/%d", id) }
 
 func TestAnExplorationShowsItsDocumentAndItsNodeTree(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	_, _, exp := pinnedExploration(t, bob)
@@ -62,6 +63,7 @@ func nodeAndTurnCount(t *testing.T, a *app, exp int) (nodes, turns int) {
 }
 
 func TestDeletingAnExplorationTakesItsDialogueWithIt(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	id, lesson, exp := pinnedExploration(t, bob)
@@ -78,6 +80,7 @@ func TestDeletingAnExplorationTakesItsDialogueWithIt(t *testing.T) {
 }
 
 func TestOnlyItsReaderSeesOrDeletesAnExploration(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	carol := a.user("carol")
@@ -114,6 +117,7 @@ func pinnedBefore157(t *testing.T, a *app, exp int, meaning string) {
 // not made again: the meaning is its concept explanation, and a follow-up
 // reads the first answer as the reader saw it (#157).
 func TestAnOldExplorationShowsItsMeaningAsItsConceptExplanation(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")

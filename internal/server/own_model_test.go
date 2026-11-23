@@ -23,6 +23,7 @@ func withOwnModels(networks ...string) appOption {
 const ownPath = "/api/me/own-model"
 
 func TestOwnModelsAreClosedUnlessTheDeployerOpensThem(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	bob := a.user("bob")
 	for _, r := range []resp{
@@ -39,6 +40,7 @@ func TestOwnModelsAreClosedUnlessTheDeployerOpensThem(t *testing.T) {
 }
 
 func TestOwnModelsCannotBeOpenedWithoutAMasterKey(t *testing.T) {
+	t.Parallel()
 	_, err := server.New(context.Background(), server.Options{DatabaseURL: testutil.NewDatabase(t), OwnModels: true})
 	if err == nil {
 		t.Fatal("started with own models open and no master key")
@@ -50,6 +52,7 @@ func ownBody(baseURL, key string) map[string]any {
 }
 
 func TestAReaderSavesTheirOwnModelAfterAConnectionTest(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey), withOwnModels("127.0.0.0/8"))
 	f := newFakeModel(t)
 	bob := a.user("bob")
@@ -113,6 +116,7 @@ func blockedAt(t *testing.T, c *client, baseURL string) {
 }
 
 func TestAnOwnModelCannotReachInsideAddresses(t *testing.T) {
+	t.Parallel()
 	f := newFakeModel(t)
 	port := f.srv.URL[strings.LastIndex(f.srv.URL, ":"):]
 	a := newApp(t, withMasterKey(masterKey), withOwnModels("169.254.0.0/16", "10.9.0.0/16"))
@@ -137,6 +141,7 @@ func TestAnOwnModelCannotReachInsideAddresses(t *testing.T) {
 }
 
 func TestAnOwnModelInTheDeployersNetworksIsReachedOverHTTPButNotRedirected(t *testing.T) {
+	t.Parallel()
 	f := newFakeModel(t)
 	var redirected int
 	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { redirected++ }))
@@ -194,6 +199,7 @@ func ownApp(t *testing.T, site, own *scriptedModel, f *fakeSearch, search string
 }
 
 func TestARunOnTheReadersOwnModelCostsNothingAndIsRecordedAsTheirs(t *testing.T) {
+	t.Parallel()
 	site := newScriptedModel()
 	reply := texts("任期就是 term。")
 	reply.result.Usage = assistant.Usage{Input: n64(1_000_000), Output: n64(500_000)}
@@ -232,6 +238,7 @@ func TestARunOnTheReadersOwnModelCostsNothingAndIsRecordedAsTheirs(t *testing.T)
 }
 
 func TestAnOwnModelFailingIsTheReadersModelErrorAndNeverFallsBackToTheSites(t *testing.T) {
+	t.Parallel()
 	site := newScriptedModel(texts(goodAnswer))
 	own := newScriptedModel(step{err: &assistant.Error{Category: assistant.ErrAuth, Detail: "bad key"}})
 	a, bob := ownApp(t, site, own, newFakeSearch(), "off")
@@ -251,6 +258,7 @@ func TestAnOwnModelFailingIsTheReadersModelErrorAndNeverFallsBackToTheSites(t *t
 }
 
 func TestAnOwnModelOfflineDeclaresNoSearchAndTheReaderIsTold(t *testing.T) {
+	t.Parallel()
 	own := newScriptedModel(texts(goodAnswer))
 	f := newFakeSearch()
 	_, bob := ownApp(t, newScriptedModel(), own, f, "off")
@@ -267,6 +275,7 @@ func TestAnOwnModelOfflineDeclaresNoSearchAndTheReaderIsTold(t *testing.T) {
 }
 
 func TestAnOwnModelSearchesOnTheReadersTavilyKeyNeverTheSites(t *testing.T) {
+	t.Parallel()
 	own := newScriptedModel(texts(goodAnswer))
 	f := newFakeSearch()
 	_, bob := ownApp(t, newScriptedModel(), own, f, "tavily")
@@ -291,6 +300,7 @@ func TestAnOwnModelSearchesOnTheReadersTavilyKeyNeverTheSites(t *testing.T) {
 }
 
 func TestDeletingTheOwnModelTurnsItOff(t *testing.T) {
+	t.Parallel()
 	site := newScriptedModel(texts(goodAnswer))
 	own := newScriptedModel()
 	_, bob := ownApp(t, site, own, newFakeSearch(), "off")
@@ -310,6 +320,7 @@ func TestDeletingTheOwnModelTurnsItOff(t *testing.T) {
 }
 
 func TestAnOwnKeyTheMasterKeyNoLongerOpensAsksTheReaderToEnterItAgain(t *testing.T) {
+	t.Parallel()
 	site, own := newScriptedModel(texts(goodAnswer)), newScriptedModel()
 	a, bob := ownApp(t, site, own, newFakeSearch(), "off")
 	id, lesson := analysisColumn(t, bob)
@@ -324,6 +335,7 @@ func TestAnOwnKeyTheMasterKeyNoLongerOpensAsksTheReaderToEnterItAgain(t *testing
 }
 
 func TestATavilyKeyNoLongerSearchedWithIsNotKept(t *testing.T) {
+	t.Parallel()
 	_, bob := ownApp(t, newScriptedModel(), newScriptedModel(), newFakeSearch(), "tavily")
 	if m := bob.mustOK(bob.do("GET", ownPath, nil)).json(); m["tavilyLast4"] != "5678" {
 		t.Fatalf("Tavily key not kept while searched with: %v", m)

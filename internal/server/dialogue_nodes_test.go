@@ -34,6 +34,7 @@ func dialogueOf(t *testing.T, msgs []string) []string {
 }
 
 func TestANodeSeesItsChainUpToWhereItForked(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("答二"), texts("答三"), texts("兄弟的答"), texts("子节点的答"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -60,6 +61,7 @@ func TestANodeSeesItsChainUpToWhereItForked(t *testing.T) {
 }
 
 func TestNestedNodesSeeTheWholeChainOfForks(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("答二"), texts("A1"), texts("A2"), texts("B1"), texts("C1"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -86,6 +88,7 @@ func TestNestedNodesSeeTheWholeChainOfForks(t *testing.T) {
 }
 
 func TestDeletingANodeTakesTheNodesUnderIt(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("A1"), texts("B1"), texts("C1"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -110,6 +113,7 @@ func TestDeletingANodeTakesTheNodesUnderIt(t *testing.T) {
 }
 
 func TestAnExplorationHoldsFiftyNodes(t *testing.T) {
+	t.Parallel()
 	steps := []step{texts(goodAnswer)}
 	for range 49 {
 		steps = append(steps, texts("答"))
