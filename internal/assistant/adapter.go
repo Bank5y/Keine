@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Adapter makes one streaming model call. It is the only replaceable unit
@@ -65,6 +66,29 @@ type Message struct {
 	// results). Within one run only: it is opaque to the loop and never
 	// stored (ADR 0008).
 	Native any
+	// Prefix marks an assistant message, the last of a request, that the
+	// reply goes on from as written: a long output cut off at the output
+	// cap (#169). An adapter that cannot continue a message as written
+	// asks for the rest instead (AskToContinue).
+	Prefix bool
+}
+
+// continueNote asks a model to go on from where its cut-off reply stopped.
+const continueNote = "上一条答复写到输出上限被截断了。请从断处接着写：直接输出紧接在断处之后的文字，不要重复已经写了的内容，也不要加任何说明。"
+
+// AskToContinue is a request whose last message is a Prefix as an adapter
+// that cannot continue a message as written sends it: the cut-off reply as
+// an assistant message, then a user message asking for the rest. Any other
+// request is returned as it is.
+func AskToContinue(req Request) Request {
+	n := len(req.Messages)
+	if n == 0 || !req.Messages[n-1].Prefix {
+		return req
+	}
+	req.Messages = append(slices.Clip(req.Messages[:n-1]),
+		Message{Role: RoleAssistant, Content: req.Messages[n-1].Content},
+		Message{Role: RoleUser, Content: continueNote})
+	return req
 }
 
 // ToolSpec is a tool declaration: Parameters is its JSON Schema.

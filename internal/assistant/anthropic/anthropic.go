@@ -226,6 +226,8 @@ func finishReason(s sdk.StopReason, called bool) assistant.FinishReason {
 // --- request
 
 func wireRequest(req assistant.Request) sdk.MessageNewParams {
+	// current models refuse a prefill: a cut-off reply is asked to go on
+	req = assistant.AskToContinue(req)
 	p := sdk.MessageNewParams{
 		Model:     sdk.Model(req.Model),
 		MaxTokens: int64(req.MaxTokens),

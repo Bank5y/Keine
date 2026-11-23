@@ -239,8 +239,9 @@ func TestEditKeepsKeyWhenLeftBlank(t *testing.T) {
 	edit := modelBody(f, "")
 	edit["displayName"] = "Renamed"
 	edit["contextWindow"] = 64000
+	edit["maxOutput"] = 32000
 	m := admin.mustOK(admin.do("PUT", fmt.Sprintf("/api/admin/models/%d", id), edit)).json()
-	if f.lastKey() != "sk-first-a1b2" || m["keyLast4"] != "a1b2" || m["displayName"] != "Renamed" || m["contextWindow"] != float64(64000) {
+	if f.lastKey() != "sk-first-a1b2" || m["keyLast4"] != "a1b2" || m["displayName"] != "Renamed" || m["contextWindow"] != float64(64000) || m["maxOutput"] != float64(32000) {
 		t.Fatalf("edit: key %q, model %v", f.lastKey(), m)
 	}
 
@@ -261,6 +262,7 @@ func TestInvalidModelsAreRejected(t *testing.T) {
 		"model":         func(m map[string]any) { m["model"] = " " },
 		"display name":  func(m map[string]any) { m["displayName"] = "" },
 		"context":       func(m map[string]any) { m["contextWindow"] = 0 },
+		"max output":    func(m map[string]any) { m["maxOutput"] = -1 },
 		"partial rates": func(m map[string]any) { m["rates"] = map[string]any{"input": 1, "output": 2} },
 		"negative rate": func(m map[string]any) {
 			m["rates"] = map[string]any{"input": -1, "cacheRead": 0, "cacheWrite": 0, "output": 2, "search": 0}

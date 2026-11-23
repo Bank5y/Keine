@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 interface Rates { input: number; cacheRead: number; cacheWrite: number; output: number; search: number }
 interface SiteModel {
   id: number; format: string; provider: string; baseUrl: string; model: string; displayName: string;
-  contextWindow: number | null; rates: Rates | null; keyLast4: string;
+  contextWindow: number | null; maxOutput: number | null; rates: Rates | null; keyLast4: string;
   searchRoute: SearchRoute; search: SearchRoute; searchReady: boolean;
 }
 interface TurnModel { modelId: number; thinking: boolean }
@@ -189,15 +189,15 @@ export function AdminModels({ path }: { path: string }) {
   );
 }
 
-interface Form { format: string; provider: string; displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; rates: Record<keyof Rates, string>; searchRoute: SearchRoute }
+interface Form { format: string; provider: string; displayName: string; model: string; baseUrl: string; key: string; contextWindow: string; maxOutput: string; rates: Record<keyof Rates, string>; searchRoute: SearchRoute }
 
-const blank: Form = { format: 'openai', provider: '', displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' }, searchRoute: '' };
+const blank: Form = { format: 'openai', provider: '', displayName: '', model: '', baseUrl: '', key: '', contextWindow: '', maxOutput: '', rates: { input: '', cacheRead: '', cacheWrite: '', output: '', search: '' }, searchRoute: '' };
 
 function formOf(m: SiteModel): Form {
   const r = m.rates;
   return {
     format: m.format, provider: m.provider, displayName: m.displayName, model: m.model, baseUrl: m.baseUrl, key: '',
-    contextWindow: m.contextWindow ? String(m.contextWindow) : '', searchRoute: m.searchRoute,
+    contextWindow: m.contextWindow ? String(m.contextWindow) : '', maxOutput: m.maxOutput ? String(m.maxOutput) : '', searchRoute: m.searchRoute,
     rates: r ? { input: String(r.input), cacheRead: String(r.cacheRead), cacheWrite: String(r.cacheWrite), output: String(r.output), search: String(r.search) } : blank.rates,
   };
 }
@@ -207,9 +207,10 @@ function payload(f: Form) {
   const rateVals = RATE_FIELDS.map(([k]) => f.rates[k].trim());
   const rates = rateVals.every((v) => v === '') ? null : Object.fromEntries(RATE_FIELDS.map(([k], i) => [k, rateVals[i] === '' ? null : Number(rateVals[i])]));
   const cw = f.contextWindow.trim();
+  const mo = f.maxOutput.trim();
   return {
     format: f.format, provider: f.provider, displayName: f.displayName, model: f.model, baseUrl: f.baseUrl, key: f.key,
-    contextWindow: cw === '' ? null : Number(cw), rates, searchRoute: f.searchRoute,
+    contextWindow: cw === '' ? null : Number(cw), maxOutput: mo === '' ? null : Number(mo), rates, searchRoute: f.searchRoute,
   };
 }
 
@@ -278,6 +279,7 @@ function ModelDialog({ target, masterKey, presets, formats, onClose, onDone }: {
         </div>
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <div className="field"><label htmlFor="mc">上下文窗口 (token)</label><Input id="mc" inputMode="numeric" placeholder="128000" value={f.contextWindow} onChange={set('contextWindow')} /><span className="hint">留空按 128k。</span></div>
+          <div className="field"><label htmlFor="mo">最大输出 (token)</label><Input id="mo" inputMode="numeric" placeholder="8192" value={f.maxOutput} onChange={set('maxOutput')} /><span className="hint">概念索引和报告每次调用的上限, 写满了会续写。留空按 8192 (开思考 12288)。</span></div>
           <div className="field"><label htmlFor="ms">联网搜索</label>
             <select id="ms" className="select" value={f.searchRoute} onChange={(e) => setF((x) => ({ ...x, searchRoute: e.target.value as SearchRoute }))}>
               {searchRoutes(f.format, f.provider).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}

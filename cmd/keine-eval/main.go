@@ -253,7 +253,10 @@ type modelFile struct {
 	Model         string             `yaml:"model"`
 	DisplayName   string             `yaml:"displayName"`
 	ContextWindow int                `yaml:"contextWindow"`
-	Thinking      bool               `yaml:"thinking"`
+	// MaxOutput caps one call of a long output (a report); 0 leaves it
+	// to the default
+	MaxOutput int  `yaml:"maxOutput"`
+	Thinking  bool `yaml:"thinking"`
 	// Search is off, provider (Anthropic), deepseek, or tavily (with the
 	// key in TavilyKeyEnv).
 	Search       assistant.SearchRoute `yaml:"search"`
@@ -304,7 +307,7 @@ func modelTurn(ctx context.Context, file string, models *assistant.Models) (assi
 	}
 	t := assistant.Turn{
 		Adapter: adapters.For(assistant.Endpoint{Format: m.Format, Provider: m.Provider, BaseURL: m.BaseURL, Key: key}),
-		Model:   m.Model, DisplayName: m.DisplayName, Thinking: m.Thinking, ContextWindow: m.ContextWindow, Rates: assistant.Rates(m.Rates),
+		Model:   m.Model, DisplayName: m.DisplayName, Thinking: m.Thinking, ContextWindow: m.ContextWindow, MaxOutput: m.MaxOutput, Rates: assistant.Rates(m.Rates),
 		ProviderWeb: m.Search == assistant.RouteProvider,
 	}
 	if t.DisplayName == "" {

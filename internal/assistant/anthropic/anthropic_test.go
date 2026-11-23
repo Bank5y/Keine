@@ -541,3 +541,22 @@ func TestATurnStillPausedAfterTheResumesIsCutOff(t *testing.T) {
 		t.Errorf("requests = %d", got)
 	}
 }
+
+// Current models take no prefill (a request ending in an assistant turn is
+// refused), so a reply cut off at the cap is asked to go on.
+func TestACutOffReplyIsAskedToGoOn(t *testing.T) {
+	rp := newReplay(t, "text.sse")
+	req := hello
+	req.Messages = append(append([]assistant.Message(nil), hello.Messages...), assistant.Message{Role: assistant.RoleAssistant, Content: "<rep_title>极限", Prefix: true})
+	if _, _, err := collect(t, rp.adapter(), req); err != nil {
+		t.Fatal(err)
+	}
+	msgs := rp.requests()[0]["messages"].([]any)
+	cut, ask := msgs[len(msgs)-2].(map[string]any), msgs[len(msgs)-1].(map[string]any)
+	if cut["role"] != "assistant" || !strings.Contains(fmt.Sprint(cut["content"]), "<rep_title>极限") {
+		t.Fatalf("the cut-off reply goes back as an assistant turn, got %v", cut)
+	}
+	if ask["role"] != "user" || !strings.Contains(fmt.Sprint(ask["content"]), "接着写") {
+		t.Fatalf("then the model is asked to go on, got %v", ask)
+	}
+}

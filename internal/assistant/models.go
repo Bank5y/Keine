@@ -20,6 +20,15 @@ import (
 // DefaultContextWindow applies to a model whose context window is not set.
 const DefaultContextWindow = 128_000
 
+// output tokens one call of a long output (a concept extraction, a report)
+// may write on a model whose max output is not set, with thinking off and
+// on: within what every model takes (DeepSeek's chat model takes no more
+// than 8192)
+const (
+	defaultMaxOutput         = 8192
+	defaultMaxOutputThinking = 12288
+)
+
 // The interface formats a site model can speak: OpenAI-compatible Chat
 // Completions, and Anthropic Messages.
 const (
@@ -67,9 +76,11 @@ type Model struct {
 	Model       string   `json:"model"`
 	DisplayName string   `json:"displayName"`
 	// ContextWindow is nil when unset (DefaultContextWindow applies).
-	ContextWindow *int   `json:"contextWindow"`
-	Rates         *Rates `json:"rates"`
-	KeyLast4      string `json:"keyLast4"`
+	ContextWindow *int `json:"contextWindow"`
+	// MaxOutput is nil when unset (Turn.LongOutput's default applies).
+	MaxOutput *int   `json:"maxOutput"`
+	Rates     *Rates `json:"rates"`
+	KeyLast4  string `json:"keyLast4"`
 	// SearchRoute is the admin's choice; Search is what it resolves to now,
 	// and SearchReady false when it resolves to nothing (ADR 0008).
 	SearchRoute SearchRoute `json:"searchRoute"`
@@ -89,6 +100,7 @@ type ModelInput struct {
 	Model         string      `json:"model"`
 	DisplayName   string      `json:"displayName"`
 	ContextWindow *int        `json:"contextWindow"`
+	MaxOutput     *int        `json:"maxOutput"`
 	Rates         *rateInput  `json:"rates"`
 	SearchRoute   SearchRoute `json:"searchRoute"`
 }
@@ -156,7 +168,7 @@ func NewModels(db *pgxpool.Pool, box *secret.Box, adapterFor AdapterFor, searchF
 // CanStoreKeys tells whether a master key is configured.
 func (s *Models) CanStoreKeys() bool { return s.box != nil }
 
-const modelColumns = `id, format, provider, base_url, key_last4, model, display_name, context_window,
+const modelColumns = `id, format, provider, base_url, key_last4, model, display_name, context_window, max_output,
 	rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, search_route, updated_at`
 
 func scanModel(row pgx.Row) (Model, error) {
@@ -164,14 +176,19 @@ func scanModel(row pgx.Row) (Model, error) {
 		m  Model
 		r  [5]*float64
 		cw *int32
+		mo *int32
 	)
-	if err := row.Scan(&m.ID, &m.Format, &m.Provider, &m.BaseURL, &m.KeyLast4, &m.Model, &m.DisplayName, &cw,
+	if err := row.Scan(&m.ID, &m.Format, &m.Provider, &m.BaseURL, &m.KeyLast4, &m.Model, &m.DisplayName, &cw, &mo,
 		&r[0], &r[1], &r[2], &r[3], &r[4], &m.SearchRoute, &m.UpdatedAt); err != nil {
 		return m, err
 	}
 	if cw != nil {
 		v := int(*cw)
 		m.ContextWindow = &v
+	}
+	if mo != nil {
+		v := int(*mo)
+		m.MaxOutput = &v
 	}
 	if r[0] != nil {
 		m.Rates = &Rates{Input: *r[0], CacheRead: *r[1], CacheWrite: *r[2], Output: *r[3], Search: *r[4]}
@@ -345,6 +362,9 @@ func validate(in ModelInput) (validated, error) {
 	if in.ContextWindow != nil && *in.ContextWindow <= 0 {
 		problems = append(problems, "上下文窗口要是正整数")
 	}
+	if in.MaxOutput != nil && *in.MaxOutput <= 0 {
+		problems = append(problems, "最大输出要是正整数")
+	}
 	var rates *Rates
 	if r := in.Rates; r != nil {
 		vals := []*float64{r.Input, r.CacheRead, r.CacheWrite, r.Output, r.Search}
@@ -391,10 +411,10 @@ func (s *Models) Create(ctx context.Context, in ModelInput) (Model, error) {
 	r := rateArgs(v.rates)
 	m, err := scanModel(tx.QueryRow(ctx, `
 		INSERT INTO site_models (id, format, base_url, api_key, key_last4, model, display_name, context_window,
-			rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, provider, search_route)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			rate_input, rate_cache_read, rate_cache_write, rate_output, rate_search, provider, search_route, max_output)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		RETURNING `+modelColumns,
-		id, v.in.Format, v.in.BaseURL, sealed, last4, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider, v.in.SearchRoute))
+		id, v.in.Format, v.in.BaseURL, sealed, last4, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider, v.in.SearchRoute, v.in.MaxOutput))
 	if err != nil {
 		return Model{}, err
 	}
@@ -451,17 +471,17 @@ func (s *Models) Update(ctx context.Context, id int64, in ModelInput) (Model, er
 		return Model{}, ErrModelChanged
 	}
 	r := rateArgs(v.rates)
-	args := []any{id, v.in.Format, v.in.BaseURL, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider, v.in.SearchRoute}
+	args := []any{id, v.in.Format, v.in.BaseURL, v.in.Model, v.in.DisplayName, v.in.ContextWindow, r[0], r[1], r[2], r[3], r[4], v.in.Provider, v.in.SearchRoute, v.in.MaxOutput}
 	keySet := ""
 	if v.in.Key != "" {
 		sealed, last4 := s.seal(id, v.in.Key)
 		args = append(args, sealed, last4)
-		keySet = ", api_key = $14, key_last4 = $15"
+		keySet = ", api_key = $15, key_last4 = $16"
 	}
 	m, err := scanModel(tx.QueryRow(ctx, `
 		UPDATE site_models SET format = $2, base_url = $3, model = $4, display_name = $5, context_window = $6,
 			rate_input = $7, rate_cache_read = $8, rate_cache_write = $9, rate_output = $10, rate_search = $11,
-			provider = $12, search_route = $13, updated_at = now()`+keySet+`
+			provider = $12, search_route = $13, max_output = $14, updated_at = now()`+keySet+`
 		WHERE id = $1 RETURNING `+modelColumns, args...))
 	if err != nil {
 		return Model{}, err
@@ -669,12 +689,28 @@ type Turn struct {
 	// ContextWindow is the model's, in tokens (DefaultContextWindow when
 	// the admin left it unset).
 	ContextWindow int
+	// MaxOutput caps one call of a long output, in tokens; 0 when the
+	// admin left it unset (LongOutput).
+	MaxOutput int
 	// Web is the run's way to the web on the Keine tool route; nil when the
 	// deployer chose none, or on the provider route.
 	Web *WebRoute
 	// ProviderWeb: the run searches with the provider's own tools (the
 	// provider route), which its calls declare.
 	ProviderWeb bool
+}
+
+// LongOutput is how many tokens one call of a long output may write on
+// the turn's model: its max output, or a default that every model takes.
+// What a call leaves unwritten, the next call continues (#169).
+func (t Turn) LongOutput() int {
+	switch {
+	case t.MaxOutput > 0:
+		return t.MaxOutput
+	case t.Thinking:
+		return defaultMaxOutputThinking
+	}
+	return defaultMaxOutput
 }
 
 // ForTurn resolves the model serving a turn kind.
@@ -686,13 +722,13 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 		provider        Provider
 		route           SearchRoute
 		sealed          []byte
-		window          *int
+		window, output  *int
 	)
 	err := s.db.QueryRow(ctx, `
-		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking, m.search_route, m.context_window,
+		SELECT m.id, m.format, m.provider, m.base_url, m.api_key, m.model, t.thinking, m.search_route, m.context_window, m.max_output,
 			m.display_name, m.rate_input, m.rate_cache_read, m.rate_cache_write, m.rate_output, m.rate_search
 		FROM turn_models t JOIN site_models m ON m.id = t.model_id WHERE t.kind = $1`, kind).
-		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking, &route, &window,
+		Scan(&id, &format, &provider, &baseURL, &sealed, &t.Model, &t.Thinking, &route, &window, &output,
 			&t.DisplayName, &t.Rates.Input, &t.Rates.CacheRead, &t.Rates.CacheWrite, &t.Rates.Output, &t.Rates.Search)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Turn{}, fmt.Errorf("%w: %s is not mapped", ErrAssistantUnavailable, kind)
@@ -703,6 +739,9 @@ func (s *Models) ForTurn(ctx context.Context, kind TurnKind) (Turn, error) {
 	t.ContextWindow = DefaultContextWindow
 	if window != nil {
 		t.ContextWindow = *window
+	}
+	if output != nil {
+		t.MaxOutput = *output
 	}
 	key := ""
 	if len(sealed) > 0 {

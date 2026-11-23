@@ -299,3 +299,24 @@ func TestAReportThatMayCostMoreThanIsLeftDoesNotStart(t *testing.T) {
 		t.Fatal("the model was called")
 	}
 }
+
+func TestAReportWritesUpToTheModelsMaxOutput(t *testing.T) {
+	t.Parallel()
+	m := newScriptedModel(texts(goodAnswer), texts(goodReport))
+	a := newApp(t, withModel(m), withMasterKey(masterKey))
+	mapModel(t, a, map[string]any{"searchRoute": "off", "maxOutput": 32000}, false)
+	bob := a.user("bob")
+	onPlan(t, a, bob, 100)
+	_, _, exp := pinnedExploration(t, bob)
+
+	generate(t, bob, exp)
+
+	calls := m.calls()
+	if got := calls[len(calls)-1].MaxTokens; got != 32000 {
+		t.Fatalf("the report asked for %d tokens", got)
+	}
+	// an analysis keeps its own cap
+	if got := calls[0].MaxTokens; got != 4096 {
+		t.Fatalf("the analysis asked for %d tokens", got)
+	}
+}
