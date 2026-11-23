@@ -35,12 +35,17 @@ type rules struct {
 	passReasoning bool
 	// cacheHitMiss reads prompt_cache_hit_tokens / prompt_cache_miss_tokens
 	cacheHitMiss bool
+	// prefixAt is the address whose beta continues an assistant message
+	// as written (prefix completion), with thinking off: its docs say
+	// nothing of thinking. Elsewhere the model is asked to go on.
+	prefixAt string
 }
 
 // providerRules are the rules of each provider configuration; a plain
 // endpoint has none.
 var providerRules = map[assistant.Provider]rules{
-	assistant.ProviderDeepSeek: {thinkingSwitch: true, passReasoning: true, cacheHitMiss: true},
+	assistant.ProviderDeepSeek: {thinkingSwitch: true, passReasoning: true, cacheHitMiss: true,
+		prefixAt: assistant.DefaultBaseURL(assistant.FormatOpenAI, assistant.ProviderDeepSeek)},
 }
 
 // New returns an adapter for the endpoint: BaseURL is the part before
@@ -55,11 +60,20 @@ func New(e assistant.Endpoint) *Adapter {
 }
 
 func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
+	endpoint := a.baseURL + "/chat/completions"
+	held := func() error { return nil }
+	if req.Continues() {
+		if a.rules.prefixAt != "" && a.baseURL == a.rules.prefixAt && !req.Thinking {
+			endpoint = a.baseURL + "/beta/chat/completions"
+		} else {
+			req, emit, held = assistant.AskToContinue(req, emit)
+		}
+	}
 	body, err := json.Marshal(a.wireRequest(req))
 	if err != nil {
 		return assistant.Result{}, err
 	}
-	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+"/chat/completions", bytes.NewReader(body))
+	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return assistant.Result{}, &assistant.Error{Category: assistant.ErrInvalidRequest, Detail: err.Error()}
 	}
@@ -79,7 +93,11 @@ func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(a
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
 		return assistant.Result{}, &assistant.Error{Category: assistant.ErrBadResponse, Detail: "not a stream: " + ct}
 	}
-	return readStream(ctx, resp.Body, emit, a.rules)
+	res, err := readStream(ctx, resp.Body, emit, a.rules)
+	if err == nil {
+		err = held()
+	}
+	return res, err
 }
 
 // --- request
@@ -90,6 +108,8 @@ type wireMessage struct {
 	ReasoningContent string         `json:"reasoning_content,omitempty"`
 	ToolCalls        []wireToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string         `json:"tool_call_id,omitempty"`
+	// Prefix: the reply goes on from this message as written
+	Prefix bool `json:"prefix,omitempty"`
 }
 
 type wireToolCall struct {
@@ -114,7 +134,7 @@ func (a *Adapter) wireRequest(req assistant.Request) map[string]any {
 	msgs := make([]wireMessage, 0, len(req.Messages))
 	for _, m := range req.Messages {
 		content := m.Content
-		wm := wireMessage{Role: string(m.Role), Content: &content, ToolCallID: m.ToolCallID}
+		wm := wireMessage{Role: string(m.Role), Content: &content, ToolCallID: m.ToolCallID, Prefix: m.Prefix}
 		if a.rules.passReasoning {
 			// within a run, as it was (#115); a run's history never has any
 			wm.ReasoningContent = m.Reasoning

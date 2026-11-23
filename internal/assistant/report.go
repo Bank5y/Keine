@@ -32,16 +32,10 @@ type Report struct {
 	Points  string `json:"points"`
 }
 
-// output tokens a report may write, with thinking off and on
-const (
-	reportMaxTokens         = 8192
-	reportMaxTokensThinking = 12288
-)
-
 const reportRemedy = "上一次答复不合格：%s。请只按 <rep_title>/<rep_summary>/<rep_body>/<rep_points> 格式重新作答，标签外不要写任何文字。"
 
-var reportForm = &tagForm{prefix: "rep_", parts: []Part{PartTitle, PartSummary, PartBody, PartPoints}, remedy: reportRemedy,
-	maxTokens: reportMaxTokens, maxThinking: reportMaxTokensThinking}
+// a report is a long output: a call writes up to the model's max output
+var reportForm = &tagForm{prefix: "rep_", parts: []Part{PartTitle, PartSummary, PartBody, PartPoints}, remedy: reportRemedy}
 
 func init() { reportForm.check = checkReport }
 
@@ -81,17 +75,13 @@ func checkReport(raw string, p *tagParser) []string {
 }
 
 // ReportInput is how many tokens a report's request may hold on the
-// turn's model: its window less what the report may write.
+// turn's model: its window less what a call of the report may write.
 func ReportInput(t Turn) int {
 	window := t.ContextWindow
 	if window <= 0 {
 		window = DefaultContextWindow
 	}
-	out := reportMaxTokens
-	if t.Thinking {
-		out = reportMaxTokensThinking
-	}
-	return max(window-out, 0)
+	return max(window-t.LongOutput(), 0)
 }
 
 // ReportNode is a node of the dialogue as a report reads it. Parent is the
@@ -148,8 +138,9 @@ func (c ReportContext) Messages() []Message {
 }
 
 // WriteReport writes a report on the turn's model: the analysis's loop
-// with no tools, its four parts streaming to out as they are written. It
-// returns the valid report, a *RunError, or the context's error.
+// with no tools, its four parts streaming to out as they are written, and
+// continued when cut off at the model's max output (#169). It returns the
+// valid report, a *RunError, or the context's error.
 func WriteReport(ctx context.Context, run Run, msgs []Message, out Sink) (Report, Meta, error) {
 	if run.Now == nil {
 		run.Now = time.Now
@@ -157,9 +148,11 @@ func WriteReport(ctx context.Context, run Run, msgs []Message, out Sink) (Report
 	if run.Deadline <= 0 {
 		run.Deadline = DefaultDeadline
 	}
+	// each call of a long output has the deadline's time to write
+	run.Deadline *= 1 + MaxContinues
 	run.Tools, run.Web, run.Turn.ProviderWeb = nil, nil, false
 	r := newAnalysisRun(run, out)
-	r.form = reportForm
+	r.form, r.long = reportForm, true
 	c, err := r.loop(ctx, msgs)
 	if err != nil {
 		return Report{}, r.meta(), err

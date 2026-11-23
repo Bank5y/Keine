@@ -54,9 +54,10 @@ func (l ConceptLesson) Messages() []Message {
 
 // ExtractConcepts runs one extraction of the concept index on the turn's
 // model: the analysis's loop with no tools and no web (the lesson is all
-// it reads), its reply a JSON array of concepts. A reply that is not one
-// is a *RunError of CodeMalformedOutput. The meta is what it used, for
-// the site to be charged, on failure too.
+// it reads), its reply a JSON array of concepts, continued when cut off at
+// the model's max output (#169). A reply that is not one is a *RunError of
+// CodeMalformedOutput. The meta is what it used, for the site to be
+// charged, on failure too.
 func ExtractConcepts(ctx context.Context, run Run, l ConceptLesson) ([]Concept, Meta, error) {
 	if run.Now == nil {
 		run.Now = time.Now
@@ -64,11 +65,13 @@ func ExtractConcepts(ctx context.Context, run Run, l ConceptLesson) ([]Concept, 
 	if run.Deadline <= 0 {
 		run.Deadline = DefaultDeadline
 	}
+	// each call of a long output has the deadline's time to write
+	run.Deadline *= 1 + MaxContinues
 	run.Tools, run.Web = nil, nil
 	run.Turn.ProviderWeb, run.Turn.Web = false, nil
 	discard := Sink{Delta: func(Delta) error { return nil }, Activity: func(Activity) error { return nil }}
 	r := newAnalysisRun(run, discard)
-	r.plain = true
+	r.plain, r.long = true, true
 	c, err := r.loop(ctx, l.Messages())
 	if err != nil {
 		return nil, r.meta(), err

@@ -278,6 +278,13 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 		if run.Turn.Thinking {
 			req.MaxTokens = r.form.maxThinking
 		}
+		if r.long {
+			req.MaxTokens = run.Turn.LongOutput()
+		}
+		if r.cut != nil {
+			// it goes on from all the answer wrote so far
+			req.Messages = appendMessages(msgs, Message{Role: RoleAssistant, Content: r.cut.raw, Prefix: true})
+		}
 		if tools {
 			req.ToolChoice = "auto"
 			if answering {
@@ -297,8 +304,11 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 				return called{}, err
 			}
 			cat := CategoryOf(err)
-			// 429, 5xx and connection errors (a connection timing out among them)
-			if !r.streamed && !retried && (cat == ErrRateLimited || cat == ErrUnavailable || cat == ErrTimeout) {
+			// 429, 5xx and connection errors (a connection timing out among
+			// them), before the reader saw anything or the continuation of a
+			// cut-off answer added anything
+			wroteNothing := !r.streamed || (r.cut != nil && c.raw == r.cut.raw)
+			if wroteNothing && !retried && (cat == ErrRateLimited || cat == ErrUnavailable || cat == ErrTimeout) {
 				retried = true
 				continue
 			}
@@ -325,6 +335,13 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			}
 			continue
 		}
+		if r.long && c.result.Finish == FinishLength && r.continues < MaxContinues && strings.TrimSpace(c.raw) != "" && r.fits(msgs, c.raw) {
+			// cut off at the cap: the next call goes on from there (#169)
+			r.continues++
+			r.cut = &c
+			continue
+		}
+		r.cut = nil
 		if r.plain {
 			// a reply is Markdown as written: it is whole unless cut short
 			switch {
@@ -362,6 +379,17 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 	}
 }
 
+// fits tells whether a call going on from the cut-off answer still fits
+// the model's window: it sends what the answer wrote so far, and may
+// write as much again as the call before.
+func (r *analysisRun) fits(msgs []Message, answer string) bool {
+	window := r.run.Turn.ContextWindow
+	if window <= 0 {
+		window = DefaultContextWindow
+	}
+	return EstimateMessages(msgs)+EstimateTokens(answer)+r.run.Turn.LongOutput() <= window
+}
+
 // appendMessages appends to a copy, so the caller's slice is never written.
 func appendMessages(msgs []Message, more ...Message) []Message {
 	return append(msgs[:len(msgs):len(msgs)], more...)
@@ -391,6 +419,14 @@ type analysisRun struct {
 	quiet bool
 	// form is the shape of a tagged answer (an analysis's by default)
 	form *tagForm
+	// long: the answer is a long output (a concept extraction, a report):
+	// a call may write the model's max output, and one cut off at it is
+	// continued, at most MaxContinues times (#169)
+	long bool
+	// cut is the answer so far of a long output that was cut off, which
+	// the next call goes on from; continues counts those calls
+	cut       *called
+	continues int
 	// calls and toolRuns number the activities
 	calls, toolRuns int
 	// steps are the calls that made tool calls; remedies the calls that
@@ -460,10 +496,18 @@ type called struct {
 	result         Result
 }
 
-// call makes one model call, streaming the tagged parts as it goes.
+// call makes one model call, streaming the tagged parts as it goes. A
+// call that continues a cut-off answer (r.cut) goes on with its parser,
+// and returns the whole answer.
 func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
-	var raw, reasoning strings.Builder
+	// raw is the answer, fresh what this call wrote of it
+	var raw, fresh, reasoning strings.Builder
 	var toolCalls []ToolCall
+	var p *tagParser
+	if r.cut != nil {
+		raw.WriteString(r.cut.raw)
+		p = r.cut.parser
+	}
 	r.calls++
 	think := Activity{ID: fmt.Sprintf("thinking-%d", r.calls), Kind: ActivityThinking}
 	activity := func(status ActivityStatus) error {
@@ -478,13 +522,15 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	if r.run.Spent != nil {
 		asked = int64(EstimateMessages(req.Messages))
 	}
-	p := newFormParser(r.form, func(s Part, text string) error {
-		r.streamed = true
-		if err := r.out.Delta(Delta{Part: s, Text: text}); err != nil {
-			return sinkError{err}
-		}
-		return nil
-	})
+	if p == nil {
+		p = newFormParser(r.form, func(s Part, text string) error {
+			r.streamed = true
+			if err := r.out.Delta(Delta{Part: s, Text: text}); err != nil {
+				return sinkError{err}
+			}
+			return nil
+		})
+	}
 	res, err := r.stream(ctx, req, func(e Event) error {
 		if r.past(r.run.Deadline) {
 			return errRunDeadline
@@ -509,7 +555,8 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 				}
 			}
 			raw.WriteString(e.Text)
-			defer r.peek(asked, raw.String())
+			fresh.WriteString(e.Text)
+			defer r.peek(asked, fresh.String())
 			if r.quiet {
 				return nil
 			}
@@ -541,7 +588,7 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 		}
 		return nil
 	})
-	r.spend(req, res.Usage, raw.String()+reasoning.String(), len(toolCalls) > 0)
+	r.spend(req, res.Usage, fresh.String()+reasoning.String(), len(toolCalls) > 0)
 	if se, ok := errors.AsType[sinkError](err); ok {
 		return called{}, se.err
 	}

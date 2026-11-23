@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Bank5y/keine/internal/assistant"
@@ -19,6 +21,7 @@ type replay struct {
 	srv  *httptest.Server
 	body map[string]any
 	auth string
+	path string
 }
 
 func newReplay(t *testing.T, recording string) *replay {
@@ -29,10 +32,11 @@ func newReplay(t *testing.T, recording string) *replay {
 	}
 	rp := &replay{}
 	rp.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
 			http.NotFound(w, r)
 			return
 		}
+		rp.path = r.URL.Path
 		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &rp.body)
 		rp.auth = r.Header.Get("Authorization")
@@ -51,6 +55,22 @@ func (rp *replay) adapter() *openai.Adapter {
 func (rp *replay) deepseek() *openai.Adapter {
 	return openai.New(assistant.Endpoint{Format: assistant.FormatOpenAI, Provider: assistant.ProviderDeepSeek, BaseURL: rp.srv.URL + "/v1", Key: "sk-test"})
 }
+
+// official is the adapter with the DeepSeek provider configuration at
+// DeepSeek's own address, which the replay serves.
+func (rp *replay) official() *openai.Adapter {
+	srv, _ := url.Parse(rp.srv.URL)
+	client := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		r.URL.Scheme, r.URL.Host = srv.Scheme, srv.Host
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	base := assistant.DefaultBaseURL(assistant.FormatOpenAI, assistant.ProviderDeepSeek)
+	return openai.New(assistant.Endpoint{Format: assistant.FormatOpenAI, Provider: assistant.ProviderDeepSeek, BaseURL: base, Key: "sk-test", Client: client})
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 // collect runs one call and returns its events.
 func collect(t *testing.T, a assistant.Adapter, req assistant.Request) ([]assistant.Event, assistant.Result, error) {
@@ -336,4 +356,49 @@ func TestAPlainEndpointGetsNoProviderFields(t *testing.T) {
 func show(u assistant.Usage) string {
 	b, _ := json.Marshal(u)
 	return string(b)
+}
+
+// cutOff is a request continuing a reply cut off at the output cap.
+var cutOff = append(append([]assistant.Message(nil), history...), assistant.Message{Role: assistant.RoleAssistant, Content: "[{\"name\": \"极", Prefix: true})
+
+func TestDeepSeekContinuesACutOffReplyAsWritten(t *testing.T) {
+	rp := newReplay(t, "text.sse")
+	if _, _, err := collect(t, rp.official(), assistant.Request{Model: "deepseek-chat", Messages: cutOff}); err != nil {
+		t.Fatal(err)
+	}
+	if rp.path != "/beta/chat/completions" {
+		t.Fatalf("prefix completion is DeepSeek's beta, got %s", rp.path)
+	}
+	msgs := rp.body["messages"].([]any)
+	last := msgs[len(msgs)-1].(map[string]any)
+	if len(msgs) != len(cutOff) || last["role"] != "assistant" || last["prefix"] != true || last["content"] != cutOff[len(cutOff)-1].Content {
+		t.Fatalf("the cut-off reply goes last, as a prefix: %v", msgs)
+	}
+}
+
+func TestOtherEndpointsAreAskedToContinue(t *testing.T) {
+	for name, c := range map[string]struct {
+		adapter  func(*replay) *openai.Adapter
+		thinking bool
+	}{
+		"plain endpoint":         {(*replay).adapter, false},
+		"DeepSeek elsewhere":     {(*replay).deepseek, false},
+		"DeepSeek with thinking": {(*replay).official, true},
+	} {
+		rp := newReplay(t, "text.sse")
+		if _, _, err := collect(t, c.adapter(rp), assistant.Request{Model: "m", Messages: cutOff, Thinking: c.thinking}); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(rp.path, "/beta/") {
+			t.Errorf("%s: sent to %s", name, rp.path)
+		}
+		msgs := rp.body["messages"].([]any)
+		cut, ask := msgs[len(msgs)-2].(map[string]any), msgs[len(msgs)-1].(map[string]any)
+		if _, ok := cut["prefix"]; ok || cut["role"] != "assistant" || cut["content"] != cutOff[len(cutOff)-1].Content {
+			t.Errorf("%s: the cut-off reply goes back as an assistant message, got %v", name, cut)
+		}
+		if ask["role"] != "user" || !strings.Contains(ask["content"].(string), "接着写") {
+			t.Errorf("%s: then the model is asked to go on, got %v", name, ask)
+		}
+	}
 }

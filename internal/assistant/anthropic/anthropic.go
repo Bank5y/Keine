@@ -51,6 +51,8 @@ const maxResumes = 5
 // as it came, so the loop sees one message: its text, its tool calls, the
 // usage of every request, and the whole turn to pass back (ADR 0008).
 func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
+	// current models refuse a prefill: a cut-off reply is asked to go on
+	req, emit, held := assistant.AskToContinue(req, emit)
 	params := wireRequest(req)
 	asked := params.Messages
 	var (
@@ -75,6 +77,9 @@ func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(a
 		// no message after it: the API resumes a turn that ends in its own
 		// tool use
 		params.Messages = append(asked[:len(asked):len(asked)], sdk.NewAssistantMessage(turn...))
+	}
+	if err := held(); err != nil {
+		return assistant.Result{}, err
 	}
 	called, err := emitCalls(content, emit)
 	if err != nil {
