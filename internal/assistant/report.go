@@ -148,6 +148,8 @@ func WriteReport(ctx context.Context, run Run, msgs []Message, out Sink) (Report
 	if run.Deadline <= 0 {
 		run.Deadline = DefaultDeadline
 	}
+	// each call of a long output has the deadline's time to write
+	run.Deadline *= 1 + MaxContinues
 	run.Tools, run.Web, run.Turn.ProviderWeb = nil, nil, false
 	r := newAnalysisRun(run, out)
 	r.form, r.long = reportForm, true

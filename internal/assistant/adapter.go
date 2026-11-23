@@ -76,19 +76,54 @@ type Message struct {
 // continueNote asks a model to go on from where its cut-off reply stopped.
 const continueNote = "上一条答复写到输出上限被截断了。请从断处接着写：直接输出紧接在断处之后的文字，不要重复已经写了的内容，也不要加任何说明。"
 
-// AskToContinue is a request whose last message is a Prefix as an adapter
-// that cannot continue a message as written sends it: the cut-off reply as
-// an assistant message, then a user message asking for the rest. Any other
-// request is returned as it is.
-func AskToContinue(req Request) Request {
-	n := len(req.Messages)
-	if n == 0 || !req.Messages[n-1].Prefix {
-		return req
+// Continues tells whether the request goes on from a cut-off reply: its
+// last message is a Prefix.
+func (r Request) Continues() bool {
+	n := len(r.Messages)
+	return n > 0 && r.Messages[n-1].Prefix
+}
+
+// AskToContinue is how an adapter that cannot continue a message as
+// written makes the call of a request that Continues: the cut-off reply
+// as an assistant message, then a user message asking for the rest. The
+// emit it returns drops what of the continuation's start repeats the
+// reply's end, holding the start back until it knows; done passes on what
+// is still held once the call ended. Any other request comes back as it
+// is, with emit.
+func AskToContinue(req Request, emit func(Event) error) (Request, func(Event) error, func() error) {
+	if !req.Continues() {
+		return req, emit, func() error { return nil }
 	}
+	n := len(req.Messages)
+	reply := req.Messages[n-1].Content
 	req.Messages = append(slices.Clip(req.Messages[:n-1]),
-		Message{Role: RoleAssistant, Content: req.Messages[n-1].Content},
+		Message{Role: RoleAssistant, Content: reply},
 		Message{Role: RoleUser, Content: continueNote})
-	return req
+	join := newSeam(reply)
+	flush := func() error {
+		if t := join.flush(); t != "" {
+			return emit(Event{Kind: EventText, Text: t})
+		}
+		return nil
+	}
+	return req, func(e Event) error {
+		switch e.Kind {
+		case EventText:
+			if t := join.next(e.Text); t != "" {
+				return emit(Event{Kind: EventText, Text: t})
+			}
+			return nil
+		case EventReasoning:
+			return emit(e)
+		}
+		// what is held comes before anything else the call hands back
+		if join.holding() {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+		return emit(e)
+	}, flush
 }
 
 // ToolSpec is a tool declaration: Parameters is its JSON Schema.

@@ -61,11 +61,12 @@ func New(e assistant.Endpoint) *Adapter {
 
 func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
 	endpoint := a.baseURL + "/chat/completions"
-	if prefixed(req) {
+	held := func() error { return nil }
+	if req.Continues() {
 		if a.rules.prefixAt != "" && a.baseURL == a.rules.prefixAt && !req.Thinking {
 			endpoint = a.baseURL + "/beta/chat/completions"
 		} else {
-			req = assistant.AskToContinue(req)
+			req, emit, held = assistant.AskToContinue(req, emit)
 		}
 	}
 	body, err := json.Marshal(a.wireRequest(req))
@@ -92,16 +93,14 @@ func (a *Adapter) Stream(ctx context.Context, req assistant.Request, emit func(a
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
 		return assistant.Result{}, &assistant.Error{Category: assistant.ErrBadResponse, Detail: "not a stream: " + ct}
 	}
-	return readStream(ctx, resp.Body, emit, a.rules)
+	res, err := readStream(ctx, resp.Body, emit, a.rules)
+	if err == nil {
+		err = held()
+	}
+	return res, err
 }
 
 // --- request
-
-// prefixed tells whether the request continues an assistant message.
-func prefixed(req assistant.Request) bool {
-	n := len(req.Messages)
-	return n > 0 && req.Messages[n-1].Prefix
-}
 
 type wireMessage struct {
 	Role             string         `json:"role"`

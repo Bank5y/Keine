@@ -65,6 +65,8 @@ func ExtractConcepts(ctx context.Context, run Run, l ConceptLesson) ([]Concept, 
 	if run.Deadline <= 0 {
 		run.Deadline = DefaultDeadline
 	}
+	// each call of a long output has the deadline's time to write
+	run.Deadline *= 1 + MaxContinues
 	run.Tools, run.Web = nil, nil
 	run.Turn.ProviderWeb, run.Turn.Web = false, nil
 	discard := Sink{Delta: func(Delta) error { return nil }, Activity: func(Activity) error { return nil }}

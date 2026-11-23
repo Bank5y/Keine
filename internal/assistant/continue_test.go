@@ -18,14 +18,25 @@ type call struct {
 }
 
 // script answers each model call with the next of its calls, and keeps
-// the requests.
+// the requests. Like most adapters it cannot continue a reply as written,
+// so it asks to; exact is one that can. The nth request (from 0) fails
+// with fail[n] instead, taking no call.
 type script struct {
 	calls    []call
 	requests []assistant.Request
+	exact    bool
+	fail     map[int]error
 }
 
 func (s *script) Stream(_ context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
 	s.requests = append(s.requests, req)
+	held := func() error { return nil }
+	if !s.exact {
+		req, emit, held = assistant.AskToContinue(req, emit)
+	}
+	if err := s.fail[len(s.requests)-1]; err != nil {
+		return assistant.Result{}, err
+	}
 	if len(s.calls) == 0 {
 		return assistant.Result{}, &assistant.Error{Category: assistant.ErrUnavailable, Detail: "script ran out"}
 	}
@@ -38,6 +49,9 @@ func (s *script) Stream(_ context.Context, req assistant.Request, emit func(assi
 			return assistant.Result{}, err
 		}
 		r = r[n:]
+	}
+	if err := held(); err != nil {
+		return assistant.Result{}, err
 	}
 	in, out := int64(1000), c.output
 	return assistant.Result{Finish: c.finish, Usage: assistant.Usage{Input: &in, Output: &out}}, nil
@@ -165,5 +179,46 @@ func TestAnalysisKeepsItsCapAndFailsWhenCutOff(t *testing.T) {
 	}
 	if len(s.requests) != 1 || s.requests[0].MaxTokens != 4096 {
 		t.Fatalf("%d calls, max tokens %d", len(s.requests), s.requests[0].MaxTokens)
+	}
+}
+
+func TestAModelThatContinuesAsWrittenKeepsWhatLooksRepeated(t *testing.T) {
+	// a rule of dashes cut in the middle: its second half is no repetition
+	head, rest := `[{"name": "极限", "aliases": [], "section": "", "summary": "---------`, "---------\"}]"
+	s := &script{exact: true, calls: []call{{head, assistant.FinishLength, 10}, {rest, assistant.FinishStop, 10}}}
+	got, _, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Summary != "------------------" {
+		t.Fatalf("concepts = %+v", got)
+	}
+}
+
+func TestAContinuationThatFailsBeforeWritingIsTriedAgain(t *testing.T) {
+	s := &script{calls: []call{
+		{conceptsHead, assistant.FinishLength, 100},
+		{conceptsMiddle + conceptsTail, assistant.FinishStop, 100},
+	}, fail: map[int]error{1: &assistant.Error{Category: assistant.ErrRateLimited, Detail: "429"}}}
+	got, _, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || len(s.requests) != 3 {
+		t.Fatalf("%d concepts in %d calls", len(got), len(s.requests))
+	}
+}
+
+func TestACutOffAnswerIsNotContinuedPastTheWindow(t *testing.T) {
+	s := &script{calls: []call{{conceptsHead, assistant.FinishLength, 100}}}
+	tn := turn(s)
+	// the lesson and what was written leave no room for another call
+	tn.ContextWindow, tn.MaxOutput = 2100, 2000
+	_, _, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: tn}, lesson)
+	if re, ok := errors.AsType[*assistant.RunError](err); !ok || re.Code != assistant.CodeOutputTruncated {
+		t.Fatalf("err = %v", err)
+	}
+	if len(s.requests) != 1 {
+		t.Fatalf("%d calls", len(s.requests))
 	}
 }

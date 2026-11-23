@@ -42,6 +42,9 @@ func (s *seam) next(text string) string {
 	return s.flush()
 }
 
+// holding tells whether some of the continuation is held back.
+func (s *seam) holding() bool { return !s.done && s.held.Len() > 0 }
+
 // flush returns what is held back, without the repetition, once the
 // continuation ended (or the window is full).
 func (s *seam) flush() string {

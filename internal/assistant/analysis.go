@@ -281,9 +281,9 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 		if r.long {
 			req.MaxTokens = run.Turn.LongOutput()
 		}
-		if r.cont != "" {
+		if r.cut != nil {
 			// it goes on from all the answer wrote so far
-			req.Messages = appendMessages(msgs, Message{Role: RoleAssistant, Content: r.cont, Prefix: true})
+			req.Messages = appendMessages(msgs, Message{Role: RoleAssistant, Content: r.cut.raw, Prefix: true})
 		}
 		if tools {
 			req.ToolChoice = "auto"
@@ -304,8 +304,11 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 				return called{}, err
 			}
 			cat := CategoryOf(err)
-			// 429, 5xx and connection errors (a connection timing out among them)
-			if !r.streamed && !retried && (cat == ErrRateLimited || cat == ErrUnavailable || cat == ErrTimeout) {
+			// 429, 5xx and connection errors (a connection timing out among
+			// them), before the reader saw anything or the continuation of a
+			// cut-off answer added anything
+			wroteNothing := !r.streamed || (r.cut != nil && c.raw == r.cut.raw)
+			if wroteNothing && !retried && (cat == ErrRateLimited || cat == ErrUnavailable || cat == ErrTimeout) {
 				retried = true
 				continue
 			}
@@ -332,13 +335,13 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			}
 			continue
 		}
-		if r.long && c.result.Finish == FinishLength && r.continues < MaxContinues && strings.TrimSpace(c.raw) != "" {
+		if r.long && c.result.Finish == FinishLength && r.continues < MaxContinues && strings.TrimSpace(c.raw) != "" && r.fits(msgs, c.raw) {
 			// cut off at the cap: the next call goes on from there (#169)
 			r.continues++
-			r.cont, r.contParser = c.raw, c.parser
+			r.cut = &c
 			continue
 		}
-		r.cont, r.contParser = "", nil
+		r.cut = nil
 		if r.plain {
 			// a reply is Markdown as written: it is whole unless cut short
 			switch {
@@ -376,6 +379,17 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 	}
 }
 
+// fits tells whether a call going on from the cut-off answer still fits
+// the model's window: it sends what the answer wrote so far, and may
+// write as much again as the call before.
+func (r *analysisRun) fits(msgs []Message, answer string) bool {
+	window := r.run.Turn.ContextWindow
+	if window <= 0 {
+		window = DefaultContextWindow
+	}
+	return EstimateMessages(msgs)+EstimateTokens(answer)+r.run.Turn.LongOutput() <= window
+}
+
 // appendMessages appends to a copy, so the caller's slice is never written.
 func appendMessages(msgs []Message, more ...Message) []Message {
 	return append(msgs[:len(msgs):len(msgs)], more...)
@@ -409,11 +423,10 @@ type analysisRun struct {
 	// a call may write the model's max output, and one cut off at it is
 	// continued, at most MaxContinues times (#169)
 	long bool
-	// cont is the answer so far of a long output that was cut off, which
-	// the next call goes on from; contParser is its parser
-	cont       string
-	contParser *tagParser
-	continues  int
+	// cut is the answer so far of a long output that was cut off, which
+	// the next call goes on from; continues counts those calls
+	cut       *called
+	continues int
 	// calls and toolRuns number the activities
 	calls, toolRuns int
 	// steps are the calls that made tool calls; remedies the calls that
@@ -484,16 +497,16 @@ type called struct {
 }
 
 // call makes one model call, streaming the tagged parts as it goes. A
-// call that continues a cut-off answer (r.cont) goes on with its parser,
+// call that continues a cut-off answer (r.cut) goes on with its parser,
 // and returns the whole answer.
 func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	// raw is the answer, fresh what this call wrote of it
 	var raw, fresh, reasoning strings.Builder
 	var toolCalls []ToolCall
-	raw.WriteString(r.cont)
-	var join *seam
-	if r.cont != "" {
-		join = newSeam(r.cont)
+	var p *tagParser
+	if r.cut != nil {
+		raw.WriteString(r.cut.raw)
+		p = r.cut.parser
 	}
 	r.calls++
 	think := Activity{ID: fmt.Sprintf("thinking-%d", r.calls), Kind: ActivityThinking}
@@ -509,7 +522,6 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 	if r.run.Spent != nil {
 		asked = int64(EstimateMessages(req.Messages))
 	}
-	p := r.contParser
 	if p == nil {
 		p = newFormParser(r.form, func(s Part, text string) error {
 			r.streamed = true
@@ -518,22 +530,6 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 			}
 			return nil
 		})
-	}
-	// write adds text to the answer
-	write := func(text string) error {
-		raw.WriteString(text)
-		if r.quiet || text == "" {
-			return nil
-		}
-		if r.plain {
-			r.streamed = true
-			r.text.WriteString(text)
-			if err := r.out.Delta(Delta{Text: text}); err != nil {
-				return sinkError{err}
-			}
-			return nil
-		}
-		return p.feed(text)
 	}
 	res, err := r.stream(ctx, req, func(e Event) error {
 		if r.past(r.run.Deadline) {
@@ -558,13 +554,24 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 					return sinkError{err}
 				}
 			}
+			raw.WriteString(e.Text)
 			fresh.WriteString(e.Text)
 			defer r.peek(asked, fresh.String())
-			text := e.Text
-			if join != nil {
-				text = join.next(text)
+			if r.quiet {
+				return nil
 			}
-			return write(text)
+			if r.plain {
+				if e.Text == "" {
+					return nil
+				}
+				r.streamed = true
+				r.text.WriteString(e.Text)
+				if err := r.out.Delta(Delta{Text: e.Text}); err != nil {
+					return sinkError{err}
+				}
+				return nil
+			}
+			return p.feed(e.Text)
 		case EventToolCall:
 			toolCalls = append(toolCalls, *e.ToolCall)
 		case EventWeb:
@@ -581,10 +588,6 @@ func (r *analysisRun) call(ctx context.Context, req Request) (called, error) {
 		}
 		return nil
 	})
-	if err == nil && join != nil {
-		// the continuation was shorter than the seam's window
-		err = write(join.flush())
-	}
 	r.spend(req, res.Usage, fresh.String()+reasoning.String(), len(toolCalls) > 0)
 	if se, ok := errors.AsType[sinkError](err); ok {
 		return called{}, se.err
