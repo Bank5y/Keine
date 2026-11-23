@@ -48,6 +48,7 @@ func publishAs(t *testing.T, a *app, files map[string]string) int {
 }
 
 func TestLibraryListsOnlyPublicCourses(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -63,6 +64,7 @@ func TestLibraryListsOnlyPublicCourses(t *testing.T) {
 }
 
 func TestLibraryFiltersAndSearches(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	column := publishAs(t, a, columnFiles(columnManifest()))
@@ -90,6 +92,7 @@ func TestLibraryFiltersAndSearches(t *testing.T) {
 }
 
 func TestSubscribingToALibraryCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
@@ -116,6 +119,7 @@ func TestSubscribingToALibraryCourse(t *testing.T) {
 }
 
 func TestReadingALessonWithoutSubscribing(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
@@ -139,6 +143,7 @@ func TestReadingALessonWithoutSubscribing(t *testing.T) {
 }
 
 func TestProgressIsPerUser(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	carol := a.user("carol")
@@ -151,6 +156,7 @@ func TestProgressIsPerUser(t *testing.T) {
 }
 
 func TestCannotSubscribeToAnInvisibleCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

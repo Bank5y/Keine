@@ -58,6 +58,7 @@ func preview(c *client, id int, key string) resp {
 }
 
 func TestALessonIsAddedFromItsTextAndImages(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -91,6 +92,7 @@ func TestALessonIsAddedFromItsTextAndImages(t *testing.T) {
 }
 
 func TestACommittedVersionWritesOnlyTheUploadedFiles(t *testing.T) {
+	t.Parallel()
 	files := &recordingStore{Store: newFileStore(t)}
 	a := startApp(t, testutil.NewDatabase(t), files)
 	alice := a.user("alice")
@@ -126,6 +128,7 @@ func TestACommittedVersionWritesOnlyTheUploadedFiles(t *testing.T) {
 }
 
 func TestMissingImagesAreListedOneByOne(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -155,6 +158,7 @@ func TestMissingImagesAreListedOneByOne(t *testing.T) {
 }
 
 func TestALessonIsAddedFromASingleLessonZip(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -179,6 +183,7 @@ func TestALessonIsAddedFromASingleLessonZip(t *testing.T) {
 }
 
 func TestAColumnLessonNeedsExactlyOneText(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))

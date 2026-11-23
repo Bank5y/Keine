@@ -20,6 +20,7 @@ func draftArea(a *app, id int) []string {
 }
 
 func TestAVideoLessonIsAddedFromAFileWithItsTranscript(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := videoCourse(t, alice)
@@ -54,6 +55,7 @@ func TestAVideoLessonIsAddedFromAFileWithItsTranscript(t *testing.T) {
 }
 
 func TestAVideoLessonIsAddedFromALink(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := videoCourse(t, alice)
@@ -80,6 +82,7 @@ func TestAVideoLessonIsAddedFromALink(t *testing.T) {
 }
 
 func TestAColumnLessonMayCarryAVideoToo(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -94,6 +97,7 @@ func TestAColumnLessonMayCarryAVideoToo(t *testing.T) {
 }
 
 func TestReplacingALessonKeepsItsProgressAndCarriesItsAnnotations(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, lesson := annotatedColumn(t, alice)
@@ -125,6 +129,7 @@ func TestReplacingALessonKeepsItsProgressAndCarriesItsAnnotations(t *testing.T) 
 }
 
 func TestOnlyALessonWithContentIsReplacedAndOnlyAnUpcomingOneFilled(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, outlineFiles(outlineManifest()))
@@ -151,6 +156,7 @@ func TestOnlyALessonWithContentIsReplacedAndOnlyAnUpcomingOneFilled(t *testing.T
 }
 
 func TestAFilledLessonIsToldToSubscribersAsAdded(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	carol := a.user("carol")
 	admin := a.admin()
@@ -167,6 +173,7 @@ func TestAFilledLessonIsToldToSubscribersAsAdded(t *testing.T) {
 }
 
 func TestDiscardingADraftDeletesItsUploadedFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -186,6 +193,7 @@ func TestDiscardingADraftDeletesItsUploadedFiles(t *testing.T) {
 }
 
 func TestUndoingAnUploadDeletesItsFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -204,6 +212,7 @@ func TestUndoingAnUploadDeletesItsFiles(t *testing.T) {
 }
 
 func TestCommittingADraftDeletesItsTemporaryArea(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -218,6 +227,7 @@ func TestCommittingADraftDeletesItsTemporaryArea(t *testing.T) {
 }
 
 func TestDeletingACourseDeletesItsDraftsFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -231,6 +241,7 @@ func TestDeletingACourseDeletesItsDraftsFiles(t *testing.T) {
 }
 
 func TestDeletingACourseOthersRetainDeletesItsDraftsFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, _, id, _ := subscriberWithDoneLesson(t, a)
 	admin := a.admin()

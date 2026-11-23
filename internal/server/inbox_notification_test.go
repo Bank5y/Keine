@@ -25,6 +25,7 @@ func kinds(ns []map[string]any) []any {
 }
 
 func TestTheInboxHoldsOnlyUnreadNotifications(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	publishedCourse(t, a, alice)
@@ -61,6 +62,7 @@ func pendingFor(t *testing.T, a *app) (erin *client, annotation, notice map[stri
 }
 
 func TestAPendingAnnotationsNoticeStaysInTheInboxUntilDismissed(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	erin, _, notice := pendingFor(t, a)
 	nid := int(notice["id"].(float64))
@@ -85,6 +87,7 @@ func TestAPendingAnnotationsNoticeStaysInTheInboxUntilDismissed(t *testing.T) {
 }
 
 func TestDismissingSomeoneElsesNotificationIsNotFound(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, _, notice := pendingFor(t, a)
 	mallory := a.user("mallory")
@@ -92,6 +95,7 @@ func TestDismissingSomeoneElsesNotificationIsNotFound(t *testing.T) {
 }
 
 func TestAPendingAnnotationsNoticeLeavesTheInboxOnceEveryAnnotationIsHandled(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	erin, ann, _ := pendingFor(t, a)
 	erin.mustOK(erin.do("POST", "/api/notifications/read-all", nil))
@@ -104,6 +108,7 @@ func TestAPendingAnnotationsNoticeLeavesTheInboxOnceEveryAnnotationIsHandled(t *
 }
 
 func TestDeletingTheLastPendingAnnotationAlsoClearsTheNotice(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	erin, ann, _ := pendingFor(t, a)
 
@@ -118,6 +123,7 @@ func TestDeletingTheLastPendingAnnotationAlsoClearsTheNotice(t *testing.T) {
 }
 
 func TestAdminsAreToldOfAPublishRequestUntilItIsDecided(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -141,6 +147,7 @@ func TestAdminsAreToldOfAPublishRequestUntilItIsDecided(t *testing.T) {
 }
 
 func TestAdminsAreToldAgainWhenARejectedCourseIsResubmitted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -154,6 +161,7 @@ func TestAdminsAreToldAgainWhenARejectedCourseIsResubmitted(t *testing.T) {
 }
 
 func TestAdminsAreToldOfAnUpdateRequestUntilItIsWithdrawn(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -180,6 +188,7 @@ func TestAdminsAreToldOfAnUpdateRequestUntilItIsWithdrawn(t *testing.T) {
 }
 
 func TestALaterUpdateThatReattachesEverythingClearsTheNotice(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	erin, _, _ := pendingFor(t, a)
 	id := courseOfPending(t, erin)

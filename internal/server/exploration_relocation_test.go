@@ -62,6 +62,7 @@ func readExploration(t *testing.T, a *app, id int) (explorationRow, bool) {
 }
 
 func TestAnExplorationWhoseTextIsGoneAwaitsMigration(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	id, lesson, exp := pinnedExploration(t, bob)
@@ -83,6 +84,7 @@ func TestAnExplorationWhoseTextIsGoneAwaitsMigration(t *testing.T) {
 }
 
 func TestAnExplorationFollowsItsTextThroughACourseUpdate(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	id, lesson, exp := pinnedExploration(t, bob)
@@ -101,6 +103,7 @@ func TestAnExplorationFollowsItsTextThroughACourseUpdate(t *testing.T) {
 }
 
 func TestTheExplorationsOfADeletedLessonBecomeExcerpts(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	id, _, exp := pinnedExploration(t, bob)
@@ -119,6 +122,7 @@ func TestTheExplorationsOfADeletedLessonBecomeExcerpts(t *testing.T) {
 }
 
 func TestThePendingNoticeCountsAnnotationsOnly(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	id, lesson, _ := pinnedExploration(t, bob)

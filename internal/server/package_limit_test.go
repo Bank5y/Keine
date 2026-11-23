@@ -31,6 +31,7 @@ func expectUnpackedTooLarge(t *testing.T, r resp) {
 }
 
 func TestACoursePackageMayNotUnpackPastTheUploadLimit(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withUploadLimit(1<<10))
 	alice := a.user("alice")
 
@@ -41,6 +42,7 @@ func TestACoursePackageMayNotUnpackPastTheUploadLimit(t *testing.T) {
 }
 
 func TestAPackageUpdateMayNotUnpackPastTheUploadLimit(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -56,6 +58,7 @@ func TestAPackageUpdateMayNotUnpackPastTheUploadLimit(t *testing.T) {
 }
 
 func TestAnUpdateRequestMayNotUnpackPastTheUploadLimit(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	a.user("bob")

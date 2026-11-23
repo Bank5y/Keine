@@ -13,6 +13,7 @@ import (
 // three kinds before reports and the concept index existed: the report and
 // the concept index take the model and thinking switch sync had (ADR 0012).
 func TestAnUpgradedSiteKeepsTheAssistant(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()
@@ -43,6 +44,7 @@ func TestAnUpgradedSiteKeepsTheAssistant(t *testing.T) {
 }
 
 func TestANewSiteNeedsTheReportAndTheConceptIndexMapped(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withMasterKey(masterKey))
 	f := newFakeModel(t)
 	admin := a.admin()

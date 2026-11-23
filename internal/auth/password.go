@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"testing"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -53,10 +54,20 @@ func checkPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("keine-dummy-password"), bcrypt.DefaultCost)
+// hashCost is bcrypt's work factor: the default, except in a test binary,
+// where the API tests sign in thousands of times and the cost buys nothing.
+// A hash keeps the cost it was made with, so either checks the other.
+var hashCost = func() int {
+	if testing.Testing() {
+		return bcrypt.MinCost
+	}
+	return bcrypt.DefaultCost
+}()
+
+var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("keine-dummy-password"), hashCost)
 
 func hashPassword(password string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	b, err := bcrypt.GenerateFromPassword([]byte(password), hashCost)
 	return string(b), err
 }
 

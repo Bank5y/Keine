@@ -12,6 +12,7 @@ func exportNotes(c *client, courseID int) resp {
 }
 
 func TestNotesExportAsMarkdownLessonByLessonInTextOrder(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, l00 := annotatedColumn(t, alice)
@@ -43,6 +44,7 @@ func TestNotesExportAsMarkdownLessonByLessonInTextOrder(t *testing.T) {
 }
 
 func TestNotesExportKeepsDetachedAnnotationsWithTheirState(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	files := columnFiles(columnManifest())
@@ -73,6 +75,7 @@ func TestNotesExportKeepsDetachedAnnotationsWithTheirState(t *testing.T) {
 }
 
 func TestNotesExportIsOnlyForACourseOfMine(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id, l00 := annotatedColumn(t, alice)

@@ -119,6 +119,7 @@ func sourcesOf(t *testing.T, done sseEvent) []map[string]any {
 }
 
 func TestASearchAndAFetchGoIntoTheTurnsSources(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	f.fetch = func(string) (assistant.Page, bool, error) {
 		return assistant.Page{Title: "Raft 论文", Content: strings.Repeat("x", 25_000)}, true, nil
@@ -174,6 +175,7 @@ func TestASearchAndAFetchGoIntoTheTurnsSources(t *testing.T) {
 }
 
 func TestFetchingAURLNotSearchedIsAWrongCall(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	fetch := call("web_fetch", map[string]any{"url": "https://elsewhere.example/"})
 	m := newScriptedModel(toolStep([]assistant.ToolCall{fetch}), texts(goodAnswer))
@@ -199,6 +201,7 @@ func TestFetchingAURLNotSearchedIsAWrongCall(t *testing.T) {
 }
 
 func TestTwoServerErrorsInARowTurnSearchOff(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	f.search = func(int, string) ([]assistant.SearchHit, bool, error) {
 		return nil, false, assistant.Transient(assistant.ErrUnavailable, fmt.Errorf("503"))
@@ -238,6 +241,7 @@ func TestTwoServerErrorsInARowTurnSearchOff(t *testing.T) {
 }
 
 func TestNoBalanceTurnsSearchOffAtOnceButKeepsFetchingWhatWasFound(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	ok := f.search
 	f.search = func(n int, q string) ([]assistant.SearchHit, bool, error) {
@@ -279,6 +283,7 @@ func TestNoBalanceTurnsSearchOffAtOnceButKeepsFetchingWhatWasFound(t *testing.T)
 }
 
 func TestTheTavilyRouteSearchesWithTheSitesKeyAndFetchesNothing(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	m := newScriptedModel(texts(goodAnswer))
 	a := newApp(t, withModel(m), withMasterKey(masterKey), withSearch(f))
@@ -298,6 +303,7 @@ func TestTheTavilyRouteSearchesWithTheSitesKeyAndFetchesNothing(t *testing.T) {
 }
 
 func TestNoWebIsTheDeployersChoice(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -313,6 +319,7 @@ func TestNoWebIsTheDeployersChoice(t *testing.T) {
 }
 
 func TestAIUnavailableUntilEveryModelHasASearchRoute(t *testing.T) {
+	t.Parallel()
 	f := newFakeSearch()
 	a := newApp(t, withModel(newScriptedModel()), withMasterKey(masterKey), withSearch(f))
 	admin := a.admin()
@@ -360,6 +367,7 @@ func TestAIUnavailableUntilEveryModelHasASearchRoute(t *testing.T) {
 }
 
 func TestDeepSeekSearchIsOnlyForADeepSeekModel(t *testing.T) {
+	t.Parallel()
 	a := newApp(t, withModel(newScriptedModel()), withMasterKey(masterKey), withSearch(newFakeSearch()))
 	admin := a.admin()
 	r := admin.do("POST", "/api/admin/models", map[string]any{

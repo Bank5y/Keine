@@ -3,7 +3,9 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -45,6 +47,20 @@ func Connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("connect database: %w", err)
 	}
 	return pool, nil
+}
+
+// SchemaVersion is a short hash of the embedded migrations: two databases
+// migrated by binaries of the same version have the same schema.
+func SchemaVersion() string {
+	names, _ := fs.Glob(migrations, "migrations/*.sql")
+	sort.Strings(names)
+	h := sha256.New()
+	for _, path := range names {
+		sql, _ := migrations.ReadFile(path)
+		fmt.Fprintf(h, "%s\x00%d\x00", path, len(sql))
+		h.Write(sql)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }
 
 // migrate applies every migration not yet recorded, in file name order. An

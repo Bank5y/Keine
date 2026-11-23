@@ -65,6 +65,7 @@ func secondColumn(t *testing.T, c *client) (courseID int, lessons map[string]int
 }
 
 func TestNotesPageListsEveryAnnotationOfMineWithItsCourseAndLesson(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	first, l00 := annotatedColumn(t, alice)
@@ -108,6 +109,7 @@ func TestNotesPageListsEveryAnnotationOfMineWithItsCourseAndLesson(t *testing.T)
 }
 
 func TestNotesPageNarrowsToOneCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	first, l00 := annotatedColumn(t, alice)
@@ -128,6 +130,7 @@ func TestNotesPageNarrowsToOneCourse(t *testing.T) {
 }
 
 func TestNotesPageFiltersByStyleColourAndNote(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	first, l00 := annotatedColumn(t, alice)
@@ -164,6 +167,7 @@ func TestNotesPageFiltersByStyleColourAndNote(t *testing.T) {
 }
 
 func TestNotesPageSearchesQuotesAndNotes(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	first, l00 := annotatedColumn(t, alice)
@@ -197,6 +201,7 @@ func TestNotesPageSearchesQuotesAndNotes(t *testing.T) {
 }
 
 func TestNotesPageSortsByTimeOrByTheText(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	first, l00 := annotatedColumn(t, alice)
@@ -226,6 +231,7 @@ func TestNotesPageSortsByTimeOrByTheText(t *testing.T) {
 }
 
 func TestNotesPageKeepsAnnotationsOnRetainedLessons(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	annotate(t, bob, id, lessons["l02"], map[string]any{"style": "underline", "quote": "02"})
@@ -252,6 +258,7 @@ func TestNotesPageKeepsAnnotationsOnRetainedLessons(t *testing.T) {
 }
 
 func TestNotesPageKeepsAnnotationsOfADeletedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	annotate(t, bob, id, lessons["l02"], map[string]any{"style": "highlight", "color": "blue", "quote": "02", "note": "留着"})

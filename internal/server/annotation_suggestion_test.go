@@ -43,6 +43,7 @@ func acceptSuggestion(t *testing.T, c *client, ann, s map[string]any) map[string
 }
 
 func TestTheWandSuggestsTheRewordedText(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id, l00, ann := pendingAfterRewording(t, a, bob)
@@ -63,6 +64,7 @@ func TestTheWandSuggestsTheRewordedText(t *testing.T) {
 }
 
 func TestTheWandSuggestsPlacesForTypicalEditsAndNoneForDeletedText(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

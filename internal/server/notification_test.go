@@ -35,6 +35,7 @@ func rejectPublish(t *testing.T, a *app, alice *client, reason string) int {
 }
 
 func TestUploaderIsNotifiedWhenAPublishRequestIsApproved(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	if unreadCount(t, alice) != 0 {
@@ -61,6 +62,7 @@ func TestUploaderIsNotifiedWhenAPublishRequestIsApproved(t *testing.T) {
 }
 
 func TestUploaderIsNotifiedWithTheReasonWhenAPublishRequestIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -77,6 +79,7 @@ func TestUploaderIsNotifiedWithTheReasonWhenAPublishRequestIsRejected(t *testing
 }
 
 func TestUploaderIsNotifiedWhenAdminPublishesAPendingCourseDirectly(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -92,6 +95,7 @@ func TestUploaderIsNotifiedWhenAdminPublishesAPendingCourseDirectly(t *testing.T
 }
 
 func TestUsersSeeOnlyTheirOwnNotifications(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -109,6 +113,7 @@ func TestUsersSeeOnlyTheirOwnNotifications(t *testing.T) {
 }
 
 func TestMarkingNotificationsRead(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	publishedCourse(t, a, alice)
@@ -140,6 +145,7 @@ func TestMarkingNotificationsRead(t *testing.T) {
 }
 
 func TestNotificationsArePaged(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	for i := 0; i < 3; i++ {
@@ -169,6 +175,7 @@ func notificationsOfKind(t *testing.T, c *client, kind string) []map[string]any 
 }
 
 func TestRequesterIsNotifiedWhenAnUpdateRequestIsApproved(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -193,6 +200,7 @@ func TestRequesterIsNotifiedWhenAnUpdateRequestIsApproved(t *testing.T) {
 }
 
 func TestWithdrawingAnUpdateRequestSendsNoNotification(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -212,6 +220,7 @@ func TestWithdrawingAnUpdateRequestSendsNoNotification(t *testing.T) {
 }
 
 func TestRequesterIsNotifiedWithTheReasonWhenAnUpdateRequestIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()

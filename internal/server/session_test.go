@@ -6,6 +6,7 @@ import (
 )
 
 func TestAdminFromEnvironmentCanLogIn(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	c := a.admin()
 
@@ -16,6 +17,7 @@ func TestAdminFromEnvironmentCanLogIn(t *testing.T) {
 }
 
 func TestWrongPasswordIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	c := a.client()
 
@@ -24,6 +26,7 @@ func TestWrongPasswordIsRejected(t *testing.T) {
 }
 
 func TestRestartDoesNotOverwriteAdminPassword(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	b := a.restart(withAdmin(adminName, "a-different-password"))
 
@@ -32,12 +35,14 @@ func TestRestartDoesNotOverwriteAdminPassword(t *testing.T) {
 }
 
 func TestUnauthenticatedRequestsAreRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 
 	expectError(t, a.client().do("GET", "/api/me", nil), http.StatusUnauthorized, "unauthenticated")
 }
 
 func TestLogoutEndsTheSession(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	c := a.admin()
 
@@ -47,6 +52,7 @@ func TestLogoutEndsTheSession(t *testing.T) {
 }
 
 func TestUnknownLoginProviderIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	c := a.client()
 

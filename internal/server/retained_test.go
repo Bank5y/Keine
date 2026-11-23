@@ -43,6 +43,7 @@ func subscriberWithDoneLesson(t *testing.T, a *app) (alice, bob *client, id int,
 }
 
 func TestSubscriberKeepsDoneLessonsOfAnUnpublishedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	carol := a.user("carol")
@@ -80,6 +81,7 @@ func TestSubscriberKeepsDoneLessonsOfAnUnpublishedCourse(t *testing.T) {
 }
 
 func TestRepublishingShowsSubscribersTheCurrentCourseAndCleansTheFreeze(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice, bob, id, _ := subscriberWithDoneLesson(t, a)
 	unpublish(t, a, id)
@@ -106,6 +108,7 @@ func TestRepublishingShowsSubscribersTheCurrentCourseAndCleansTheFreeze(t *testi
 }
 
 func TestRepublishingKeepsFilesTheCourseStillUses(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	unpublish(t, a, id)
@@ -119,6 +122,7 @@ func TestRepublishingKeepsFilesTheCourseStillUses(t *testing.T) {
 }
 
 func TestUnsubscribingGivesUpRetainedLessons(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	dave := a.user("dave")
@@ -152,6 +156,7 @@ func TestUnsubscribingGivesUpRetainedLessons(t *testing.T) {
 }
 
 func TestUnpublishingWithoutRetainersFreezesNothing(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -168,6 +173,7 @@ func TestUnpublishingWithoutRetainersFreezesNothing(t *testing.T) {
 }
 
 func TestRetainedLessonsKeepTheirContentWhenTheUploaderUpdates(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	unpublish(t, a, id)
@@ -197,6 +203,7 @@ func TestRetainedLessonsKeepTheirContentWhenTheUploaderUpdates(t *testing.T) {
 }
 
 func TestSubscriberKeepsAnnotatedLessonsOfAnUnpublishedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	_, bob, id, lessons := subscriberWithDoneLesson(t, a)
 	ann := annotate(t, bob, id, lessons["l02"], map[string]any{"style": "underline", "quote": "02"}) // annotated, not done

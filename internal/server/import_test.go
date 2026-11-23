@@ -104,6 +104,7 @@ func expectProblems(t *testing.T, r resp, paths ...string) {
 }
 
 func TestUploadingAPackageCreatesAPrivateCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -137,6 +138,7 @@ func TestUploadingAPackageCreatesAPrivateCourse(t *testing.T) {
 }
 
 func TestUploaderStartsLearningTheUploadedCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -149,6 +151,7 @@ func TestUploaderStartsLearningTheUploadedCourse(t *testing.T) {
 }
 
 func TestCompletionStatusComesFromTheManifest(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -163,6 +166,7 @@ func TestCompletionStatusComesFromTheManifest(t *testing.T) {
 }
 
 func TestPackageMayWrapEverythingInOneFolder(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	wrapped := map[string]string{}
@@ -174,6 +178,7 @@ func TestPackageMayWrapEverythingInOneFolder(t *testing.T) {
 }
 
 func TestVideoCourseTakesPackagedFilesAndLinks(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := map[string]any{
@@ -195,6 +200,7 @@ func TestVideoCourseTakesPackagedFilesAndLinks(t *testing.T) {
 }
 
 func TestPackageWithoutManifestIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	files := columnFiles(columnManifest())
@@ -204,6 +210,7 @@ func TestPackageWithoutManifestIsRejected(t *testing.T) {
 }
 
 func TestNonZipUploadIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -212,6 +219,7 @@ func TestNonZipUploadIsRejected(t *testing.T) {
 }
 
 func TestManifestProblemsAreAllReported(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := map[string]any{
@@ -234,6 +242,7 @@ func TestManifestProblemsAreAllReported(t *testing.T) {
 }
 
 func TestManifestThatIsNotJSONIsRejected(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 
@@ -241,6 +250,7 @@ func TestManifestThatIsNotJSONIsRejected(t *testing.T) {
 }
 
 func TestUnknownManifestFieldsAreReported(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -250,6 +260,7 @@ func TestUnknownManifestFieldsAreReported(t *testing.T) {
 }
 
 func TestMissingReferencedFilesAreListed(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -267,6 +278,7 @@ func TestMissingReferencedFilesAreListed(t *testing.T) {
 }
 
 func TestPathsMayNotEscapeThePackage(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -278,6 +290,7 @@ func TestPathsMayNotEscapeThePackage(t *testing.T) {
 // A lesson with any content must have the content its course type needs;
 // one with none at all is an upcoming lesson instead.
 func TestColumnLessonsNeedTextAndVideoLessonsNeedVideo(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	col := columnManifest()
@@ -299,6 +312,7 @@ func TestColumnLessonsNeedTextAndVideoLessonsNeedVideo(t *testing.T) {
 }
 
 func TestFailedImportLeavesNothingBehind(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	files := columnFiles(columnManifest())
@@ -315,6 +329,7 @@ func TestFailedImportLeavesNothingBehind(t *testing.T) {
 }
 
 func TestOthersCannotSeeAPrivateCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -327,6 +342,7 @@ func TestOthersCannotSeeAPrivateCourse(t *testing.T) {
 }
 
 func TestUploadingRequiresSignIn(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 
 	expectError(t, a.client().upload("/api/courses", zipOf(t, columnFiles(columnManifest()))), http.StatusUnauthorized, "unauthenticated")

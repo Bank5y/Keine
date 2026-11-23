@@ -7,6 +7,7 @@ import (
 )
 
 func TestADraftCommittedAfterAnotherUpdateKeepsBothChanges(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -68,6 +69,7 @@ func conflictingDraft(t *testing.T, alice *client) int {
 const bothConflicts = "[0:renameLesson:开篇词 1:moveLesson:02｜三层意图识别]"
 
 func TestADraftShowsTheOperationsThatNoLongerApply(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := conflictingDraft(t, alice)
@@ -84,6 +86,7 @@ func TestADraftShowsTheOperationsThatNoLongerApply(t *testing.T) {
 }
 
 func TestADraftWithConflictsStillTakesNewOperations(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := conflictingDraft(t, alice)
@@ -103,6 +106,7 @@ func TestADraftWithConflictsStillTakesNewOperations(t *testing.T) {
 }
 
 func TestCommittingADraftWithConflictsLeavesTheCourseUntilConfirmed(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := conflictingDraft(t, alice)
@@ -130,6 +134,7 @@ func TestCommittingADraftWithConflictsLeavesTheCourseUntilConfirmed(t *testing.T
 }
 
 func TestOnlyTheConfirmedConflictsAreSkipped(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := conflictingDraft(t, alice)
@@ -145,6 +150,7 @@ func TestOnlyTheConfirmedConflictsAreSkipped(t *testing.T) {
 }
 
 func TestADraftCommittedAsAnUpdateRequestAlsoConfirmsItsConflicts(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -174,6 +180,7 @@ func TestADraftCommittedAsAnUpdateRequestAlsoConfirmsItsConflicts(t *testing.T) 
 }
 
 func TestAConflictTakingTheSamePlaceIsNotSkippedUnseen(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -200,6 +207,7 @@ func TestAConflictTakingTheSamePlaceIsNotSkippedUnseen(t *testing.T) {
 }
 
 func TestADraftWhoseEveryOperationConflictsCannotBeCommitted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()

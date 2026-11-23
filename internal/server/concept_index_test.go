@@ -103,6 +103,7 @@ func publishedIndexed(t *testing.T, a *app, alice *client) int {
 }
 
 func TestANewVersionStartsWithoutAnIndexAndNothingIsExtracted(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel()
 	a := aiApp(t, m)
 	alice := a.user("alice")
@@ -123,6 +124,7 @@ func TestANewVersionStartsWithoutAnIndexAndNothingIsExtracted(t *testing.T) {
 }
 
 func TestTheAdminBuildsTheIndexLessonByLesson(t *testing.T) {
+	t.Parallel()
 	release := make(chan struct{})
 	steps := threeLessons()
 	steps[0].before = func() { <-release }
@@ -172,6 +174,7 @@ func TestTheAdminBuildsTheIndexLessonByLesson(t *testing.T) {
 }
 
 func TestAFailedIndexCanBeTriedAgain(t *testing.T) {
+	t.Parallel()
 	steps := threeLessons()
 	m := newScriptedModel(steps[0], texts("这一讲没有概念可言。"), steps[1], steps[2])
 	a := aiApp(t, m)
@@ -197,6 +200,7 @@ func TestAFailedIndexCanBeTriedAgain(t *testing.T) {
 }
 
 func TestANewVersionExtractsOnlyTheLessonsThatChanged(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(append(threeLessons(),
 		concepts(concept("输入清洗", "清洗", "去掉无关字符。")))...)
 	a := aiApp(t, m)
@@ -239,6 +243,7 @@ func TestANewVersionExtractsOnlyTheLessonsThatChanged(t *testing.T) {
 }
 
 func TestTheIndexIsChargedToTheSiteNotToAReader(t *testing.T) {
+	t.Parallel()
 	steps := threeLessons()
 	for i := range steps {
 		steps[i].result.Usage = assistant.Usage{Input: n64(1_000_000), Output: n64(0)}
@@ -266,6 +271,7 @@ func TestTheIndexIsChargedToTheSiteNotToAReader(t *testing.T) {
 }
 
 func TestOnlyTheAdminBuildsAnIndexOfALibraryCourse(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	alice := a.user("alice")
 	admin := a.admin()
@@ -277,6 +283,7 @@ func TestOnlyTheAdminBuildsAnIndexOfALibraryCourse(t *testing.T) {
 }
 
 func TestALessonMissingFromStorageIsLeftOutOfTheIndex(t *testing.T) {
+	t.Parallel()
 	steps := threeLessons()
 	m := newScriptedModel(steps[1], steps[2])
 	a := aiApp(t, m)

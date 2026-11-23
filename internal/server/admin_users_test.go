@@ -20,6 +20,7 @@ func userID(t *testing.T, admin *client, name string) int {
 }
 
 func TestAdminListsUsers(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	a.user("alice")
 	admin := a.admin()
@@ -40,6 +41,7 @@ func TestAdminListsUsers(t *testing.T) {
 }
 
 func TestDisabledUserIsSignedOutAndCannotSignIn(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	admin := a.admin()
@@ -55,6 +57,7 @@ func TestDisabledUserIsSignedOutAndCannotSignIn(t *testing.T) {
 }
 
 func TestAdminCannotDisableThemselves(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	admin := a.admin()
 	id := userID(t, admin, adminName)
@@ -64,6 +67,7 @@ func TestAdminCannotDisableThemselves(t *testing.T) {
 }
 
 func TestAdminResetsPassword(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	a.user("alice")
 	admin := a.admin()
@@ -76,6 +80,7 @@ func TestAdminResetsPassword(t *testing.T) {
 }
 
 func TestAdminCreatesAccountsWhileRegistrationIsClosed(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	admin := a.admin()
 	admin.mustOK(admin.do("PUT", "/api/site", map[string]any{"registrationOpen": false}))
@@ -86,6 +91,7 @@ func TestAdminCreatesAccountsWhileRegistrationIsClosed(t *testing.T) {
 }
 
 func TestUsersCannotUseAdminAPI(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	a.user("bob")
@@ -97,6 +103,7 @@ func TestUsersCannotUseAdminAPI(t *testing.T) {
 }
 
 func TestUnknownUserIsNotFound(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	admin := a.admin()
 

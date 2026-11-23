@@ -31,6 +31,7 @@ func onlyNotification(t *testing.T, c *client, kind string) map[string]any {
 }
 
 func TestSubscribersAreToldWhatAnApprovedUpdateChanged(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -62,6 +63,7 @@ func TestSubscribersAreToldWhatAnApprovedUpdateChanged(t *testing.T) {
 }
 
 func TestUploaderAndSubscribersAreToldOfUnpublishing(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -98,6 +100,7 @@ func TestUploaderAndSubscribersAreToldOfUnpublishing(t *testing.T) {
 }
 
 func TestSubscribersAreToldOfDeletionWithTheLessonsTheyRetain(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -134,6 +137,7 @@ func TestSubscribersAreToldOfDeletionWithTheLessonsTheyRetain(t *testing.T) {
 }
 
 func TestDeletingACourseNobodyRetainsStillTellsItsPeople(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	carol := a.user("carol")
@@ -177,6 +181,7 @@ func rearrangedVersion() map[string]string {
 }
 
 func TestUpdateNoticesCountRenamedAndMovedLessons(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	carol := a.user("carol")
@@ -194,6 +199,7 @@ func TestUpdateNoticesCountRenamedAndMovedLessons(t *testing.T) {
 }
 
 func TestReorderingChaptersMovesNoLesson(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	carol := a.user("carol")
@@ -212,6 +218,7 @@ func TestReorderingChaptersMovesNoLesson(t *testing.T) {
 }
 
 func TestSubscribersAreToldOfAnAdminsDirectUpdate(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	carol := a.user("carol")

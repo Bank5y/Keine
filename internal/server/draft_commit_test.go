@@ -65,6 +65,7 @@ func filesIn(a *app, courseID int) (dir string, files []string) {
 }
 
 func TestCommittingADraftUpdatesThePrivateCourseKeepingProgress(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -112,6 +113,7 @@ func TestCommittingADraftUpdatesThePrivateCourseKeepingProgress(t *testing.T) {
 }
 
 func TestACommittedVersionCopiesTheFilesItKeeps(t *testing.T) {
+	t.Parallel()
 	files := &recordingStore{Store: newFileStore(t)}
 	a := startApp(t, testutil.NewDatabase(t), files)
 	alice := a.user("alice")
@@ -137,6 +139,7 @@ func TestACommittedVersionCopiesTheFilesItKeeps(t *testing.T) {
 }
 
 func TestAnAdminCommitsADraftOfAPublicCourseAndSubscribersAreTold(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	carol := a.user("carol")
@@ -157,6 +160,7 @@ func TestAnAdminCommitsADraftOfAPublicCourseAndSubscribersAreTold(t *testing.T) 
 }
 
 func TestAnEmptyDraftCannotBeCommitted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))

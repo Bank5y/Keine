@@ -17,6 +17,7 @@ func myCourseIDsWhere(t *testing.T, c *client, q url.Values) []int {
 }
 
 func TestUnsubscribingKeepsProgress(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
@@ -46,6 +47,7 @@ func TestUnsubscribingKeepsProgress(t *testing.T) {
 }
 
 func TestOpeningALessonDoesNotBringAnUnsubscribedCourseBack(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	bob := a.user("bob")
 	id := publishAs(t, a, columnFiles(columnManifest()))
@@ -61,6 +63,7 @@ func TestOpeningALessonDoesNotBringAnUnsubscribedCourseBack(t *testing.T) {
 }
 
 func TestPrivateCoursesCannotBeUnsubscribedOnlyDeleted(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -72,6 +75,7 @@ func TestPrivateCoursesCannotBeUnsubscribedOnlyDeleted(t *testing.T) {
 }
 
 func TestUploadersKeepTheirPublishedCourseInMyCourses(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := publishedCourse(t, a, alice)
@@ -86,6 +90,7 @@ func TestUploadersKeepTheirPublishedCourseInMyCourses(t *testing.T) {
 }
 
 func TestMyCoursesFilterByStudyStateTypeAndCompletion(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -118,6 +123,7 @@ func TestMyCoursesFilterByStudyStateTypeAndCompletion(t *testing.T) {
 // A subscriber who finished nothing retains nothing (see retained_test.go for
 // those who did).
 func TestAnUnpublishedCourseLeavesSubscribersWhoRetainNothing(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")

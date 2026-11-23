@@ -8,6 +8,7 @@ import (
 )
 
 func TestMyCoursesShowWhatACardNeeds(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -31,6 +32,7 @@ func TestMyCoursesShowWhatACardNeeds(t *testing.T) {
 }
 
 func TestCoverIsServedToThoseWhoMaySeeTheCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -50,6 +52,7 @@ func TestCoverIsServedToThoseWhoMaySeeTheCourse(t *testing.T) {
 }
 
 func TestUploaderDeletesAPrivateCourseWithItsFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -76,6 +79,7 @@ func TestUploaderDeletesAPrivateCourseWithItsFiles(t *testing.T) {
 }
 
 func TestOthersCannotDeleteAPrivateCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -88,6 +92,7 @@ func TestOthersCannotDeleteAPrivateCourse(t *testing.T) {
 // Course files come from users; served from our origin they must not run
 // scripts (an SVG cover can carry JavaScript).
 func TestCoverCannotRunScripts(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()

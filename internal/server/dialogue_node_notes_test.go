@@ -13,6 +13,7 @@ import (
 )
 
 func TestANodesSecondTurnStartsWithItsFirstRequestAndReplyAndAddsNoNote(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("子节点的第一个回复。"), texts("答二"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -62,6 +63,7 @@ func hasNote(msgs []string) bool {
 }
 
 func TestTheMainNodesTurnsCarryNoNote(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("答一"), texts("答二"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -78,6 +80,7 @@ func TestTheMainNodesTurnsCarryNoNote(t *testing.T) {
 }
 
 func TestTheDetailShowsTheQuestionsAsTheReaderAskedThem(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("分支的答"), texts("答二"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -99,6 +102,7 @@ func TestTheDetailShowsTheQuestionsAsTheReaderAskedThem(t *testing.T) {
 }
 
 func TestAForkTurnTriedAgainAsksWithItsNoteAgain(t *testing.T) {
+	t.Parallel()
 	down := step{err: &assistant.Error{Category: assistant.ErrUnavailable, Detail: "down"}}
 	m := newScriptedModel(texts(goodAnswer), down, down, texts("重试后的回复。"))
 	a := aiApp(t, m)
@@ -124,6 +128,7 @@ func TestAForkTurnTriedAgainAsksWithItsNoteAgain(t *testing.T) {
 }
 
 func TestAChildOfABranchSeesEachForkWithItsOwnKindsNote(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("分支的答"), texts("子节点的答"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -145,6 +150,7 @@ func TestAChildOfABranchSeesEachForkWithItsOwnKindsNote(t *testing.T) {
 }
 
 func TestTheTurnANodeForksWithBeginsWithItsKindsNote(t *testing.T) {
+	t.Parallel()
 	for kind, note := range nodeNotes {
 		t.Run(kind, func(t *testing.T) {
 			m := newScriptedModel(texts(goodAnswer), texts("答"))
@@ -186,6 +192,7 @@ func setForkNote(t *testing.T, a *app, turn int, note *string) {
 }
 
 func TestAForkTurnKeepsItsNoteAsItWasAsked(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("分支的答"), texts("答二"), texts("答三"))
 	a := aiApp(t, m)
 	bob := a.user("bob")

@@ -52,6 +52,7 @@ func nextVersion() (map[string]any, map[string]string) {
 }
 
 func TestUploaderUpdatesAPrivateCourseKeepingProgress(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -87,6 +88,7 @@ func TestUploaderUpdatesAPrivateCourseKeepingProgress(t *testing.T) {
 }
 
 func TestARemovedLessonComingBackRestoresItsProgress(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -102,6 +104,7 @@ func TestARemovedLessonComingBackRestoresItsProgress(t *testing.T) {
 }
 
 func TestUpdateReplacesTheStoredFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -119,6 +122,7 @@ func TestUpdateReplacesTheStoredFiles(t *testing.T) {
 }
 
 func TestFailedUpdateKeepsTheOldCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -140,6 +144,7 @@ func TestFailedUpdateKeepsTheOldCourse(t *testing.T) {
 }
 
 func TestOnlyTheUploaderUpdatesAPrivateCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -150,6 +155,7 @@ func TestOnlyTheUploaderUpdatesAPrivateCourse(t *testing.T) {
 }
 
 func TestPublishedCoursesAreNotUpdatedDirectlyByTheUploader(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := publishedCourse(t, a, alice)

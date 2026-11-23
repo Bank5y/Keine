@@ -100,6 +100,7 @@ func contents(req assistant.Request) []string {
 }
 
 func TestAFollowUpReadsTheBackgroundTheFirstExchangeThenTheDialogue(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("第一个后续回复。"), texts("第二个后续回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -150,6 +151,7 @@ func TestAFollowUpReadsTheBackgroundTheFirstExchangeThenTheDialogue(t *testing.T
 }
 
 func TestAnExplorationOfASentenceIsFirstAskedToExplainIt(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -171,6 +173,7 @@ func TestAnExplorationOfASentenceIsFirstAskedToExplainIt(t *testing.T) {
 }
 
 func TestTheDetailShowsTheQuestionOfAnExplorationOfATerm(t *testing.T) {
+	t.Parallel()
 	bob := aiApp(t, newScriptedModel(texts(goodAnswer))).user("bob")
 	_, _, exp := pinnedExploration(t, bob)
 
@@ -180,6 +183,7 @@ func TestTheDetailShowsTheQuestionOfAnExplorationOfATerm(t *testing.T) {
 }
 
 func TestTheAnalysisAndAFollowUpBothAnswerInTheStyleAndRecordIt(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -236,6 +240,7 @@ func turnMetas(t *testing.T, a *app, exp int) []map[string]any {
 }
 
 func TestAFollowUpReadsTheBackgroundAsPinnedAfterTheCourseChanged(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -255,6 +260,7 @@ func TestAFollowUpReadsTheBackgroundAsPinnedAfterTheCourseChanged(t *testing.T) 
 }
 
 func TestRunningOutOfCreditsMidReplyKeepsWhatStreamed(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("已经流出的一段。", "后面这段不该出现。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")
@@ -276,6 +282,7 @@ func TestRunningOutOfCreditsMidReplyKeepsWhatStreamed(t *testing.T) {
 }
 
 func TestAFollowUpNeedsSomeCreditsLeft(t *testing.T) {
+	t.Parallel()
 	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
 	bob := a.user("bob")
 	_, _, exp := pinnedExploration(t, bob)
@@ -286,6 +293,7 @@ func TestAFollowUpNeedsSomeCreditsLeft(t *testing.T) {
 }
 
 func TestAFailedTurnTriedAgainIsReplacedInPlace(t *testing.T) {
+	t.Parallel()
 	down := step{err: &assistant.Error{Category: assistant.ErrUnavailable, Detail: "down"}}
 	m := newScriptedModel(texts(goodAnswer), down, down, texts("重试后的回复。"))
 	a := aiApp(t, m)
@@ -312,6 +320,7 @@ func TestAFailedTurnTriedAgainIsReplacedInPlace(t *testing.T) {
 }
 
 func TestAKeptTurnHoldsNoToolCallsOrReasoning(t *testing.T) {
+	t.Parallel()
 	lookup := step{events: []assistant.Event{
 		{Kind: assistant.EventReasoning, Text: "先想一想要查什么"},
 		{Kind: assistant.EventToolCall, ToolCall: &assistant.ToolCall{ID: "c1", Name: "search_course", Arguments: `{"query":"planner"}`}},
@@ -341,6 +350,7 @@ func TestAKeptTurnHoldsNoToolCallsOrReasoning(t *testing.T) {
 }
 
 func TestATurnGoesOnlyAfterTheLastOfItsNode(t *testing.T) {
+	t.Parallel()
 	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
 	a := aiApp(t, m)
 	bob := a.user("bob")

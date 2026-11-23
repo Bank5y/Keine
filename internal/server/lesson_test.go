@@ -22,6 +22,7 @@ func lessonIDs(t *testing.T, c *client, courseID int) map[string]int {
 }
 
 func TestLessonTextIsServedWithItsBase(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	m := columnManifest()
@@ -45,6 +46,7 @@ func TestLessonTextIsServedWithItsBase(t *testing.T) {
 }
 
 func TestLessonImagesAreServedAsInertFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	id := uploadCourse(t, alice, columnFiles(columnManifest()))
@@ -60,6 +62,7 @@ func TestLessonImagesAreServedAsInertFiles(t *testing.T) {
 }
 
 func TestOthersCannotReadPrivateLessonsOrFiles(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	bob := a.user("bob")
@@ -71,6 +74,7 @@ func TestOthersCannotReadPrivateLessonsOrFiles(t *testing.T) {
 }
 
 func TestLessonsAndFilesBelongToTheirCourse(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	alice := a.user("alice")
 	first := uploadCourse(t, alice, columnFiles(columnManifest()))
