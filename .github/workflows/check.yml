@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+# a newer push to a pull request cancels its run still going; each push to
+# main has a group of its own, so none of those is cancelled
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   web:
     runs-on: ubuntu-latest
@@ -25,13 +31,10 @@ jobs:
       # typecheck, then build into internal/web/dist, which the Go binary embeds
       - run: npm run build
         working-directory: web
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-dist
-          path: internal/web/dist
 
+  # needs nothing of web: no test reads the front end, which only the keine
+  # binary embeds, so a placeholder lets it compile
   go:
-    needs: web
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -40,10 +43,7 @@ jobs:
         storage: [local, s3]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: web-dist
-          path: internal/web/dist
+      - run: mkdir -p internal/web/dist && touch internal/web/dist/.gitkeep
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
