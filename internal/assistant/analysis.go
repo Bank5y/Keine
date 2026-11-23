@@ -59,6 +59,11 @@ type Meta struct {
 	Usage     Usage `json:"-"`
 	Estimated bool  `json:"-"`
 	Charged   bool  `json:"-"`
+	// Steps are the run's calls that made tool calls; Remedies the calls
+	// that asked again for an answer that was not valid. keine-eval
+	// reports them.
+	Steps    int `json:"-"`
+	Remedies int `json:"-"`
 }
 
 type ActivityStatus string
@@ -220,6 +225,7 @@ func (r *analysisRun) meta() Meta {
 	defer r.mu.Unlock()
 	m.Searches += r.providerSearches
 	m.Usage, m.Estimated, m.Charged = r.usage, r.estimated, r.charged
+	m.Steps, m.Remedies = r.steps, r.remedies
 	// a citation may name a page its search found under another title
 	type place struct {
 		url  string
@@ -254,7 +260,6 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 	for i, t := range run.Tools {
 		specs[i] = t.Spec()
 	}
-	steps := 0
 	tools := len(specs) > 0 || run.Turn.ProviderWeb
 	answering := !tools // no more tool calls from here
 	retried, remedied := false, false
@@ -300,7 +305,7 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			return called{}, &RunError{Code: runCode(cat), Kept: r.streamed, Cause: err}
 		}
 		if len(c.toolCalls) > 0 && !answering {
-			steps++
+			r.steps++
 			if r.streamed {
 				if err := r.reset(); err != nil {
 					return called{}, err
@@ -312,9 +317,9 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 				return called{}, ctx.Err()
 			}
 			switch {
-			case steps == MaxSteps-1:
+			case r.steps == MaxSteps-1:
 				msgs = append(msgs, Message{Role: RoleUser, Content: lastStepNote})
-			case steps >= MaxSteps:
+			case r.steps >= MaxSteps:
 				answering = true
 				msgs = append(msgs, Message{Role: RoleUser, Content: stepsUsedNote})
 			}
@@ -349,6 +354,7 @@ func (r *analysisRun) loop(ctx context.Context, msgs []Message) (called, error) 
 			return called{}, &RunError{Code: code, Kept: r.streamed, Cause: errors.New(strings.Join(problems, "; "))}
 		}
 		remedied = true
+		r.remedies++
 		answering = true
 		msgs = appendMessages(msgs,
 			Message{Role: RoleAssistant, Content: c.raw, Reasoning: c.reasoning, Native: c.result.Native},
@@ -387,6 +393,9 @@ type analysisRun struct {
 	form *tagForm
 	// calls and toolRuns number the activities
 	calls, toolRuns int
+	// steps are the calls that made tool calls; remedies the calls that
+	// asked again for an answer that was not valid
+	steps, remedies int
 	breakers        map[string]*breaker
 	// web is the run's web tools, nil without a web route
 	web *Web

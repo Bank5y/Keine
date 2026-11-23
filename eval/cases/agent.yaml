@@ -1,0 +1,16 @@
+# AI 工程类课程，含表格里的选区。
+category: AI 工程
+cases:
+  - id: agent-g4c-table
+    # 表格里的一格
+    kind: table
+    course: 1
+    version: v1
+    lesson: l06
+    quote: 无法及时发现问题，发现问题只能重来
+  - id: lerobot-state-table
+    kind: table
+    course: 11
+    version: v1
+    lesson: l07
+    quote: observation.state

@@ -1,0 +1,12 @@
+# A model for keine-eval -model: any OpenAI-compatible or Anthropic
+# endpoint. The key comes from the environment variable named in keyEnv.
+format: openai          # openai | anthropic
+provider: deepseek      # optional provider configuration
+baseUrl: https://api.deepseek.com
+keyEnv: DEEPSEEK_API_KEY
+model: deepseek-chat
+displayName: DeepSeek
+contextWindow: 128000
+thinking: false
+search: off             # off | provider (Anthropic) | deepseek | tavily (tavilyKeyEnv)
+rates: {input: 2, cacheRead: 0.2, cacheWrite: 2, output: 8, search: 0}

@@ -6,14 +6,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"slices"
-	"strings"
 
 	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/assistant"
-	"github.com/Bank5y/keine/internal/auth"
-	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/credits"
+	"github.com/Bank5y/keine/internal/lessonctx"
 )
 
 // analysisRequest is a selection to analyze, as a selection gives it.
@@ -84,18 +81,8 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("selection not marked in the lesson source", "course", id, "lesson", lessonID)
 	}
 
-	limits := assistant.LimitsOf(turn)
-	sent := passage(p, in.Quote)
-	narrow, err := assistant.ChooseLength(p.Lesson.Markdown, in.Length, limits)
+	msgs, narrow, err := lessonctx.AnalysisMessages(p, in.Quote, in.Length, assistant.LimitsOf(turn))
 	if !writeRunError(w, r, err) {
-		return
-	}
-	if narrow {
-		sent = related(p, sent)
-	}
-	msgs := assistant.AnalysisPrompt.Messages(sent)
-	if assistant.EstimateMessages(msgs) > limits.Input {
-		writeRunError(w, r, assistant.ErrContextTooLong)
 		return
 	}
 	user := currentUser(r).ID
@@ -112,7 +99,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 
 	run := assistant.Run{
 		Turn:     turn,
-		Tools:    append(assistant.CourseTools(&courseLibrary{s.courses, currentUser(r), p.Course}), s.opts.ExtraTools...),
+		Tools:    append(assistant.CourseTools(lessonctx.NewLibrary(s.courses, currentUser(r), p.Course)), s.opts.ExtraTools...),
 		Web:      turn.Web,
 		Now:      s.opts.Now,
 		Deadline: s.opts.RunDeadline,
@@ -178,117 +165,6 @@ func failedRunEvent(ctx context.Context, turn assistant.Turn, what string, err e
 	ev := runError(ownFailure(turn, code), kept)
 	ownDetail(ev, turn, err)
 	return ev
-}
-
-// passage is a course passage as the assistant reads it.
-func passage(p course.Passage, quote string) assistant.Passage {
-	out := assistant.Passage{
-		CourseTitle: p.Course.Title,
-		CourseIntro: p.Course.Intro,
-		AuthorName:  p.Course.AuthorName,
-		AuthorIntro: p.Course.AuthorIntro,
-		Path:        append([]string{p.Chapter, p.Lesson.Title}, p.Headings...),
-		LessonKey:   p.Lesson.Key,
-		Quote:       quote,
-		Lesson:      p.Lesson.Markdown,
-	}
-	if p.Marked {
-		md := p.Lesson.Markdown
-		out.Lesson = md[:p.Start] + assistant.SelectedOpen + md[p.Start:p.End] + assistant.SelectedClose + md[p.End:]
-	}
-	for _, ch := range p.Course.Chapters {
-		oc := assistant.OutlineChapter{Title: ch.Title}
-		for _, l := range ch.Lessons {
-			title := l.Title
-			if l.Upcoming {
-				title += "（未上线）"
-			}
-			oc.Lessons = append(oc.Lessons, assistant.OutlineLesson{Key: l.Key, Title: title})
-		}
-		out.Outline = append(out.Outline, oc)
-	}
-	return out
-}
-
-// related narrows a passage to the section of the selection and the ones
-// next to it at its level, with the lesson's outline of sections (#131).
-// A selection above the first section takes the text there and the first
-// section. A lesson without sections, or a selection that cannot be told
-// apart in it, stays whole.
-func related(p course.Passage, in assistant.Passage) assistant.Passage {
-	md := p.Lesson.Markdown
-	all := anchor.Sections(md)
-	// the lesson's own title heads no section of it
-	var sections []anchor.Section
-	for _, s := range all {
-		if strings.TrimSpace(s.Title) != strings.TrimSpace(p.Lesson.Title) {
-			sections = append(sections, s)
-		}
-	}
-	if len(sections) == 0 || !p.Marked {
-		return in
-	}
-	at := -1
-	for i, s := range sections {
-		if s.Start <= p.Start && p.Start < s.End {
-			at = i // the innermost comes last
-		}
-	}
-	top := sections[0].Level
-	for _, s := range sections {
-		top = min(top, s.Level)
-	}
-	var from, to int
-	if at < 0 {
-		// above the first section: what comes before it, and the first
-		from, to = 0, sections[0].End
-	} else {
-		var level []int
-		for i, s := range sections {
-			if s.Level == sections[at].Level {
-				level = append(level, i)
-			}
-		}
-		pos := slices.Index(level, at)
-		from, to = sections[level[max(pos-1, 0)]].Start, sections[level[min(pos+1, len(level)-1)]].End
-	}
-	text := md[from:p.Start] + assistant.SelectedOpen + md[p.Start:p.End] + assistant.SelectedClose + md[p.End:to]
-	outline := make([]string, len(sections))
-	for i, s := range sections {
-		outline[i] = strings.Repeat("  ", s.Level-top) + "- " + s.Title
-	}
-	in.Lesson, in.Sections = text, outline
-	return in
-}
-
-// courseLibrary is a course as its reader sees it, for the course tools:
-// the outline of the version they read, and each lesson read for them.
-type courseLibrary struct {
-	courses *course.Service
-	viewer  auth.User
-	course  course.Detail
-}
-
-func (c *courseLibrary) Lessons() []assistant.LessonRef {
-	var out []assistant.LessonRef
-	for _, ch := range c.course.Chapters {
-		for _, l := range ch.Lessons {
-			out = append(out, assistant.LessonRef{Key: l.Key, Title: l.Title, Chapter: ch.Title, HasText: l.HasText, Upcoming: l.Upcoming, Unavailable: l.Unavailable})
-		}
-	}
-	return out
-}
-
-func (c *courseLibrary) Text(ctx context.Context, key string) (string, error) {
-	for _, ch := range c.course.Chapters {
-		for _, l := range ch.Lessons {
-			if l.Key == key {
-				t, err := c.courses.Lesson(ctx, c.viewer, c.course.ID, l.ID)
-				return t.Markdown, err
-			}
-		}
-	}
-	return "", course.ErrLessonNotFound
 }
 
 // eventStream writes Server-Sent Events, each flushed as it is sent.

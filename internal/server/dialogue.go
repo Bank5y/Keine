@@ -14,6 +14,7 @@ import (
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/credits"
+	"github.com/Bank5y/keine/internal/lessonctx"
 )
 
 // errCreditsOut cancels a run that spent what its reader had left today.
@@ -233,7 +234,7 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	defer cancel(nil)
 	run := assistant.Run{
 		Turn:     turn,
-		Tools:    append(assistant.CourseTools(&courseLibrary{s.courses, user, c}), s.opts.ExtraTools...),
+		Tools:    append(assistant.CourseTools(lessonctx.NewLibrary(s.courses, user, c)), s.opts.ExtraTools...),
 		Web:      turn.Web,
 		Now:      s.opts.Now,
 		Deadline: s.opts.RunDeadline,
@@ -326,7 +327,7 @@ func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Lin
 	if x.Status != course.ConceptIndexBuilt {
 		return nil
 	}
-	lib := &courseLibrary{l.s.courses, l.viewer, c}
+	lib := lessonctx.NewLibrary(l.s.courses, l.viewer, c)
 	return func(ctx context.Context, answer string) ([]assistant.LinkCandidate, error) {
 		var out []assistant.LinkCandidate
 		for _, e := range x.Mentioned(answer, l.d.LessonKey, maxCandidates) {
