@@ -1561,29 +1561,37 @@ a.rn:hover .t { color: var(--brand); }
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 24px 60px -12px color-mix(in srgb, var(--text) 35%, transparent); will-change: transform; }
 @media (prefers-reduced-motion: reduce) { .exp-zoom-backdrop { animation: none; } }
 
-/* an exploration's card open in the rail (#180): over the cards below it,
-   level with its text, its document scrolling inside it */
-.exp-card-open { position: absolute; left: 0; right: 0; z-index: 2; display: flex; flex-direction: column; overflow: hidden;
+/* an exploration's card open in the rail (#180): it opens inward from
+   where it sits, its right edge kept at the rail and 640 wide over the
+   text (the prototype's variant D, #86), over the cards below it, level
+   with its text, its document scrolling inside it */
+.exp-card-open { position: absolute; right: 0; z-index: 2; width: 640px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); border: 1px solid var(--explore); border-left-width: 3px; border-radius: 6px;
   box-shadow: 0 18px 40px -14px color-mix(in srgb, var(--text) 45%, transparent); }
 .exp-card-open.measuring { visibility: hidden; }
-.exp-card-open.opening { animation: exp-card-open 220ms cubic-bezier(.2,.8,.2,1) both; }
-@keyframes exp-card-open { from { clip-path: inset(0 0 calc(100% - var(--from, 56px)) 0 round 6px); transform: translateY(var(--lift, 0px)); } to { clip-path: inset(0 0 0 0 round 6px); transform: none; } }
-@media (prefers-reduced-motion: reduce) { .exp-card-open.opening { animation: none; } }
-.exp-open-head { flex: none; display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 10px 4px; border: 0; background: none; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
+/* it grows from the card's own box: leftward from the rail's edge and
+   down, moving to where it is placed; then what it shows fades in */
+.exp-card-open.opening { animation: exp-card-open 380ms cubic-bezier(.2,.8,.2,1) both; }
+.exp-card-open.opening > * { animation: exp-card-open-content 260ms ease-out 140ms both; }
+@keyframes exp-card-open {
+  from { clip-path: inset(0 0 calc(100% - var(--from, 56px)) calc(100% - var(--from-w, 220px)) round 6px); transform: translateY(var(--lift, 0px)); }
+  to { clip-path: inset(0 0 0 0 round 6px); transform: none; } }
+@keyframes exp-card-open-content { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .exp-card-open.opening, .exp-card-open.opening > * { animation: none; } }
+.exp-open-head { flex: none; display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 14px 6px 18px; border: 0; background: none; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
 .exp-open-head svg { flex: none; width: 12px; height: 12px; color: var(--explore); }
 .exp-open-head span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .exp-open-head .lucide-chevron-up { margin-left: auto; color: var(--text-3); }
-.exp-card-open .exp-doc { flex: 1; min-height: 0; padding: 2px 12px 8px; scrollbar-width: thin; }
+.exp-card-open .exp-doc { flex: 1; min-height: 0; padding: 4px 20px 12px; scrollbar-width: thin; }
 .exp-card-open .exp-doc-quote { margin: 4px 0 10px; }
-.exp-card-open .exp-doc-quote span { font-size: 12px; }
-.exp-card-open .exp-doc-quote small { font-size: 11px; }
+.exp-card-open .exp-doc-quote span { font-size: 13px; }
+.exp-card-open .exp-doc-quote small { font-size: 12px; }
 /* the card's own head carries the title */
 .exp-card-open .exp-doc-title { display: none; }
-.exp-card-open .exp-doc-concept { font-size: 13px; line-height: 1.65; margin-bottom: 10px; }
+.exp-card-open .exp-doc-concept { font-size: 14px; line-height: 1.7; margin-bottom: 12px; }
 .exp-card-open .exp-doc hr { margin-bottom: 10px; }
-.exp-card-open .exp-doc .analysis-explanation .prose { font-size: 13px; line-height: 1.7; }
-.exp-open-foot { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--line); }
+.exp-card-open .exp-doc .analysis-explanation .prose { font-size: 14px; line-height: 1.75; }
+.exp-open-foot { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 12px 6px 14px; border-top: 1px solid var(--line); }
 .exp-open-foot .grow { flex: 1; }
 .exp-open-expand, .exp-open-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-radius: var(--radius); font-size: 12px; cursor: pointer; border: 0; }
 .exp-open-expand { background: color-mix(in srgb, var(--explore) 14%, var(--surface)); color: var(--explore); font-weight: 500; }

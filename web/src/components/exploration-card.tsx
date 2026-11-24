@@ -14,7 +14,7 @@ const MARGIN = 16;
 
 // ExplorationCard is an exploration in the rail: its title on one line,
 // its concept on two, cut off with an ellipsis when longer. Picked, it
-// opens where it is (#180), over the cards below it: the exploration
+// opens where it is (#180), inward over the text and over the cards below it: the exploration
 // document, with 展开探索 (the dialogue over the page) and 删除; its title
 // folds it again. anchor is where its text starts on the screen; busy
 // onBusy tells the rail when a dialog of the card's is up, so a press or
@@ -42,7 +42,7 @@ function OpenCard({ id, anchor, onFold, onDeleted, onNodes, onBusy }: {
   onBusy: (on: boolean) => void;
 }) {
   const [d, setD] = useState<ExplorationDetail | null>(null);
-  const [place, setPlace] = useState<{ offset: number; height: number; from: number } | null>(null);
+  const [place, setPlace] = useState<{ offset: number; height: number; from: number; fromW: number } | null>(null);
   const [asking, setAsking] = useState(false); // the delete confirmation
   const [zoomed, setZoomed] = useState(false); // the dialogue over the page
   const box = useRef<HTMLDivElement>(null);
@@ -85,7 +85,7 @@ function OpenCard({ id, anchor, onFold, onDeleted, onNodes, onBusy }: {
       const at = placeOpenCard({ anchor: anchorRef.current() ?? slot.top, content, viewport: innerHeight, top, margin: MARGIN });
       const card = el.previousElementSibling as HTMLElement | null;
       setPlace((p) => {
-        const next = { offset: at.top - slot.top, height: at.height, from: card?.offsetHeight ?? 56 };
+        const next = { offset: at.top - slot.top, height: at.height, from: card?.offsetHeight ?? 56, fromW: card?.offsetWidth ?? slot.width };
         return p && Math.abs(p.offset - next.offset) < 0.5 && Math.abs(p.height - next.height) < 0.5 ? p : next;
       });
     };
@@ -120,7 +120,7 @@ function OpenCard({ id, anchor, onFold, onDeleted, onNodes, onBusy }: {
 
   if (!d) return null;
   const style = (place
-    ? { top: place.offset, height: place.height, '--from': `${place.from}px`, '--lift': `${-place.offset}px` }
+    ? { top: place.offset, height: place.height, '--from': `${place.from}px`, '--from-w': `${place.fromW}px`, '--lift': `${-place.offset}px` }
     : { top: 0 }) as CSSProperties;
   return (
     <>
