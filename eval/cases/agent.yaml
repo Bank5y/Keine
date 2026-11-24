@@ -31,6 +31,8 @@ cases:
       - fork: branch
         ask: 和 G4C 相关的还有哪些概念？它们之间是什么关系？
         must_include: [Replan]
+        # 「G4C」里含「4C」，但讲 15 用户画像的 4C 不是一回事（#177）
+        must_not_link: [4C]
       - ask: Replan 发生时，G4C 里哪一项最先起作用？
   - id: agent-checkpoint-child
     # 表格里的一格，在分析上直接开子节点

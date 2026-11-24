@@ -36,6 +36,8 @@ const (
 	RuleNarration = "no_meta_narration"
 	// RuleLinkCourse: the linking step named an entry it was not offered.
 	RuleLinkCourse = "link_course_candidates"
+	// RuleMustNotLink: the turn linked a concept the case says it must not.
+	RuleMustNotLink = "must_not_link"
 )
 
 // Failure is a hard rule an analysis or a turn after it broke, and how.

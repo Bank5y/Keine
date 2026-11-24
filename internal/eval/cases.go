@@ -55,6 +55,10 @@ type Turn struct {
 	Ask            string          `yaml:"ask" json:"ask"`
 	MustInclude    []string        `yaml:"must_include" json:"mustInclude,omitempty"`
 	MustNotInclude []string        `yaml:"must_not_include" json:"mustNotInclude,omitempty"`
+	// MustNotLink are concepts the turn a node forks with must not link
+	// to: a name that only looks like one in the answer. There is no
+	// must_link: what the reply names is up to the model.
+	MustNotLink []string `yaml:"must_not_link" json:"mustNotLink,omitempty"`
 }
 
 // caseFile is a file of cases of one kind of course.
@@ -122,6 +126,9 @@ func (c Case) check() error {
 		}
 		if t.Fork != "" && !t.Fork.Openable() {
 			return fmt.Errorf("turn %d: fork must be child, branch or divergent", i+1)
+		}
+		if t.Fork == "" && len(t.MustNotLink) > 0 {
+			return fmt.Errorf("turn %d: must_not_link needs fork: only the turn a node forks with links", i+1)
 		}
 	}
 	return nil

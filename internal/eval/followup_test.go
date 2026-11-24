@@ -73,7 +73,7 @@ func TestAFollowupCaseAsksItsTurnsAfterTheAnalysisAndLinksTheTurnANodeForksWith(
 	c := eval.Case{ID: "term-dialogue", Course: id, Version: version, Lesson: "l01", Quote: "任期", Prefix: "分成一个个",
 		Turns: []eval.Turn{
 			{Ask: "任期什么时候变？"},
-			{Fork: "child", Ask: "任期和日志有什么关系？", MustInclude: []string{"日志"}},
+			{Fork: "child", Ask: "任期和日志有什么关系？", MustInclude: []string{"日志"}, MustNotLink: []string{"日志复制"}},
 			{Ask: "任期会变小吗？"},
 		}}
 	res, err := r.Run(context.Background(), c, 1)
@@ -121,7 +121,7 @@ func TestAFollowupCaseAsksItsTurnsAfterTheAnalysisAndLinksTheTurnANodeForksWith(
 	if len(broken[0]) != 0 || len(broken[1]) != 0 {
 		t.Fatalf("the analysis and the main node's turn broke rules: %+v", res.Failures)
 	}
-	if got := strings.Join(broken[2], ","); got != eval.RuleReply+","+eval.RuleLinkCourse {
+	if got := strings.Join(broken[2], ","); got != eval.RuleReply+","+eval.RuleLinkCourse+","+eval.RuleMustNotLink {
 		t.Fatalf("the fork broke %s: %+v", got, res.Failures)
 	}
 	if got := strings.Join(broken[3], ","); got != eval.RuleNarration {

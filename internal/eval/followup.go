@@ -124,6 +124,13 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 		if bad := unoffered(w.rec.linkedEntries(), offered); len(bad) > 0 {
 			fail(RuleLinkCourse, "link_course 引用了不在候选里的条目 "+strings.Join(bad, "、"))
 		}
+		for _, l := range chosen {
+			for _, no := range t.MustNotLink {
+				if course.NormalizeConcept(l.Concept) == course.NormalizeConcept(no) {
+					fail(RuleMustNotLink, "关联了「"+l.Concept+"」")
+				}
+			}
+		}
 		pinned.History = append(pinned.History, assistant.Exchange{Asked: q, Reply: lessonctx.WithLinks(tr.Reply, chosen)})
 	}
 	return nil
