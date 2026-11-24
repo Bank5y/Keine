@@ -7,6 +7,7 @@ import { Confirm } from '@/components/confirm';
 import { ExplorationDialogue } from '@/components/exploration-dialogue';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError } from '@/lib/api';
+import { useContainScroll, useScrollLock } from '@/lib/contain-scroll';
 import { deleteExploration, getExploration, type ExplorationDetail } from '@/lib/explorations';
 import { cn } from '@/lib/utils';
 
@@ -56,7 +57,12 @@ export function ExplorationZoom({ id, onClose, onDeleted, onNodes }: {
   const [closing, setClosing] = useState(false);
   const [asking, setAsking] = useState(false); // the delete confirmation
   const card = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const opened = useRef(false);
+  // the zoom is modal: the page stays still under it, the backdrop
+  // included, and is where it was once it closes (#181)
+  useScrollLock();
+  useContainScroll(root);
 
   useEffect(() => {
     let alive = true;
@@ -118,7 +124,7 @@ export function ExplorationZoom({ id, onClose, onDeleted, onNodes }: {
   };
 
   return createPortal(
-    <div className={cn('exp-zoom', `level-${level}`, closing && 'closing')} role="dialog" aria-modal="true" aria-label={d ? `探索：${d.title}` : '探索'}>
+    <div ref={root} className={cn('exp-zoom', `level-${level}`, closing && 'closing')} role="dialog" aria-modal="true" aria-label={d ? `探索：${d.title}` : '探索'}>
       <div className="exp-zoom-backdrop" onClick={close} />
       <div ref={card} className="exp-zoom-card">
         {!d ? <div className="exp-zoom-loading" /> : level === 1 ? (

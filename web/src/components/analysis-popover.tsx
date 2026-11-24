@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { analyze, hasContent, initial, pinRefusals, step, type AnalysisState, type LessonLength, type Length, type Part, type Parts, type Refusal } from '@/lib/analysis';
 import { ApiError } from '@/lib/api';
+import { useContainScroll } from '@/lib/contain-scroll';
 import { pinAnalysis, type Exploration } from '@/lib/explorations';
 import type { Quote } from '@/lib/annotations';
 import { readNotice, useUser } from '@/lib/session';
@@ -73,6 +74,8 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
   const [choice, setChoice] = useState<Length>('related');
   const box = useRef<HTMLDivElement>(null);
   const [pinning, setPinning] = useState<Pinning>({ status: 'idle' });
+  // a scroll over the popover stays in it, never moving the page (#181)
+  useContainScroll(box);
 
   useEffect(() => {
     if (!started) return undefined;
