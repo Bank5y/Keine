@@ -435,3 +435,11 @@ func TestOfTwoEntriesNamedAtTheSamePlaceOnlyTheLongerNameIsACandidate(t *testing
 		t.Fatalf("a name also standing alone stays a candidate: %v, want %s", got, want)
 	}
 }
+
+func TestALongerNameOfTheExplorationsOwnLessonStillHidesAShorterOne(t *testing.T) {
+	t.Parallel()
+	got := forkCandidates(t, "回答：先做目标拆解，再做意图识别。", concept("拆解", "为什么学 Agent", "把大事分成小事。"))
+	if want := "意图识别"; strings.Join(got, "|") != want {
+		t.Fatalf("candidates %v, want %s", got, want)
+	}
+}
