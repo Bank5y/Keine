@@ -14,10 +14,12 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/Bank5y/keine/internal/assistant"
+	"github.com/Bank5y/keine/internal/course"
 )
 
 // Case is one selection to analyze: a lesson of a course version, the
-// selected text, and words the analysis must or must not have.
+// selected text, and words the analysis must or must not have; with
+// Turns, the dialogue after it too.
 type Case struct {
 	ID string `yaml:"id" json:"id"`
 	// Category is the kind of course (the file the case is in).
@@ -40,6 +42,19 @@ type Case struct {
 	Length         assistant.Length `yaml:"length" json:"length,omitempty"`
 	MustInclude    []string         `yaml:"must_include" json:"mustInclude,omitempty"`
 	MustNotInclude []string         `yaml:"must_not_include" json:"mustNotInclude,omitempty"`
+	// Turns make a follow-up case (#141): the dialogue after the analysis
+	// is pinned, asked turn by turn along one chain of nodes.
+	Turns []Turn `yaml:"turns" json:"turns,omitempty"`
+}
+
+// Turn is a question of a follow-up case: asked after the turn before it
+// (the analysis for the first), in its node, or opening a node of the kind
+// Fork on it, the turn the course links are looked for in.
+type Turn struct {
+	Fork           course.NodeKind `yaml:"fork" json:"fork,omitempty"`
+	Ask            string          `yaml:"ask" json:"ask"`
+	MustInclude    []string        `yaml:"must_include" json:"mustInclude,omitempty"`
+	MustNotInclude []string        `yaml:"must_not_include" json:"mustNotInclude,omitempty"`
 }
 
 // caseFile is a file of cases of one kind of course.
@@ -100,6 +115,14 @@ func (c Case) check() error {
 	}
 	if !assistant.ValidLength(c.Length) {
 		return fmt.Errorf("length must be related or full")
+	}
+	for i, t := range c.Turns {
+		if strings.TrimSpace(t.Ask) == "" {
+			return fmt.Errorf("turn %d: missing ask", i+1)
+		}
+		if t.Fork != "" && !t.Fork.Openable() {
+			return fmt.Errorf("turn %d: fork must be child, branch or divergent", i+1)
+		}
 	}
 	return nil
 }

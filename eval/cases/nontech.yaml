@@ -43,3 +43,27 @@ cases:
     quote: LLM Wiki
     suffix: 。它有效地弥补了
     must_include: [RAG]
+
+  # 后续轮（#141）。这门课还没建概念索引。
+  - id: quant-half-kelly-child
+    kind: child
+    course: 7
+    version: v1
+    lesson: l06
+    quote: 算出凯利公式的最佳仓位，然后除以2
+    turns:
+      - fork: child
+        ask: 为什么除以 2 正好合适？胜率估错的时候会怎样？
+      - ask: 除以 4 又是在防什么？
+  - id: quant-kelly-divergent
+    kind: divergent
+    course: 7
+    version: v1
+    lesson: l06
+    quote: 凯利公式
+    prefix: 你不信
+    suffix: ，你觉得20%
+    turns:
+      - ask: 凯利公式里的赔率指的是什么？
+      - fork: divergent
+        ask: 其他领域有没有和凯利公式类似的「按把握程度分配资源」的思想？

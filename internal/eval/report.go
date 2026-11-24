@@ -8,17 +8,21 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/Bank5y/keine/internal/course"
 )
 
 // Report is one keine-eval run: every case run Runs times on one prompt
 // version and model.
 type Report struct {
-	Prompt  string    `json:"prompt"`
-	Model   string    `json:"model"`
-	Started time.Time `json:"started"`
-	Runs    int       `json:"runs"`
-	Cases   []Case    `json:"cases"`
-	Results []Result  `json:"results"`
+	Prompt string `json:"prompt"`
+	// Followup is the follow-up prompt's version, when cases have turns.
+	Followup string    `json:"followup,omitempty"`
+	Model    string    `json:"model"`
+	Started  time.Time `json:"started"`
+	Runs     int       `json:"runs"`
+	Cases    []Case    `json:"cases"`
+	Results  []Result  `json:"results"`
 }
 
 // HardFailures counts the runs that broke a hard rule; there must be none.
@@ -45,12 +49,15 @@ func (r Report) resultsOf(id string) []Result {
 // Baseline is what the repository keeps of a run (eval/baseline.json):
 // the rules each run broke and its figures, never what the model wrote.
 type Baseline struct {
-	Prompt       string         `json:"prompt"`
-	Model        string         `json:"model"`
-	Runs         int            `json:"runs"`
-	HardFailures int            `json:"hardFailures"`
-	Totals       Totals         `json:"totals"`
-	Cases        []BaselineCase `json:"cases"`
+	Prompt       string `json:"prompt"`
+	Followup     string `json:"followup,omitempty"`
+	Model        string `json:"model"`
+	Runs         int    `json:"runs"`
+	HardFailures int    `json:"hardFailures"`
+	// Totals are the analyses'; TurnTotals the turns' after them.
+	Totals     Totals         `json:"totals"`
+	TurnTotals *Totals        `json:"turnTotals,omitempty"`
+	Cases      []BaselineCase `json:"cases"`
 }
 
 type BaselineCase struct {
@@ -63,9 +70,46 @@ type BaselineCase struct {
 // BaselineRun is a run by its figures: the rules it broke, by name only
 // (their details may quote the answer).
 type BaselineRun struct {
-	Error  string   `json:"error,omitempty"`
-	Broken []string `json:"broken"`
-	Stats  Stats    `json:"stats"`
+	Error  string         `json:"error,omitempty"`
+	Broken []string       `json:"broken"`
+	Stats  Stats          `json:"stats"`
+	Turns  []BaselineTurn `json:"turns,omitempty"`
+}
+
+// BaselineTurn is a turn of a follow-up case by its figures, and what it
+// linked of the course by the concepts' names, never the model's notes.
+type BaselineTurn struct {
+	Fork    course.NodeKind  `json:"fork,omitempty"`
+	Error   string           `json:"error,omitempty"`
+	Broken  []string         `json:"broken"`
+	Stats   Stats            `json:"stats"`
+	Linking *BaselineLinking `json:"linking,omitempty"`
+}
+
+type BaselineLinking struct {
+	Index      course.ConceptIndexStatus `json:"index"`
+	Candidates []string                  `json:"candidates"`
+	Chosen     []string                  `json:"chosen"`
+}
+
+// brokenBy is the rules turn n broke (0 for the analysis), by name only.
+func brokenBy(fs []Failure, n int) []string {
+	broken := []string{}
+	for _, f := range fs {
+		if f.Turn == n {
+			broken = append(broken, f.Rule)
+		}
+	}
+	slices.Sort(broken)
+	return slices.Compact(broken)
+}
+
+func concepts(es []LinkEntry) []string {
+	out := []string{}
+	for _, e := range es {
+		out = append(out, e.Concept)
+	}
+	return out
 }
 
 // Totals are the figures of every run together: averages per run, but
@@ -83,13 +127,36 @@ type Totals struct {
 }
 
 func (r Report) totals() Totals {
+	var stats []Stats
+	for _, res := range r.Results {
+		stats = append(stats, res.Stats)
+	}
+	return totalsOf(stats)
+}
+
+// turnTotals are the figures of every turn after an analysis; nil when no
+// case has turns.
+func (r Report) turnTotals() *Totals {
+	var stats []Stats
+	for _, res := range r.Results {
+		for _, t := range res.Turns {
+			stats = append(stats, t.Stats)
+		}
+	}
+	if len(stats) == 0 {
+		return nil
+	}
+	t := totalsOf(stats)
+	return &t
+}
+
+func totalsOf(stats []Stats) Totals {
 	var t Totals
-	n, streamed := float64(len(r.Results)), 0.0
+	n, streamed := float64(len(stats)), 0.0
 	if n == 0 {
 		return t
 	}
-	for _, res := range r.Results {
-		s := res.Stats
+	for _, s := range stats {
 		t.Steps += float64(s.Steps)
 		t.ToolCalls += float64(s.ToolCalls)
 		if s.Reread {
@@ -117,16 +184,20 @@ func (r Report) totals() Totals {
 }
 
 func (r Report) Baseline() Baseline {
-	b := Baseline{Prompt: r.Prompt, Model: r.Model, Runs: r.Runs, HardFailures: r.HardFailures(), Totals: r.totals(), Cases: []BaselineCase{}}
+	b := Baseline{Prompt: r.Prompt, Followup: r.Followup, Model: r.Model, Runs: r.Runs, HardFailures: r.HardFailures(),
+		Totals: r.totals(), TurnTotals: r.turnTotals(), Cases: []BaselineCase{}}
 	for _, c := range r.Cases {
 		bc := BaselineCase{ID: c.ID, Category: c.Category, Kind: c.Kind, Runs: []BaselineRun{}}
 		for _, res := range r.resultsOf(c.ID) {
-			broken := []string{}
-			for _, f := range res.Failures {
-				broken = append(broken, f.Rule)
+			run := BaselineRun{Error: res.Error, Broken: brokenBy(res.Failures, 0), Stats: res.Stats}
+			for i, t := range res.Turns {
+				bt := BaselineTurn{Fork: t.Fork, Error: t.Error, Broken: brokenBy(res.Failures, i+1), Stats: t.Stats}
+				if t.Linking != nil {
+					bt.Linking = &BaselineLinking{Index: t.Linking.Index, Candidates: concepts(t.Linking.Candidates), Chosen: concepts(t.Linking.Chosen)}
+				}
+				run.Turns = append(run.Turns, bt)
 			}
-			slices.Sort(broken)
-			bc.Runs = append(bc.Runs, BaselineRun{Error: res.Error, Broken: slices.Compact(broken), Stats: res.Stats})
+			bc.Runs = append(bc.Runs, run)
 		}
 		b.Cases = append(b.Cases, bc)
 	}
@@ -155,16 +226,96 @@ func (r Report) Markdown() string {
 				float64(s.DurationMs)/1000, firstText(s.FirstTextMs), count(s.Usage.Input), count(s.Usage.Output), s.Credits)
 		}
 	}
+	r.turnsMarkdown(&b)
 	if r.HardFailures() > 0 {
 		b.WriteString("\n## 硬失败\n\n")
 		for _, res := range r.Results {
 			for _, f := range res.Failures {
-				fmt.Fprintf(&b, "- ❌ %s 第 %d 次 · `%s`：%s\n", res.Case, res.Attempt, f.Rule, f.Detail)
+				fmt.Fprintf(&b, "- ❌ %s %s · `%s`：%s\n", res.Case, where(res.Attempt, f.Turn), f.Rule, f.Detail)
 			}
 		}
 	}
 	return b.String()
 }
+
+// where names a run, and a turn of it (0 for the analysis).
+func where(attempt, turn int) string {
+	if turn == 0 {
+		return fmt.Sprintf("第 %d 次", attempt)
+	}
+	return fmt.Sprintf("第 %d 次第 %d 轮", attempt, turn)
+}
+
+// turnsMarkdown is the turns of the follow-up cases: each turn's figures,
+// then what the turns nodes fork with linked of the course.
+func (r Report) turnsMarkdown(b *strings.Builder) {
+	t := r.turnTotals()
+	if t == nil {
+		return
+	}
+	fmt.Fprintf(b, "\n## 后续轮\n\n提示词：%s。平均每轮：步数 %.1f · 工具 %.1f 次 · 耗时 %.1f s · 首字 %.1f s · 输入 %.0f · 输出 %.0f token · 积分 %.4f\n\n",
+		r.Followup, t.Steps, t.ToolCalls, t.DurationMs/1000, t.FirstTextMs/1000, t.Input, t.Output, t.Credits)
+	b.WriteString("| 用例 | 次 | 轮 | 节点 | 结果 | 步数 | 工具 | 耗时 s | 首字 | 输入 | 输出 | 积分 |\n|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+	var linked []string
+	for _, c := range r.Cases {
+		for _, res := range r.resultsOf(c.ID) {
+			for i, turn := range res.Turns {
+				mark, verdict := "✅", "通过"
+				if len(brokenBy(res.Failures, i+1)) > 0 {
+					mark, verdict = "❌", "硬失败"
+				}
+				s := turn.Stats
+				fmt.Fprintf(b, "| %s %s | %d | %d | %s | %s | %d | %d | %.1f | %s | %s | %s | %.4f |\n",
+					mark, c.ID, res.Attempt, i+1, nodeName(turn.Fork), verdict, s.Steps, s.ToolCalls,
+					float64(s.DurationMs)/1000, firstText(s.FirstTextMs), count(s.Usage.Input), count(s.Usage.Output), s.Credits)
+				if turn.Linking != nil {
+					linked = append(linked, "- "+c.ID+" "+where(res.Attempt, i+1)+"："+linkingLine(*turn.Linking))
+				}
+			}
+		}
+	}
+	if len(linked) > 0 {
+		b.WriteString("\n### 课程关联\n\n" + strings.Join(linked, "\n") + "\n")
+	}
+}
+
+// linkingLine is a turn's course links in a line: the candidates, then
+// each one chosen with the model's sentence.
+func linkingLine(l Linking) string {
+	if l.Index != course.ConceptIndexBuilt {
+		return "概念索引未建立（" + string(l.Index) + "），没有关联"
+	}
+	if len(l.Candidates) == 0 {
+		return "回答没有提到其他讲的概念，没有候选"
+	}
+	var cs []string
+	for _, e := range l.Candidates {
+		cs = append(cs, e.Concept+"（"+e.place()+"）")
+	}
+	line := "候选 " + strings.Join(cs, "、") + "；"
+	if len(l.Chosen) == 0 {
+		return line + "都没有选"
+	}
+	var chosen []string
+	for _, e := range l.Chosen {
+		chosen = append(chosen, "✓ "+e.Concept+"："+e.Note)
+	}
+	return line + strings.Join(chosen, "；")
+}
+
+// place is where an entry is: its lesson, and its section.
+func (e LinkEntry) place() string {
+	if e.Section == "" {
+		return e.Lesson
+	}
+	return e.Lesson + " › " + e.Section
+}
+
+// nodeNames name a turn by the node it is in: the main node's, or the
+// kind of node it opens.
+var nodeNames = map[course.NodeKind]string{"": "主节点", course.NodeChild: "子节点", course.NodeBranch: "分支节点", course.NodeDivergent: "发散节点"}
+
+func nodeName(k course.NodeKind) string { return nodeNames[k] }
 
 func yes(b bool) string {
 	if b {
@@ -197,6 +348,14 @@ type side struct {
 	Error    string
 	Failures []Failure
 	Stats    Stats
+	Turns    []sideTurn
+}
+
+// sideTurn is a turn after the analysis as the blind page shows it.
+type sideTurn struct {
+	N int
+	TurnResult
+	Failures []Failure
 }
 
 type pair struct {
@@ -236,16 +395,36 @@ func BlindHTML(cur Report, old *Report, seed int64) []byte {
 // label names the run on the blind page once revealed: its prompt, its
 // model and when it ran, which tells two runs apart when only one changed.
 func (r Report) label() string {
-	return r.Prompt + " · " + r.Model + " · " + r.Started.Format("01-02 15:04")
+	prompt := r.Prompt
+	if r.Followup != "" {
+		prompt += " + " + r.Followup
+	}
+	return prompt + " · " + r.Model + " · " + r.Started.Format("01-02 15:04")
 }
 
 func sideOf(version string, r Result) side {
-	return side{Version: version, Title: r.Analysis.Title, Concept: r.Analysis.Concept, Body: r.Analysis.Explanation, Error: r.Error, Failures: r.Failures, Stats: r.Stats}
+	s := side{Version: version, Title: r.Analysis.Title, Concept: r.Analysis.Concept, Body: r.Analysis.Explanation, Error: r.Error, Stats: r.Stats}
+	s.Failures = failuresOf(r.Failures, 0)
+	for i, t := range r.Turns {
+		s.Turns = append(s.Turns, sideTurn{N: i + 1, TurnResult: t, Failures: failuresOf(r.Failures, i+1)})
+	}
+	return s
+}
+
+func failuresOf(fs []Failure, turn int) []Failure {
+	var out []Failure
+	for _, f := range fs {
+		if f.Turn == turn {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 var blindPage = template.Must(template.New("blind").Funcs(template.FuncMap{
 	"letter": func(i int) string { return string(rune('A' + i)) },
 	"secs":   firstText,
+	"node":   nodeName,
 }).Parse(`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -272,6 +451,12 @@ article h4 { margin: 4px 0; font-size: 17px; }
 .concept { font-weight: 500; }
 .body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .error { color: var(--brand); }
+.turn { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
+.turn h5 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: normal; }
+.ask { font-weight: 500; margin: 0 0 6px; }
+.links { margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--line); font-size: 14px; }
+.links ul { margin: 4px 0 0; padding-left: 18px; }
+.links .offered { color: var(--muted); font-size: 12px; margin-top: 6px; }
 .version { display: none; }
 .detail { display: none; color: var(--muted); font-size: 12px; border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 8px; }
 body.revealed .version { display: inline; color: var(--brand); }
@@ -302,6 +487,25 @@ body.revealed .detail { display: block; }
         {{range $s.Failures}}<div class="error">硬失败 {{.Rule}}：{{.Detail}}</div>{{end}}
         步数 {{$s.Stats.Steps}} · 工具 {{$s.Stats.ToolCalls}} 次 · 补救 {{$s.Stats.Remedies}} · 耗时 {{secs $s.Stats.DurationMs}} · 首字 {{secs $s.Stats.FirstTextMs}}
       </div>
+      {{range $s.Turns}}
+      <div class="turn">
+        <h5>第 {{.N}} 轮 · {{node .Fork}}</h5>
+        <p class="ask">问：{{.Ask}}</p>
+        {{if .Error}}<p class="error">运行出错：{{.Error}}</p>{{end}}
+        <div class="body">{{.Reply}}</div>
+        {{with .Linking}}
+        <div class="links">
+          课程里的相关内容{{if ne .Index "built"}}：概念索引未建立{{else if not .Chosen}}：没有选{{end}}
+          {{if .Chosen}}<ul>{{range .Chosen}}<li>{{.Concept}}（{{.Lesson}}{{if .Section}} › {{.Section}}{{end}}）：{{.Note}}</li>{{end}}</ul>{{end}}
+          {{if .Candidates}}<div class="offered">候选：{{range $i, $c := .Candidates}}{{if $i}}、{{end}}{{$c.Concept}}{{end}}</div>{{end}}
+        </div>
+        {{end}}
+        <div class="detail">
+          {{range .Failures}}<div class="error">硬失败 {{.Rule}}：{{.Detail}}</div>{{end}}
+          步数 {{.Stats.Steps}} · 工具 {{.Stats.ToolCalls}} 次 · 耗时 {{secs .Stats.DurationMs}} · 首字 {{secs .Stats.FirstTextMs}}
+        </div>
+      </div>
+      {{end}}
     </article>
   {{end}}
   </div>

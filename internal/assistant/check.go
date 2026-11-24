@@ -114,6 +114,25 @@ func CheckAnalysis(raw string) (Analysis, []string) {
 	return p.parts(), checkAnalysis(raw, p)
 }
 
+// CheckReply lists what is wrong with a reply of the dialogue by what the
+// follow-up prompt asks of it (#141): Markdown with no link (the sources
+// are recorded by the system), no SVG, no raw tool call markup, at most
+// one diagram of an allowed kind. The loop takes a reply as it is written;
+// keine-eval judges replies by these rules.
+func CheckReply(md string) []string {
+	var problems []string
+	if rawToolCall.MatchString(md) {
+		problems = append(problems, "回复里有原始的工具调用标记")
+	}
+	if markdownLink.MatchString(md) || bareURL.MatchString(md) {
+		problems = append(problems, "回复里不能有链接")
+	}
+	if svgTag.MatchString(md) {
+		problems = append(problems, "不能直接写 SVG")
+	}
+	return append(problems, checkMermaid(md)...)
+}
+
 // MermaidBlocks are the Mermaid diagrams of a Markdown text, their source
 // without the fences.
 func MermaidBlocks(md string) []string {
