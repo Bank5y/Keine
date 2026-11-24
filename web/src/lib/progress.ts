@@ -44,25 +44,31 @@ const words: Record<string, { running: string; done: string; failed: string; sev
 const serviceReasons = new Set(['quota_exhausted', 'auth', 'unavailable', 'timeout', 'rate_limited', 'internal']);
 const ownKeyNotes: Record<string, string> = { quota_exhausted: '你的搜索 key 余额不足', auth: '你的搜索 key 无效' };
 
-// why other calls failed, where there is something to say
-const reasonNotes: Record<string, string> = {
+// Why a web call failed when the page or the address was to blame, and
+// why a lookup in the course found nothing.
+const webNotes: Record<string, string> = {
   not_found: '找不到网页', unsupported_content: '内容读不出来', blocked_address: '不能访问这个地址',
 };
+const courseNotes: Record<string, string> = { not_found: '没找到', unsupported_content: '没有文字正文' };
 const isWeb = (a: ToolActivity) => a.kind === 'web_search' || a.kind === 'web_fetch';
 const serviceNote = (a: ToolActivity) => (a.ownKey && ownKeyNotes[a.reason ?? '']) || '联网搜索暂不可用';
+const serviceFailed = (a: ToolActivity) => a.status === 'failed' && isWeb(a) && serviceReasons.has(a.reason ?? '');
 
 function failureNote(a: ToolActivity): string | undefined {
-  if (isWeb(a) && serviceReasons.has(a.reason ?? '')) return serviceNote(a);
-  if (a.kind === 'web_fetch' || a.kind === 'web_search') return reasonNotes[a.reason ?? ''];
-  return undefined;
+  if (serviceFailed(a)) return serviceNote(a);
+  return (isWeb(a) ? webNotes : courseNotes)[a.reason ?? ''];
 }
 
+// byChange is the list in the order its calls last changed (track's seq).
+const byChange = (list: ToolActivity[]) => [...list].sort((x, y) => (x.seq ?? 0) - (y.seq ?? 0));
+
 // webDown is what stays said while web search as a whole is out (ADR
-// 0008): that it is unavailable, or why the reader's own key failed. A
+// 0008): that it is unavailable, or why the reader's own key failed. It
+// holds while the web call that ended last failed for the service; a
 // page that could not be read is not the service's failure.
 export function webDown(list: ToolActivity[]): string | undefined {
-  const a = [...list].reverse().find((x) => x.status === 'failed' && isWeb(x) && serviceReasons.has(x.reason ?? ''));
-  return a ? serviceNote(a) : undefined;
+  const last = byChange(list).filter((a) => isWeb(a) && a.status !== 'running').at(-1);
+  return last && serviceFailed(last) ? serviceNote(last) : undefined;
 }
 const general = { running: '正在查阅「%」', done: '查阅了「%」', failed: '没能查阅「%」', several: '正在查阅 # 项' };
 const wordsOf = (kind: string) => words[kind] ?? general;
@@ -70,8 +76,7 @@ const wordsOf = (kind: string) => words[kind] ?? general;
 // progressLines is the list of what the run looked up: one line per call,
 // except that calls of a kind running at once share one.
 export function progressLines(list: ToolActivity[]): ProgressLine[] {
-  const running = new Map<string, number>();
-  for (const a of list) if (a.status === 'running') running.set(a.kind, (running.get(a.kind) ?? 0) + 1);
+  const running = runningByKind(list);
   const merged = new Set<string>();
   const out: ProgressLine[] = [];
   for (const a of list) {
@@ -84,7 +89,14 @@ export function progressLines(list: ToolActivity[]): ProgressLine[] {
   return out;
 }
 
-// lineOf is the line of one call, or of all of its kind running with it
+// runningByKind counts the calls running of each kind.
+function runningByKind(list: ToolActivity[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const a of list) if (a.status === 'running') out.set(a.kind, (out.get(a.kind) ?? 0) + 1);
+  return out;
+}
+
+// lineOf is the line of one call, or of all of its kind running with it.
 function lineOf(a: ToolActivity, running: Map<string, number>): ProgressLine {
   const w = wordsOf(a.kind);
   const n = running.get(a.kind) ?? 0;
@@ -94,17 +106,19 @@ function lineOf(a: ToolActivity, running: Map<string, number>): ProgressLine {
 }
 
 // currentLine is the one line the progress takes while the run looks
-// things up (#182): the latest change, a failure flashing until the next
-// one; once a call finishes, the latest started of those still running,
-// and once none runs, what was done last.
-export function currentLine(list: ToolActivity[]): ProgressLine | null {
+// things up (#182): the latest change. A failure flashes: once it has
+// shown (settled), it counts as finished. After a finished call comes the
+// latest started of those still running, and once none runs, what was
+// done last.
+export function currentLine(list: ToolActivity[], settled = false): ProgressLine | null {
   if (!list.length) return null;
-  const running = new Map<string, number>();
-  for (const a of list) if (a.status === 'running') running.set(a.kind, (running.get(a.kind) ?? 0) + 1);
-  const last = list.reduce((x, y) => ((y.seq ?? 0) >= (x.seq ?? 0) ? y : x));
-  if (last.status !== 'done') return lineOf(last, running);
+  const running = runningByKind(list);
+  const changed = byChange(list);
+  const last = changed.at(-1)!;
+  if (last.status === 'running' || (last.status === 'failed' && !settled)) return lineOf(last, running);
   const still = list.filter((a) => a.status === 'running').at(-1);
-  return lineOf(still ?? last, running);
+  const done = changed.filter((a) => a.status === 'done').at(-1);
+  return lineOf(still ?? done ?? last, running);
 }
 
 // summary is the one line the progress folds into once the answer shows:

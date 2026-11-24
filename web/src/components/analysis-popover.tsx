@@ -184,11 +184,10 @@ function writing(state: AnalysisState): Part | null {
   return p.explanation ? 'explanation' : p.concept ? 'concept' : 'title';
 }
 
-// a line of the progress: a running one with a pulsing dot, a failed one
-// marked with why
-// (unless said already, beside it)
-function Line({ l, said }: { l: ProgressLine; said?: string }) {
-  const note = l.failed && l.note !== said ? <span className="analysis-failed">{l.note ?? '失败'}</span> : null;
+// Line is a line of the progress: a running one has a pulsing dot, a
+// failed one says why, unless what is said beside it already says so.
+function Line({ l, beside }: { l: ProgressLine; beside?: string }) {
+  const note = l.failed && l.note !== beside ? <span className="analysis-failed">{l.note ?? '失败'}</span> : null;
   return <><span className="analysis-dot" aria-hidden /><span className="analysis-line-text">{l.text}</span>{note}</>;
 }
 
@@ -202,33 +201,49 @@ export function Progress({ activities }: { activities: ToolActivity[] }) {
 }
 
 const SLIDE_MS = 200;
+// how long a failed call shows before the line goes back to the others
+const FLASH_MS = 1500;
+
+const keyOf = (l: ProgressLine | null) => (l ? `${l.text}|${l.running}|${l.failed}` : '');
 
 // Ticker is the progress while the run looks things up (#182): one line,
 // the latest call, the old line sliding up and out as the next slides in.
-// That web search is out stays beside it. A screen reader is not told of
-// every change.
+// A failed call flashes, then the line goes back to what still runs. That
+// web search is out stays beside it. A screen reader is not told of every
+// change.
 export function Ticker({ activities }: { activities: ToolActivity[] }) {
-  const line = currentLine(activities);
-  const down = webDown(activities);
-  const key = line ? `${line.text}|${line.running}|${line.failed}` : '';
-  const [shown, setShown] = useState<{ key: string; line: ProgressLine | null }>({ key, line });
-  const [leaving, setLeaving] = useState<{ key: string; line: ProgressLine } | null>(null);
+  // the failure on show, by the change that made it, settles after a moment
+  const latest = activities.reduce((n, a) => Math.max(n, a.seq ?? 0), 0);
+  const failing = currentLine(activities)?.failed ? latest : 0;
+  const [settled, setSettled] = useState(0);
   useEffect(() => {
-    if (key === shown.key) { if (line !== shown.line) setShown({ key, line }); return undefined; }
-    const before = shown;
-    setShown({ key, line });
-    if (!before.line || matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
-    setLeaving({ key: before.key, line: before.line });
+    if (!failing) return undefined;
+    const t = window.setTimeout(() => setSettled(failing), FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [failing]);
+  const line = currentLine(activities, failing !== 0 && settled === failing);
+  const down = webDown(activities);
+  const key = keyOf(line);
+
+  // the line before slides out while this one slides in
+  const before = useRef<ProgressLine | null>(line);
+  const [leaving, setLeaving] = useState<ProgressLine | null>(null);
+  useEffect(() => {
+    const was = before.current;
+    before.current = line;
+    if (!was || keyOf(was) === key || matchMedia('(prefers-reduced-motion: reduce)').matches) { setLeaving(null); return undefined; }
+    setLeaving(was);
     const t = window.setTimeout(() => setLeaving(null), SLIDE_MS);
     return () => window.clearTimeout(t);
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!shown.line) return null;
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- line changes with key
+
+  if (!line) return null;
   const cls = (l: ProgressLine) => cn('analysis-tick', l.running && 'running', l.failed && 'failed');
   return (
     <div className="analysis-ticker" aria-live="off">
       <div className="analysis-ticker-roll">
-        {leaving ? <div key={`out-${leaving.key}`} className={cn(cls(leaving.line), 'leaving')} aria-hidden><Line l={leaving.line} said={down} /></div> : null}
-        <div key={shown.key} className={cn(cls(shown.line), leaving && 'entering')}><Line l={shown.line} said={down} /></div>
+        {leaving ? <div key={`out-${keyOf(leaving)}`} className={cn(cls(leaving), 'leaving')} aria-hidden><Line l={leaving} beside={down} /></div> : null}
+        <div key={key} className={cn(cls(line), leaving && 'entering')}><Line l={line} beside={down} /></div>
       </div>
       {down ? <span className="analysis-web-down">{down}</span> : null}
     </div>
