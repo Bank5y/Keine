@@ -1689,6 +1689,14 @@ a.rn:hover .t { color: var(--brand); }
 .diagram-zoom-stage { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
 .diagram-zoom-stage:active { cursor: grabbing; }
 .diagram-zoom-stage img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; border-radius: 4px; background: var(--surface); box-shadow: 0 24px 60px -12px rgb(0 0 0 / 50%); }
+/* the lightbox's close button: fixed at the top right over the diagram,
+   a 48px target around a 36px disc */
+.diagram-zoom-close { position: absolute; top: 12px; right: 12px; z-index: 1; display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 0; background: none; cursor: pointer; color: #fff; }
+.diagram-zoom-close::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: rgb(0 0 0 / 45%); transition: background .12s; }
+.diagram-zoom-close:hover::before { background: rgb(0 0 0 / 65%); }
+.diagram-zoom-close:focus-visible { outline: none; }
+.diagram-zoom-close:focus-visible::before { box-shadow: 0 0 0 2px #fff; }
+.diagram-zoom-close svg { position: relative; width: 20px; height: 20px; }
 .dlg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
 .dlg-fork { position: relative; }
 .dlg-act { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: none; font-size: 12px; color: var(--text-3); cursor: pointer; }

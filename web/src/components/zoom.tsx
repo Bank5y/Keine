@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { X } from 'lucide-react';
 import { Dialog as D } from 'radix-ui';
 import type { Drawn } from '@/components/mermaid';
 import { fitView, zoomAt, type View } from '@/lib/pan-zoom';
@@ -24,8 +25,8 @@ const LIMITS = { min: 0.1, max: 10 };
 const CLICK_SLOP = 4;
 
 // DiagramZoom shows a diagram over the page (#184), fitted to the screen
-// first. The wheel or a pinch zooms about the pointer, a drag pans; Esc or
-// a click on the backdrop closes it.
+// first. The wheel or a pinch zooms about the pointer, a drag pans; Esc,
+// the × fixed at the top right, or a click on the backdrop closes it.
 export function DiagramZoom({ picture, onClose }: { picture: Drawn; onClose: () => void }) {
   // the stage, once the portal has put it on the page
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
@@ -92,6 +93,7 @@ export function DiagramZoom({ picture, onClose }: { picture: Drawn; onClose: () 
             <img src={picture.src} alt="图表" draggable={false} width={picture.w} height={picture.h}
               style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }} />
           </div>
+          <D.Close className="diagram-zoom-close" aria-label="关闭"><X aria-hidden /></D.Close>
         </D.Content>
       </D.Portal>
     </D.Root>
