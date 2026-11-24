@@ -116,7 +116,8 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
 
   const onClick = (e: MouseEvent) => {
     const t = e.target as HTMLElement;
-    if (t.tagName === 'IMG' && t.closest('.prose')) setZoom((t as HTMLImageElement).src);
+    // a diagram opens its own lightbox (#184)
+    if (t.tagName === 'IMG' && t.closest('.prose') && !t.closest('.mermaid-diagram')) setZoom((t as HTMLImageElement).src);
   };
 
   const toc = course ? (

@@ -100,8 +100,12 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
 
   useEffect(() => {
     if (asking) return undefined;
-    const onDown = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) requestClose(); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    // a diagram's lightbox over the popover takes its own presses and Esc
+    const onDown = (e: PointerEvent) => {
+      if (box.current?.contains(e.target as Node) || (e.target as Element).closest?.('[data-diagram-zoom]')) return;
+      requestClose();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) requestClose(); };
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
