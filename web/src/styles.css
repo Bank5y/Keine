@@ -720,8 +720,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .analysis-explanation .prose { font-size: 14px; line-height: 1.75; color: var(--text); }
 .analysis-explanation .prose > :first-child { margin-top: 0; }
 .analysis-explanation .prose > :last-child { margin-bottom: 0; }
-.analysis-explanation .mermaid-diagram { margin: 12px 0; text-align: center; }
-.analysis-explanation .mermaid-diagram svg { max-width: 100%; height: auto; }
+.analysis-explanation .mermaid-diagram, .dlg-reply .mermaid-diagram { margin: 12px 0; text-align: center; }
 /* the caret after the text being written */
 .analysis-title.caret::after, .analysis-concept.caret::after, .analysis-explanation.caret .prose > :last-child::after {
   content: ""; display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -0.15em;
@@ -1684,8 +1683,12 @@ a.rn:hover .t { color: var(--brand); }
 .dlg-reply .prose > :first-child { margin-top: 0; }
 .dlg-reply .prose > :last-child { margin-bottom: 0; }
 .dlg-fork-menu.up { top: auto; bottom: calc(100% + 4px); }
-.dlg-reply .mermaid-diagram { margin: 12px 0; text-align: center; }
-.dlg-reply .mermaid-diagram svg { max-width: 100%; height: auto; }
+/* a drawn diagram is an image (#184): never wider than its column, a click opens it */
+.mermaid-open { display: inline-block; max-width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.mermaid-open img { display: block; max-width: 100%; height: auto; }
+.diagram-zoom-stage { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
+.diagram-zoom-stage:active { cursor: grabbing; }
+.diagram-zoom-stage img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; border-radius: 4px; background: var(--surface); box-shadow: 0 24px 60px -12px rgb(0 0 0 / 50%); }
 .dlg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
 .dlg-fork { position: relative; }
 .dlg-act { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: none; font-size: 12px; color: var(--text-3); cursor: pointer; }
