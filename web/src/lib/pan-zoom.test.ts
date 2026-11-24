@@ -14,6 +14,14 @@ describe('fitView', () => {
   it('enlarges a small picture, but not past three times', () => {
     expect(fitView({ w: 100, h: 50 }, { w: 1040, h: 840 }, 20).scale).toBe(3);
   });
+
+  it('keeps a small bitmap at its own size, centred, when capped at 1', () => {
+    expect(fitView({ w: 100, h: 50 }, { w: 1040, h: 840 }, 20, 1)).toEqual({ scale: 1, x: 470, y: 395 });
+  });
+
+  it('still shrinks a large bitmap to fit when capped at 1', () => {
+    expect(fitView({ w: 2000, h: 500 }, { w: 1040, h: 840 }, 20, 1).scale).toBe(0.5);
+  });
 });
 
 describe('zoomAt', () => {

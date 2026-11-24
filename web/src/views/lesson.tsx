@@ -11,7 +11,7 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
 import { Tabs } from '@/components/tabs';
 import { LessonVideoView } from '@/components/video';
-import { ImageZoom } from '@/components/zoom';
+import { Lightbox, type Picture } from '@/components/zoom';
 import { api } from '@/lib/api';
 import { migrateURL } from '@/lib/annotations';
 import { lessonURL, pad2, readable, type CourseDetail, type LessonItem, type LessonState, type LessonText } from '@/lib/courses';
@@ -41,6 +41,9 @@ function neighbours(c: CourseDetail | null, lessonId: number) {
 // skeleton takes its place
 const STALE_MS = 300;
 
+// an SVG image is drawn crisp at any size, so it may be enlarged to fit
+const isVector = (src: string) => /^data:image\/svg\+xml|\.svg(?:[?#]|$)/i.test(src);
+
 const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 
@@ -53,7 +56,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const [lesson, setLesson] = useState<LessonText | null>(null);
   const [slow, setSlow] = useState(false);
   const [err, setErr] = useState('');
-  const [zoom, setZoom] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<(Picture & { vector: boolean }) | null>(null);
   // on a narrow screen one drawer holds both, on tabs ('sheet')
   const [drawer, setDrawer] = useState<'' | 'toc' | 'headings' | 'sheet'>('');
   const [sheetTab, setSheetTab] = useState<'headings' | 'toc'>('headings');
@@ -117,7 +120,18 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const onClick = (e: MouseEvent) => {
     const t = e.target as HTMLElement;
     // a diagram opens its own lightbox (#184)
-    if (t.tagName === 'IMG' && t.closest('.prose') && !t.closest('.mermaid-diagram')) setZoom((t as HTMLImageElement).src);
+    if (t.tagName !== 'IMG' || !t.closest('.prose') || t.closest('.mermaid-diagram')) return;
+    const img = t as HTMLImageElement;
+    // the lightbox needs the image's own size (#187), known once it has loaded;
+    // an SVG with none falls back to the size it is shown at
+    const open = () => {
+      const src = img.currentSrc || img.src;
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (img.isConnected && w && h) setZoom({ src, w, h, vector: isVector(src) });
+    };
+    if (img.complete) open();
+    else img.addEventListener('load', open, { once: true });
   };
 
   const toc = course ? (
@@ -186,7 +200,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
           ? (headings.length ? <HeadingToc headings={headings} active={active} onPick={pickHeading} title={shown?.title} /> : <p className="text-ink-3">这一讲没有小标题。</p>)
           : toc}
       </Drawer>
-      <ImageZoom src={zoom} onClose={() => setZoom(null)} />
+      {zoom ? <Lightbox picture={zoom} vector={zoom.vector} onClose={() => setZoom(null)} /> : null}
     </div>
   );
 }
