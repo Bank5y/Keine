@@ -3,6 +3,7 @@ package eval
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -38,6 +39,9 @@ const (
 	RuleLinkCourse = "link_course_candidates"
 	// RuleMustNotLink: the turn linked a concept the case says it must not.
 	RuleMustNotLink = "must_not_link"
+	// RuleCitation: a reply cites a number it was not offered (ADR 0013):
+	// none of the sources of its chain or of its own searches.
+	RuleCitation = "citations_offered"
 )
 
 // Failure is a hard rule an analysis or a turn after it broke, and how.
@@ -88,6 +92,17 @@ func CheckReply(reply string, t Turn, mermaid MermaidParser) []Failure {
 		}
 	}
 	return append(out, keywords(reply, t.MustInclude, t.MustNotInclude)...)
+}
+
+// CheckCitations judges the numbers a reply cites by those it was offered.
+func CheckCitations(reply string, offered []int) []Failure {
+	var out []Failure
+	for _, n := range assistant.Cited(reply) {
+		if !slices.Contains(offered, n) {
+			out = append(out, Failure{Rule: RuleCitation, Detail: fmt.Sprintf("引用了没有的编号 [%d]", n)})
+		}
+	}
+	return out
 }
 
 func parseDiagrams(md string, mermaid MermaidParser) []Failure {

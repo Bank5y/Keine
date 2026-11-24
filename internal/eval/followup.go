@@ -64,6 +64,8 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 	if err != nil {
 		return err
 	}
+	// the case is one chain, numbering its sources as a dialogue does (ADR 0013)
+	cite := assistant.NewCitations(nil)
 	for i, t := range c.Turns {
 		n := i + 1
 		fail := func(rule, detail string) {
@@ -93,6 +95,7 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 			return nil
 		}
 		run, w := r.watched(turn, c.Lesson, assistant.CourseTools(lib))
+		run.Cite = cite
 		out, meta, err := assistant.Followup(ctx, run, msgs, w.sink(), linker)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -115,6 +118,14 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 			return nil
 		}
 		for _, f := range CheckReply(tr.Reply, t, r.Mermaid) {
+			fail(f.Rule, f.Detail)
+		}
+		pinned.Citable = append(pinned.Citable, meta.Sources...)
+		var citable []int
+		for _, s := range pinned.Citable {
+			citable = append(citable, s.N)
+		}
+		for _, f := range CheckCitations(tr.Reply, citable) {
 			fail(f.Rule, f.Detail)
 		}
 		offered := 0
