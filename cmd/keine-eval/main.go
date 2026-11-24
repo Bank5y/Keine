@@ -217,7 +217,7 @@ func write(rep eval.Report, o options) (string, error) {
 	for name, data := range map[string][]byte{
 		"results.json":  results,
 		"report.md":     []byte(rep.Markdown()),
-		"blind.html":    eval.BlindHTML(rep, old, rep.Started.UnixNano()),
+		"blind.html":    eval.BlindHTML(rep, old, rep.Started.UnixNano(), mermaidFrom(dir, o.web)),
 		"baseline.json": baseline,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
@@ -230,6 +230,20 @@ func write(rep eval.Report, o options) (string, error) {
 		}
 	}
 	return dir, nil
+}
+
+// mermaidFrom is where the blind page in dir finds the front end's
+// mermaid, to draw the diagrams with when opened from the repository.
+func mermaidFrom(dir, web string) string {
+	js := filepath.Join(web, "node_modules", "mermaid", "dist", "mermaid.min.js")
+	if _, err := os.Stat(js); err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(dir, js)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }
 
 // earlier is the run to compare with: the latest folder in out before

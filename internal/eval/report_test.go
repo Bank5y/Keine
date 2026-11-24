@@ -70,7 +70,7 @@ func TestAHardFailureFailsTheCommandAndIsMarkedInTheReport(t *testing.T) {
 }
 
 func TestTheBlindPageShowsBothVersionsShuffledUntilRevealed(t *testing.T) {
-	page := string(BlindHTML(report("analysis-5", "新版"), ptr(report("analysis-4", "旧版")), 7))
+	page := string(BlindHTML(report("analysis-5", "新版"), ptr(report("analysis-4", "旧版")), 7, ""))
 	for _, want := range []string{"新版标题raft-term", "旧版标题raft-term", "新版标题http-header", "旧版标题http-header", "揭示版本"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("page lacks %q", want)
@@ -92,7 +92,7 @@ func TestTheBlindPageShowsBothVersionsShuffledUntilRevealed(t *testing.T) {
 	}
 	sides := map[bool]bool{}
 	for seed := int64(0); seed < 8; seed++ {
-		page = string(BlindHTML(report("analysis-5", "新版"), ptr(report("analysis-4", "旧版")), seed))
+		page = string(BlindHTML(report("analysis-5", "新版"), ptr(report("analysis-4", "旧版")), seed, ""))
 		sides[left("raft-term")] = true
 	}
 	if len(sides) != 2 {
@@ -101,7 +101,7 @@ func TestTheBlindPageShowsBothVersionsShuffledUntilRevealed(t *testing.T) {
 }
 
 func TestTheBlindPageOfAFirstRunShowsItAlone(t *testing.T) {
-	page := string(BlindHTML(report("analysis-5", "新版"), nil, 1))
+	page := string(BlindHTML(report("analysis-5", "新版"), nil, 1, ""))
 	if !strings.Contains(page, "新版标题raft-term") || strings.Contains(page, "旧版") {
 		t.Fatal("first run page")
 	}

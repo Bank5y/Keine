@@ -72,10 +72,25 @@ func TestTheReportListsEachTurnWithWhatItLinked(t *testing.T) {
 }
 
 func TestTheBlindPageComparesTheRepliesAndTheirCourseLinks(t *testing.T) {
-	page := string(BlindHTML(dialogueReport("analysis-5", "新版"), ptr(dialogueReport("analysis-4", "旧版")), 3))
+	page := string(BlindHTML(dialogueReport("analysis-5", "新版"), ptr(dialogueReport("analysis-4", "旧版")), 3, ""))
 	for _, want := range []string{"新版握手回复", "旧版握手回复", "新版小包回复", "旧版小包回复", "小数据包怎么传？", "子节点", "课程里的相关内容", "新版攒小包再发", "旧版攒小包再发", "滑动窗口"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("page lacks %q", want)
 		}
+	}
+}
+
+func TestTheBlindPageRendersTheMarkdownOfAnswersAndReplies(t *testing.T) {
+	r := dialogueReport("analysis-5", "新版")
+	r.Results[0].Analysis.Explanation = "**任期**是编号。\n\n```mermaid\nflowchart TD\n  A --> B\n```"
+	r.Results[len(r.Results)-1].Turns[0].Reply = "## 区别\n\n| 项 | 说明 |\n|---|---|\n| Nagle | 攒小包 |\n\n<script>alert(1)</script>"
+	page := string(BlindHTML(r, nil, 1, "../../web/node_modules/mermaid/dist/mermaid.min.js"))
+	for _, want := range []string{"<strong>任期</strong>", `<code class="language-mermaid">flowchart TD`, "<h2>区别</h2>", "<td>Nagle</td>", `src="../../web/node_modules/mermaid/dist/mermaid.min.js"`} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(page, "<script>alert(1)</script>") {
+		t.Fatal("raw HTML in a reply is put on the page")
 	}
 }

@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+
 	"github.com/Bank5y/keine/internal/course"
 )
 
@@ -367,8 +370,11 @@ type pair struct {
 // BlindHTML is the page to judge the run against an older one by: each
 // case's runs side by side with the old version's, in an order shuffled
 // by seed, the versions named only once the reader reveals them. Without
-// an older run, the page shows this one alone.
-func BlindHTML(cur Report, old *Report, seed int64) []byte {
+// an older run, the page shows this one alone. Answers and replies are
+// rendered from their Markdown; mermaidJS is where the page finds mermaid
+// to draw the diagrams with (relative to the page), "" to leave them as
+// code.
+func BlindHTML(cur Report, old *Report, seed int64, mermaidJS string) []byte {
 	rnd := rand.New(rand.NewSource(seed))
 	var pairs []pair
 	for _, c := range cur.Cases {
@@ -386,7 +392,7 @@ func BlindHTML(cur Report, old *Report, seed int64) []byte {
 		}
 	}
 	var buf bytes.Buffer
-	if err := blindPage.Execute(&buf, map[string]any{"Pairs": pairs, "Started": cur.Started.Format("2006-01-02 15:04")}); err != nil {
+	if err := blindPage.Execute(&buf, map[string]any{"Pairs": pairs, "Started": cur.Started.Format("2006-01-02 15:04"), "Mermaid": mermaidJS}); err != nil {
 		panic(err) // the template is fixed; it cannot fail on these values
 	}
 	return buf.Bytes()
@@ -421,10 +427,23 @@ func failuresOf(fs []Failure, turn int) []Failure {
 	return out
 }
 
+// markdown renders what the model wrote as the reader would read it: GFM,
+// with any raw HTML left out.
+var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
+
+func renderMarkdown(md string) template.HTML {
+	var b bytes.Buffer
+	if err := markdown.Convert([]byte(md), &b); err != nil {
+		return template.HTML("<pre>" + template.HTMLEscapeString(md) + "</pre>")
+	}
+	return template.HTML(b.String())
+}
+
 var blindPage = template.Must(template.New("blind").Funcs(template.FuncMap{
 	"letter": func(i int) string { return string(rune('A' + i)) },
 	"secs":   firstText,
 	"node":   nodeName,
+	"md":     renderMarkdown,
 }).Parse(`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -449,7 +468,20 @@ article { background: var(--surface); border: 1px solid var(--line); border-radi
 article h3 { margin: 0 0 4px; font-size: 14px; color: var(--muted); }
 article h4 { margin: 4px 0; font-size: 17px; }
 .concept { font-weight: 500; }
-.body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.body { overflow-wrap: anywhere; }
+.body > :first-child { margin-top: 0; }
+.body h1, .body h2, .body h3, .body h4 { font-size: 15px; margin: 14px 0 6px; }
+.body p, .body ul, .body ol { margin: 6px 0; }
+.body ul, .body ol { padding-left: 20px; }
+.body table { border-collapse: collapse; margin: 8px 0; font-size: 13px; display: block; overflow-x: auto; }
+.body th, .body td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.body th { background: var(--bg); }
+.body code { font: 13px/1.5 ui-monospace, "SFMono-Regular", Menlo, monospace; background: var(--bg); padding: 1px 4px; border-radius: 3px; }
+.body pre { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; overflow-x: auto; }
+.body pre code { background: none; padding: 0; }
+.body blockquote { margin: 6px 0; padding-left: 10px; border-left: 3px solid var(--line); color: var(--muted); }
+.body .diagram { margin: 8px 0; overflow-x: auto; }
+.body .diagram svg { max-width: 100%; height: auto; }
 .error { color: var(--brand); }
 .turn { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
 .turn h5 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: normal; }
@@ -482,7 +514,7 @@ body.revealed .detail { display: block; }
       {{if $s.Error}}<p class="error">运行出错：{{$s.Error}}</p>{{end}}
       <h4>{{$s.Title}}</h4>
       <p class="concept">{{$s.Concept}}</p>
-      <div class="body">{{$s.Body}}</div>
+      <div class="body">{{md $s.Body}}</div>
       <div class="detail">
         {{range $s.Failures}}<div class="error">硬失败 {{.Rule}}：{{.Detail}}</div>{{end}}
         步数 {{$s.Stats.Steps}} · 工具 {{$s.Stats.ToolCalls}} 次 · 补救 {{$s.Stats.Remedies}} · 耗时 {{secs $s.Stats.DurationMs}} · 首字 {{secs $s.Stats.FirstTextMs}}
@@ -492,7 +524,7 @@ body.revealed .detail { display: block; }
         <h5>第 {{.N}} 轮 · {{node .Fork}}</h5>
         <p class="ask">问：{{.Ask}}</p>
         {{if .Error}}<p class="error">运行出错：{{.Error}}</p>{{end}}
-        <div class="body">{{.Reply}}</div>
+        <div class="body">{{md .Reply}}</div>
         {{with .Linking}}
         <div class="links">
           课程里的相关内容{{if ne .Index "built"}}：概念索引未建立{{else if not .Chosen}}：没有选{{end}}
@@ -512,7 +544,22 @@ body.revealed .detail { display: block; }
 </section>
 {{end}}
 </main>
+{{if .Mermaid}}<script src="{{.Mermaid}}"></script>{{end}}
 <script>
+// diagrams are drawn where mermaid could be loaded; one that fails stays code
+if (window.mermaid) {
+  mermaid.initialize({ startOnLoad: false, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });
+  document.querySelectorAll('code.language-mermaid').forEach((code, i) => {
+    const pre = code.parentElement;
+    mermaid.render('diagram-' + i, code.textContent).then(({ svg }) => {
+      const d = document.createElement('div');
+      d.className = 'diagram';
+      d.innerHTML = svg;
+      pre.replaceWith(d);
+    // a failed render leaves mermaid's own scratch element ("d" + id) behind
+    }).catch(() => document.getElementById('ddiagram-' + i)?.remove());
+  });
+}
 document.getElementById('reveal').addEventListener('click', (e) => {
   const on = document.body.classList.toggle('revealed');
   e.currentTarget.textContent = on ? '隐藏版本' : '揭示版本';
