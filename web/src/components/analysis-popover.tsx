@@ -100,7 +100,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
 
   useEffect(() => {
     if (asking) return undefined;
-    // a diagram's lightbox over the popover takes its own presses and Esc
+    // a lightbox over the popover (a diagram's) takes its own presses and Esc
     const onDown = (e: PointerEvent) => {
       if (box.current?.contains(e.target as Node) || (e.target as Element).closest?.('[data-lightbox]')) return;
       requestClose();

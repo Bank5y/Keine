@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { X } from 'lucide-react';
 import { Dialog as D } from 'radix-ui';
 import { MAX_FIT, fitView, zoomAt, type Size, type View } from '@/lib/pan-zoom';
 
-// Picture is what the lightbox shows: an image's address and its own size.
-export interface Picture extends Size { src: string }
+// Picture is what the lightbox shows: an image's address and its own size,
+// and whether it is drawn as vectors (a diagram, an SVG), crisp at any size.
+export interface Picture extends Size { src: string; vector?: boolean }
 
 const PAD = 24;
 const LIMITS = { min: 0.1, max: 10 };
@@ -17,17 +18,23 @@ const CLICK_SLOP = 4;
 // click on the picture does not. A vector picture (a diagram) is enlarged
 // to fit; a bitmap no further than its own size, lest it blur — zooming by
 // hand is not held back.
-export function Lightbox({ picture, vector = false, label = '图片', onClose }: {
-  picture: Picture; vector?: boolean; label?: string; onClose: () => void;
-}) {
+export function Lightbox({ picture, label = '图片', onClose }: { picture: Picture; label?: string; onClose: () => void }) {
   // the stage, once the portal has put it on the page
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
-  const [view, setView] = useState<View>(() => fitView(picture, { w: innerWidth, h: innerHeight }, PAD, vector ? MAX_FIT : 1));
+  const fit = (box: Size) => fitView(picture, box, PAD, picture.vector ? MAX_FIT : 1);
+  const [view, setView] = useState<View>(() => fit({ w: innerWidth, h: innerHeight }));
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const moved = useRef(0);
   // whether the press began on the picture: the stage captures the
   // pointer, so the release always lands on the stage
   const onPicture = useRef(false);
+
+  // fit to the stage itself, before it is first painted: it stops short of
+  // the scrollbar gutter the page keeps, so the window is too wide. Only
+  // once: a re-render with a fresh picture object must not undo a zoom.
+  useLayoutEffect(() => {
+    if (stage) setView(fit({ w: stage.clientWidth, h: stage.clientHeight }));
+  }, [stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the wheel listens itself, since React's wheel handler cannot prevent
   // the page from scrolling

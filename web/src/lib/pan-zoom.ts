@@ -3,12 +3,11 @@
 export interface View { scale: number; x: number; y: number }
 export interface Size { w: number; h: number }
 
-// a small diagram is enlarged to fit, but no more than this
+// a small picture is enlarged to fit, but by default no more than this
 export const MAX_FIT = 3;
 
 // fitView shows all of a picture, centred in the box, pad kept free round it.
-// A small picture is enlarged to fit, up to maxFit times: a bitmap passes 1,
-// since past its own size it only blurs (#187).
+// A small picture is enlarged to fit, up to maxFit times.
 export function fitView(picture: Size, box: Size, pad: number, maxFit = MAX_FIT): View {
   const scale = Math.min((box.w - 2 * pad) / picture.w, (box.h - 2 * pad) / picture.h, maxFit);
   return { scale, x: (box.w - picture.w * scale) / 2, y: (box.h - picture.h * scale) / 2 };
