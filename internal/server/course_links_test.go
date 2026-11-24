@@ -368,3 +368,78 @@ func TestAtMostFiveCandidatesAreShown(t *testing.T) {
 		t.Fatalf("the first five the answer names: %s", asked)
 	}
 }
+
+// candidateNames are the concepts a linking message offers, in its order.
+func candidateNames(asked string) []string {
+	var out []string
+	for _, line := range strings.Split(asked, "\n") {
+		if strings.HasPrefix(line, "[c") {
+			if _, name, ok := strings.Cut(line, "] "); ok {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
+}
+
+// forkCandidates has bob open a child node whose answer is answer, with
+// more entries in l00, and gives the concepts its linking step offered.
+func forkCandidates(t *testing.T, answer string, more ...map[string]any) []string {
+	t.Helper()
+	m := newScriptedModel(linkSteps(linkedLessons(more...), texts(answer), linkCall())...)
+	a := aiApp(t, m)
+	bob, _, exp := linkedExploration(t, a, true)
+
+	openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
+
+	calls := m.calls()
+	if len(calls) != 6 {
+		t.Fatalf("extractions, analysis, answer, then linking: got %d calls", len(calls))
+	}
+	return candidateNames(lastQuestion(t, contents(calls[5])))
+}
+
+func TestANameOfLettersAndDigitsIsOnlyMatchedAsAWholeWord(t *testing.T) {
+	t.Parallel()
+	more := []map[string]any{
+		concept("4C", "为什么学 Agent", "用户画像的四个维度。"),
+		concept("Nagle", "为什么学 Agent", "攒小包再发。"),
+	}
+	cases := []struct {
+		answer string
+		want   []string
+	}{
+		{"回答：G4C 讲的是任务规划，TCP Nagle 算法另说，先做意图识别。", []string{"Nagle", "意图识别"}},
+		{"回答：G4C 和用户画像的 4C 不是一回事，先做意图识别。", []string{"4C", "意图识别"}},
+	}
+	for _, c := range cases {
+		got := forkCandidates(t, c.answer, more...)
+		if strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Fatalf("%q: candidates %v, want %v", c.answer, got, c.want)
+		}
+	}
+}
+
+func TestOfTwoEntriesNamedAtTheSamePlaceOnlyTheLongerNameIsACandidate(t *testing.T) {
+	t.Parallel()
+	more := []map[string]any{
+		concept("日志", "为什么学 Agent", "按时间记下的事件。"),
+		concept("日志复制", "为什么学 Agent", "领导者把日志发给跟随者。"),
+	}
+	got := forkCandidates(t, "回答：Raft 靠日志复制保持一致，先做意图识别。", more...)
+	if want := "日志复制|意图识别"; strings.Join(got, "|") != want {
+		t.Fatalf("candidates %v, want %s", got, want)
+	}
+	got = forkCandidates(t, "回答：日志复制之前，日志要先写盘。", more...)
+	if want := "日志复制|日志"; strings.Join(got, "|") != want {
+		t.Fatalf("a name also standing alone stays a candidate: %v, want %s", got, want)
+	}
+}
+
+func TestALongerNameOfTheExplorationsOwnLessonStillHidesAShorterOne(t *testing.T) {
+	t.Parallel()
+	got := forkCandidates(t, "回答：先做目标拆解，再做意图识别。", concept("拆解", "为什么学 Agent", "把大事分成小事。"))
+	if want := "意图识别"; strings.Join(got, "|") != want {
+		t.Fatalf("candidates %v, want %s", got, want)
+	}
+}

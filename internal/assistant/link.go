@@ -28,7 +28,8 @@ type LinkCandidate struct {
 type Linker func(ctx context.Context, answer string) ([]LinkCandidate, error)
 
 // CourseLink is a candidate the model linked: its place in the list the
-// linker gave, and a sentence on how it relates to the answer.
+// linker gave, and a sentence on how it helps the reader understand the
+// answer.
 type CourseLink struct {
 	Candidate int
 	Note      string
@@ -46,13 +47,14 @@ type Reply struct {
 const maxCandidateText = 2000
 
 const linkIntro = "此次作答提到了这些课程内容。判断哪些和当前回答真正相关：只是字面上相同、实际讲的不是一回事的，不算相关。" +
-	"用 link_course 列出真正相关的条目，每条附一句话，说明它和当前回答的关系；都不相关时传空列表。"
+	"用 link_course 只列出真正相关的条目，每条附一句话，说明这条课程内容能怎样帮读者理解当前回答，不要写两者的异同；" +
+	"判断为不相关的不要列出，都不相关时传空列表。"
 
 var linkSpec = ToolSpec{
 	Name:        ToolLinkCourse,
 	Description: "列出和当前回答真正相关的课程内容：每一项是候选条目的标识和一句话说明；都不相关时 links 为空列表。",
 	Parameters: json.RawMessage(`{"type":"object","properties":{"links":{"type":"array","items":{"type":"object",` +
-		`"properties":{"entry":{"type":"string","description":"候选条目的标识，如 c1"},"note":{"type":"string","description":"一句话说明这条课程内容和当前回答的关系"}},` +
+		`"properties":{"entry":{"type":"string","description":"候选条目的标识，如 c1"},"note":{"type":"string","description":"一句话说明这条课程内容能怎样帮读者理解当前回答"}},` +
 		`"required":["entry","note"],"additionalProperties":false}}},"required":["links"],"additionalProperties":false}`),
 }
 
