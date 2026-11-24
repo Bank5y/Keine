@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
-import { ExplorationZoom } from '@/components/exploration-zoom';
+import { ExplorationCard } from '@/components/exploration-card';
 import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
@@ -114,8 +114,11 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   // the exploration whose card is picked; reveal: bring its card into view
   const [activeExp, setActiveExp] = useState<number | null>(null);
   const [reveal, setReveal] = useState(0);
-  // the exploration open over the page (#134)
-  const [zoomed, setZoomed] = useState<number | null>(null);
+  // the exploration whose card is open in the rail (#180); busy: a dialog
+  // of that card's is up (its dialogue, the delete confirmation), which
+  // takes presses and Esc for itself
+  const [openExp, setOpenExp] = useState<number | null>(null);
+  const cardBusy = useRef(false);
   const [pick, setPick] = useState<{ spot: Spot; quote: Quote; range: Range; overlaps: boolean } | null>(null);
   const [open, setOpen] = useState<{ spot: Spot; ids: number[] } | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -262,6 +265,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       setOpen(hits.length && at ? { spot: { x: e.clientX + scrollX, top: at.top + scrollY, bottom: at.bottom + scrollY }, ids: hits } : null);
       setActive(exp != null ? null : hits.find((id) => anns.find((a) => a.id === id)?.note) ?? null);
       setActiveExp(exp);
+      setOpenExp(exp);
       if (exp != null) setReveal((n) => n + 1);
     };
     root.addEventListener('click', onClick);
@@ -272,12 +276,15 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   // on a card
   useEffect(() => {
     if (!open && !editing && active == null && activeExp == null) return undefined;
-    const inside = (t: Node) => bar.current?.contains(t) || root?.contains(t) || (t instanceof Element && t.closest('.note-card, .exp-card'));
+    const inside = (t: Node) => bar.current?.contains(t) || root?.contains(t) || (t instanceof Element && t.closest('.note-card, .exp-card, .exp-card-open'));
     const onDown = (e: PointerEvent) => {
-      if (inside(e.target as Node)) return;
-      setOpen(null); setEditing(null); setActive(null); setActiveExp(null);
+      if (cardBusy.current || inside(e.target as Node)) return;
+      setOpen(null); setEditing(null); setActive(null); setActiveExp(null); setOpenExp(null);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(null); setEditing(null); setActive(null); setActiveExp(null); } };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || cardBusy.current) return;
+      setOpen(null); setEditing(null); setActive(null); setActiveExp(null); setOpenExp(null);
+    };
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
@@ -408,22 +415,21 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         <Rail rail={rail} root={root} items={[
           ...anns.filter((a) => a.note && placed.has(a.id)).map((a) => ({
             key: `note-${a.id}`, ranges: placed.get(a.id)!, start: a.range?.start ?? 0, active: a.id === noteActive,
-            card: <NoteCard a={a} active={a.id === noteActive} onPick={() => { setOpen(null); setEditing(null); setActiveExp(null); setActive(a.id); }}
+            card: <NoteCard a={a} active={a.id === noteActive} onPick={() => { setOpen(null); setEditing(null); setActiveExp(null); setOpenExp(null); setActive(a.id); }}
               onEdit={() => startNote(a)} onDelete={() => writeNote(a.id, '')} />,
           })),
           ...exps.filter((e) => placedExps.has(e.id)).map((e) => ({
             key: `exp-${e.id}`, ranges: placedExps.get(e.id)!, start: e.range?.start ?? 0, active: e.id === activeExp,
-            card: <ExplorationCard e={e} active={e.id === activeExp} onPick={() => { setOpen(null); setEditing(null); setActive(null); setActiveExp(e.id); setZoomed(e.id); }} />,
+            card: <ExplorationCard e={e} active={e.id === activeExp} open={e.id === openExp} anchor={() => firstLine(placedExps.get(e.id) ?? [])?.top}
+              onPick={() => { setOpen(null); setEditing(null); setActive(null); setActiveExp(e.id); setOpenExp(e.id); }}
+              onFold={() => setOpenExp(null)} busy={(on) => { cardBusy.current = on; }}
+              onDeleted={(id) => { setOpenExp(null); setActiveExp(null); setExps((list) => list.filter((x) => x.id !== id)); }}
+              onNodes={(id, nodes) => setExps((list) => list.map((x) => (x.id === id ? { ...x, nodes } : x)))} />,
           })),
         ]} />
       ) : null}
       {wide && root ? <PinnedPassages root={root} placed={placedExps} active={activeExp} /> : null}
       {floating}
-      {zoomed != null ? (
-        <ExplorationZoom id={zoomed} onClose={() => setZoomed(null)}
-          onDeleted={(id) => { setZoomed(null); setActiveExp(null); setExps((list) => list.filter((x) => x.id !== id)); }}
-          onNodes={(id, nodes) => setExps((list) => list.map((x) => (x.id === id ? { ...x, nodes } : x)))} />
-      ) : null}
       {analysis ? (
         <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)}
           onPinned={(e) => { setExps((list) => [...list, e]); setAnalysis(null); setActive(null); setActiveExp(e.id); }} />
@@ -489,19 +495,6 @@ function NoteCard({ a, active, onPick, onEdit, onDelete }: { a: Annotation; acti
         <button type="button" className="ann-btn" aria-label="编辑笔记" title="编辑笔记" onClick={(e) => { e.stopPropagation(); onEdit(); }}><Pencil /></button>
         <button type="button" className="ann-btn danger" aria-label="删除笔记" title="删除笔记" onClick={(e) => { e.stopPropagation(); onDelete(); }}><Trash2 /></button>
       </div>
-    </div>
-  );
-}
-
-// ExplorationCard is an exploration in the rail: its title on one line,
-// its concept on two, cut off with an ellipsis when longer.
-function ExplorationCard({ e, active, onPick }: { e: Exploration; active: boolean; onPick: () => void }) {
-  return (
-    <div className={cn('exp-card', active && 'active')} data-exploration={e.id} role="button" tabIndex={0}
-      aria-pressed={active} aria-label={`探索：${e.title}`}
-      onClick={onPick} onKeyDown={(ev) => { if (ev.key === 'Enter' && ev.target === ev.currentTarget) onPick(); }}>
-      <div className="exp-card-title"><Sparkles aria-hidden /><span>{e.title}</span>{e.nodes > 0 ? <span className="exp-card-nodes" title="节点数（不含主节点）">节点 {e.nodes}</span> : null}</div>
-      <p className="exp-card-concept">{e.concept}</p>
     </div>
   );
 }

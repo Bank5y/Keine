@@ -1554,25 +1554,42 @@ a.rn:hover .t { color: var(--brand); }
 .kind-divergent { --kind: var(--kind-divergent); }
 
 .exp-zoom { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; }
-.exp-zoom-backdrop { position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 45%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: exp-fade 240ms ease-out; transition: background 320ms; }
-.exp-zoom.level-2 .exp-zoom-backdrop { background: color-mix(in srgb, #1d1b18 42%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.exp-zoom-backdrop { position: absolute; inset: 0; background: color-mix(in srgb, #1d1b18 42%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); animation: exp-fade 240ms ease-out; }
 .exp-zoom.closing .exp-zoom-backdrop { opacity: 0; transition: opacity 320ms; }
 @keyframes exp-fade { from { opacity: 0; } }
-.exp-zoom-card { position: relative; display: flex; flex-direction: column; width: min(640px, calc(100vw - 48px)); max-height: 80vh; overflow: hidden;
+.exp-zoom-card { position: relative; display: flex; flex-direction: column; width: 88vw; height: 90vh; overflow: hidden;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 24px 60px -12px color-mix(in srgb, var(--text) 35%, transparent); will-change: transform; }
-.exp-zoom.level-2 .exp-zoom-card { width: 88vw; height: 90vh; max-height: none; }
-.exp-zoom-loading { height: 240px; }
-.exp-zoom-head { display: flex; align-items: center; gap: 8px; padding: 14px 20px 6px 36px; flex: none; }
-.exp-zoom-head .grow { flex: 1; }
-.exp-zoom-kind { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--explore); }
-.exp-zoom-kind svg { width: 13px; height: 13px; }
-.exp-zoom-expand, .exp-zoom-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--radius); font-size: 12px; cursor: pointer; border: 0; }
-.exp-zoom-expand { background: color-mix(in srgb, var(--explore) 14%, var(--surface)); color: var(--explore); font-weight: 500; }
-.exp-zoom-btn { background: none; color: var(--text-3); }
-.exp-zoom-btn:hover { color: var(--danger); }
-.exp-zoom-expand svg, .exp-zoom-btn svg { width: 14px; height: 14px; }
-.exp-zoom-close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; background: none; color: var(--text-3); cursor: pointer; }
-.exp-zoom-close svg { width: 16px; height: 16px; }
+@media (prefers-reduced-motion: reduce) { .exp-zoom-backdrop { animation: none; } }
+
+/* an exploration's card open in the rail (#180): over the cards below it,
+   level with its text, its document scrolling inside it */
+.exp-card-open { position: absolute; left: 0; right: 0; z-index: 2; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--explore); border-left-width: 3px; border-radius: 6px;
+  box-shadow: 0 18px 40px -14px color-mix(in srgb, var(--text) 45%, transparent); }
+.exp-card-open.measuring { visibility: hidden; }
+.exp-card-open.opening { animation: exp-card-open 220ms cubic-bezier(.2,.8,.2,1) both; }
+@keyframes exp-card-open { from { clip-path: inset(0 0 calc(100% - var(--from, 56px)) 0 round 6px); transform: translateY(var(--lift, 0px)); } to { clip-path: inset(0 0 0 0 round 6px); transform: none; } }
+@media (prefers-reduced-motion: reduce) { .exp-card-open.opening { animation: none; } }
+.exp-open-head { flex: none; display: flex; align-items: center; gap: 6px; width: 100%; padding: 8px 10px 4px; border: 0; background: none; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
+.exp-open-head svg { flex: none; width: 12px; height: 12px; color: var(--explore); }
+.exp-open-head span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.exp-open-head .lucide-chevron-up { margin-left: auto; color: var(--text-3); }
+.exp-card-open .exp-doc { flex: 1; min-height: 0; padding: 2px 12px 8px; scrollbar-width: thin; }
+.exp-card-open .exp-doc-quote { margin: 4px 0 10px; }
+.exp-card-open .exp-doc-quote span { font-size: 12px; }
+.exp-card-open .exp-doc-quote small { font-size: 11px; }
+/* the card's own head carries the title */
+.exp-card-open .exp-doc-title { display: none; }
+.exp-card-open .exp-doc-concept { font-size: 13px; line-height: 1.65; margin-bottom: 10px; }
+.exp-card-open .exp-doc hr { margin-bottom: 10px; }
+.exp-card-open .exp-doc .analysis-explanation .prose { font-size: 13px; line-height: 1.7; }
+.exp-open-foot { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--line); }
+.exp-open-foot .grow { flex: 1; }
+.exp-open-expand, .exp-open-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-radius: var(--radius); font-size: 12px; cursor: pointer; border: 0; }
+.exp-open-expand { background: color-mix(in srgb, var(--explore) 14%, var(--surface)); color: var(--explore); font-weight: 500; }
+.exp-open-btn { background: none; color: var(--text-3); }
+.exp-open-btn:hover { color: var(--danger); }
+.exp-open-expand svg, .exp-open-btn svg { width: 13px; height: 13px; }
 
 .exp-doc { overflow: auto; overscroll-behavior: contain; padding: 8px 36px 32px; }
 .exp-doc-quote { margin: 8px 0 18px; padding-left: 10px; border-left: 2px solid var(--explore); }
