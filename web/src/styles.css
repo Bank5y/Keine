@@ -1785,3 +1785,9 @@ a.rn:hover .t { color: var(--brand); }
 }
 .ledger.concepts .ledger-row { grid-template-columns: 1fr 80px 300px 110px; }
 @media (max-width: 760px) { .ledger.concepts .ledger-row { grid-template-columns: 1fr auto auto; } }
+
+/* a citation in a reply of the dialogue (ADR 0013): the source's site and
+   number, opening it in a new tab */
+.prose a.cite { display: inline-flex; align-items: center; height: 18px; margin: 0 1px; padding: 0 6px; border-radius: 9px; vertical-align: 1px;
+  background: color-mix(in srgb, var(--explore) 12%, var(--surface)); color: var(--explore); font-size: 11px; line-height: 1; white-space: nowrap; text-decoration: none; }
+.prose a.cite:hover { background: color-mix(in srgb, var(--explore) 22%, var(--surface)); text-decoration: none; }

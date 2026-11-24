@@ -15,7 +15,7 @@ var followupSystem string
 // FollowupPrompt is the prompt of a turn after the analysis (#136, ADR
 // 0011): the same for every kind of node. Its context is not a passage but
 // the exploration (FollowupContext).
-var FollowupPrompt = newPrompt("followup-2", followupSystem, DefaultStyle)
+var FollowupPrompt = newPrompt("followup-3", followupSystem, DefaultStyle)
 
 // FirstQuestion is the question an exploration's analysis stands for
 // (ADR 0011): to explain the term (by the exploration's title, which keeps
@@ -186,6 +186,9 @@ type FollowupContext struct {
 	// FirstReply is the analysis's reply as kept, in its tags
 	FirstReply string
 	History    []Exchange
+	// Citable are the web sources the turns of the chain found, which the
+	// question may cite by number (ADR 0013); those without one are left out
+	Citable []WebSource
 }
 
 // Messages puts a question after its context. Everything before the
@@ -201,7 +204,13 @@ func (c FollowupContext) Messages(q Asked) []Message {
 	for _, e := range c.History {
 		msgs = append(msgs, Message{Role: RoleUser, Content: e.Asked.content()}, Message{Role: RoleAssistant, Content: e.Reply})
 	}
-	return append(msgs, Message{Role: RoleUser, Content: q.content()})
+	// what may be cited heads the question, so the turns before it stay
+	// the same and cached
+	asked := q.content()
+	if list := citable(c.Citable); list != "" {
+		asked = list + "\n\n" + asked
+	}
+	return append(msgs, Message{Role: RoleUser, Content: asked})
 }
 
 // Followup runs a turn after the analysis on the turn's model: the same
@@ -221,6 +230,7 @@ func Followup(ctx context.Context, run Run, msgs []Message, out Sink, link Linke
 	var web *Web
 	if run.Web != nil {
 		web = newWeb(*run.Web)
+		web.cite = run.Cite
 		run.Tools = append(slices.Clip(run.Tools), web.Tools()...)
 	}
 	r := newAnalysisRun(run, out)

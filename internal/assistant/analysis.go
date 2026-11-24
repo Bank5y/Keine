@@ -159,6 +159,9 @@ type Run struct {
 	Now func() time.Time
 	// Deadline ends the run (default DefaultDeadline).
 	Deadline time.Duration
+	// Cite numbers the web sources the run finds, in an exploration
+	// dialogue (ADR 0013); nil elsewhere.
+	Cite *Citations
 	// Spent hears what the run has used so far, for a caller who stops the
 	// run (by cancelling it) once it costs too much: after each model call,
 	// and while a call writes, with that call worked out from its messages
@@ -238,6 +241,9 @@ func (r *analysisRun) meta() Meta {
 	for _, s := range r.provided {
 		if p := (place{s.URL, s.Kind}); !seen[p] {
 			seen[p] = true
+			if r.run.Cite != nil {
+				s.N = r.run.Cite.number(s.URL)
+			}
 			m.Sources = append(m.Sources, s)
 		}
 	}

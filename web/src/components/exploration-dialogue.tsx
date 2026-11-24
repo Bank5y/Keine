@@ -4,8 +4,10 @@ import { toast } from 'sonner';
 import { Credit, documentParts, Lookups, Notice, Progress } from '@/components/analysis-popover';
 import { Confirm } from '@/components/confirm';
 import { ReportView } from '@/components/exploration-report';
+import { CitedMarkdown } from '@/components/cited-markdown';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError, api } from '@/lib/api';
+import { citationTable, type Cited } from '@/lib/citations';
 import {
   askTurn, carried, courseLinkItems, DEFAULT_QUESTION, forksAt, INTERRUPTED, KINDS, mapLayout, MAX_NODES, openNode, pathTo, prune, restack, retryTurn,
   seenBy, settle, spine, stepRun, turnAt, type Ended, type Layer, type Run,
@@ -341,6 +343,8 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
   const [fragment, setFragment] = useState('');
   const reply = useRef<HTMLDivElement>(null);
   const forks = forksAt(d.nodes, t.id);
+  // what the reply may cite: the sources of its chain (ADR 0013)
+  const table = useMemo(() => citationTable(d.nodes, t.id), [d.nodes, t.id]);
   const stop = t.meta.interrupted ? INTERRUPTED[t.meta.interrupted] : null;
   const full = d.nodes.length >= MAX_NODES;
   // a passage selected inside this reply goes with a node opened on it
@@ -373,7 +377,7 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
           <Asked question={t.question} kind={node.kind} />
           {t.reply ? (
             <div className="dlg-reply prose-wrap" ref={reply} onMouseUp={noteSelection}>
-              <LazyMarkdown text={t.reply} components={documentParts} />
+              <CitedMarkdown text={t.reply} table={table} components={documentParts} />
             </div>
           ) : null}
           <CourseLinks courseId={d.courseId} links={t.courseLinks} />
@@ -431,6 +435,8 @@ function Asked({ question: q, kind }: { question: Question; kind: NodeKind }) {
   );
 }
 
+const NO_SOURCES = new Map<number, Cited>();
+
 // Asking is a turn being answered: the question, the lookups (a list
 // while nothing is written, one line after), and the reply as it streams.
 function Asking({ question, run, kind }: { question: Question; run: Run; kind: NodeKind }) {
@@ -440,7 +446,8 @@ function Asking({ question, run, kind }: { question: Question; run: Run; kind: N
       {run.text ? <Lookups activities={run.activities} /> : run.activities.length ? <Progress activities={run.activities} /> : null}
       {run.thinking && !run.text ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p> : null}
       {!run.text && !run.thinking && !run.activities.length ? <p className="analysis-wait">正在回答…</p> : null}
-      {run.text ? <div className={cn('dlg-reply analysis-explanation', !run.linking && 'caret')}><LazyMarkdown text={run.text} /></div> : null}
+      {/* its sources are known once it is kept: until then a citation shows nothing */}
+      {run.text ? <div className={cn('dlg-reply analysis-explanation', !run.linking && 'caret')}><CitedMarkdown text={run.text} table={NO_SOURCES} /></div> : null}
       {run.linking ? <p className="analysis-wait thinking dlg-linking"><span className="analysis-dot" aria-hidden />正在关联课程内容…</p> : null}
     </div>
   );

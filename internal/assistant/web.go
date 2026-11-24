@@ -50,6 +50,9 @@ type WebSource struct {
 	Title string        `json:"title"`
 	URL   string        `json:"url"`
 	Kind  WebSourceKind `json:"kind"`
+	// N is its citation number in an exploration dialogue (ADR 0013); 0
+	// elsewhere, and on sources kept before citations
+	N int `json:"n,omitempty"`
 }
 
 // Web tool names, which are also their activities' kinds and the names of
@@ -105,6 +108,8 @@ type Web struct {
 	sources  []WebSource
 	seen     map[WebSource]bool
 	searches int
+	// cite numbers what the run finds, in a dialogue (ADR 0013)
+	cite *Citations
 }
 
 func newWeb(route WebRoute) *Web {
@@ -158,8 +163,12 @@ func (w *Web) search(ctx context.Context, a webSearchArgs) (string, error) {
 	var b strings.Builder
 	for i, h := range hits {
 		w.found[h.URL] = true
-		w.add(WebSource{Title: h.Title, URL: h.URL, Kind: WebSourceSearch})
-		fmt.Fprintf(&b, "%d. %s\nURL: %s\n%s\n\n", i+1, h.Title, h.URL, clip(h.Summary, MaxHitSummary))
+		s := w.add(WebSource{Title: h.Title, URL: h.URL, Kind: WebSourceSearch})
+		mark := fmt.Sprintf("%d.", i+1)
+		if s.N > 0 {
+			mark = fmt.Sprintf("[%d]", s.N)
+		}
+		fmt.Fprintf(&b, "%s %s\nURL: %s\n%s\n\n", mark, h.Title, h.URL, clip(h.Summary, MaxHitSummary))
 	}
 	return strings.TrimSpace(b.String()), nil
 }
@@ -189,20 +198,28 @@ func (w *Web) fetch(ctx context.Context, a webFetchArgs) (string, error) {
 	if title == "" {
 		title = HostOf(u)
 	}
-	w.add(WebSource{Title: title, URL: u, Kind: WebSourceFetch})
+	s := w.add(WebSource{Title: title, URL: u, Kind: WebSourceFetch})
 	if utf8.RuneCountInString(content) > MaxPageContent {
 		content = string([]rune(content)[:MaxPageContent]) + truncatedPage
+	}
+	if s.N > 0 {
+		title = fmt.Sprintf("[%d] %s", s.N, title)
 	}
 	return "# " + title + "\n\n" + content, nil
 }
 
-// add records a source once; w.mu is held.
-func (w *Web) add(s WebSource) {
+// add records a source once, numbered in a dialogue, and returns it; w.mu
+// is held.
+func (w *Web) add(s WebSource) WebSource {
+	if w.cite != nil {
+		s.N = w.cite.number(s.URL)
+	}
 	if w.seen[s] {
-		return
+		return s
 	}
 	w.seen[s] = true
 	w.sources = append(w.sources, s)
+	return s
 }
 
 // Sources is the run's source list, in the order found.

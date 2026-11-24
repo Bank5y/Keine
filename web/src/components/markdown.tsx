@@ -4,7 +4,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
-import type { Components } from 'react-markdown';
+import type { Components, Options } from 'react-markdown';
 import type { Ref } from 'react';
 import { common } from 'lowlight';
 import dart from 'highlight.js/lib/languages/dart';
@@ -44,11 +44,14 @@ const defaults: Components = {
 
 // Markdown renders course text like a documentation site. Raw HTML in the
 // text is allowed but sanitized, since course text comes from uploaders.
-export function Markdown({ text, base, className, components, rootRef }: { text: string; base?: string; className?: string; components?: Components; rootRef?: Ref<HTMLDivElement> }) {
+// remarkPlugins come after GitHub Markdown's.
+export function Markdown({ text, base, className, components, rootRef, remarkPlugins }: {
+  text: string; base?: string; className?: string; components?: Components; rootRef?: Ref<HTMLDivElement>; remarkPlugins?: Options['remarkPlugins'];
+}) {
   return (
     <div className={cn('prose', className)} ref={rootRef}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={remarkPlugins ? [remarkGfm, ...remarkPlugins] : [remarkGfm]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeSlug, [rehypeHighlight, { detect: false, ignoreMissing: true, languages }]]}
         urlTransform={resolver(base)}
         components={components ? { ...defaults, ...components } : defaults}

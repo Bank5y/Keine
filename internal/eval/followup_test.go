@@ -176,3 +176,29 @@ func joined(req assistant.Request) string {
 	}
 	return b.String()
 }
+
+func TestAReplyCitingANumberNoSearchGaveFails(t *testing.T) {
+	dbURL, files, id, version := privateCourse(t)
+	pool, err := db.Connect(context.Background(), dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	// no web: nothing was found, so [1] cites nothing
+	model := &script{steps: []assistant.Event{text(good), text("Raft 的论文见 [1]。")}}
+	r := &eval.Runner{
+		Courses: course.NewService(pool, files), Mermaid: noDiagrams{},
+		Turn: func(context.Context) (assistant.Turn, error) {
+			return assistant.Turn{Adapter: model, Model: "m-1"}, nil
+		},
+	}
+	c := eval.Case{ID: "cites-nothing", Course: id, Version: version, Lesson: "l01", Quote: "任期", Prefix: "分成一个个",
+		Turns: []eval.Turn{{Ask: "找几篇 Raft 的论文并给出链接"}}}
+	res, err := r.Run(context.Background(), c, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Failures) != 1 || res.Failures[0].Rule != eval.RuleCitation || res.Failures[0].Turn != 1 {
+		t.Fatalf("failures %+v", res.Failures)
+	}
+}

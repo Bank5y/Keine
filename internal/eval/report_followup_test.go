@@ -13,7 +13,7 @@ import (
 // then a child node whose first turn linked lesson 05 and broke a rule.
 func dialogueReport(prompt, word string) Report {
 	r := report(prompt, word)
-	r.Followup = "followup-2"
+	r.Followup = "followup-3"
 	c := Case{ID: "tcp-dialogue", Category: "系统与网络", Kind: "child", Quote: "TCP",
 		Turns: []Turn{{Ask: "TCP 为什么要三次握手？"}, {Fork: course.NodeChild, Ask: "小数据包怎么传？"}}}
 	r.Cases = append(r.Cases, c)
@@ -47,7 +47,7 @@ func TestTheBaselineKeepsTheTurnsAndTheirCourseLinksButNoReply(t *testing.T) {
 			t.Fatalf("baseline has text %q: %s", text, s)
 		}
 	}
-	for _, want := range []string{`"followup":"followup-2"`, `"fork":"child"`, `"index":"built"`, `"candidates":["Nagle 算法","滑动窗口"]`, `"chosen":["Nagle 算法"]`, `"broken":["` + RuleNarration + `"]`, `"turnTotals"`} {
+	for _, want := range []string{`"followup":"followup-3"`, `"fork":"child"`, `"index":"built"`, `"candidates":["Nagle 算法","滑动窗口"]`, `"chosen":["Nagle 算法"]`, `"broken":["` + RuleNarration + `"]`, `"turnTotals"`} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("baseline lacks %s: %s", want, s)
 		}

@@ -128,3 +128,25 @@ func TestTheLanguageOfALessonIsItsProseNotItsCode(t *testing.T) {
 		t.Fatalf("a Chinese lesson with long code: %v", fs)
 	}
 }
+
+func TestAReplyCitesByNumberButWritesNoAddress(t *testing.T) {
+	for _, ok := range []string{"Raft 的论文见 [1]，Paxos 见 [2][3]。", "两篇都讲了选举 [1, 2]。", "列表写作 `a[1]`。"} {
+		if got := rules(CheckReply(ok, Turn{}, &parses{})); len(got) != 0 {
+			t.Fatalf("%q broke %v", ok, got)
+		}
+	}
+	for _, bad := range []string{"见 [Raft 论文](https://raft.github.io)。", "见 https://raft.github.io 。", "见 [1](https://raft.github.io)。"} {
+		if got := rules(CheckReply(bad, Turn{}, &parses{})); !slices.Equal(got, []string{RuleReply}) {
+			t.Fatalf("%q broke %v", bad, got)
+		}
+	}
+}
+
+func TestAReplyCitesOnlyWhatItWasOffered(t *testing.T) {
+	if got := CheckCitations("见 [1] 和 [3]。", []int{1, 2}); len(got) != 1 || got[0].Rule != RuleCitation || !strings.Contains(got[0].Detail, "[3]") {
+		t.Fatalf("got %+v", got)
+	}
+	if got := CheckCitations("见 [2]。", []int{1, 2}); len(got) != 0 {
+		t.Fatalf("got %+v", got)
+	}
+}

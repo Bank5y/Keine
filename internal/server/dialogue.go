@@ -236,6 +236,8 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 		Web:      turn.Web,
 		Now:      s.opts.Now,
 		Deadline: s.opts.RunDeadline,
+		// the whole exploration shares its citation numbers (ADR 0013)
+		Cite: assistant.NewCitations(treeSources(d)),
 		Spent: func(u assistant.Usage) {
 			if account.Remaining != nil && credits.Cost(u, 0, turn.Rates) >= *account.Remaining {
 				cancel(errCreditsOut)
@@ -356,7 +358,35 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 	for _, t := range chain[1:] {
 		fc.History = append(fc.History, assistant.Exchange{Asked: askedIn(t), Reply: withLinks(t)})
 	}
+	// what the chain found may be cited; a sibling's sources may not (ADR 0013)
+	for _, t := range chain {
+		fc.Citable = append(fc.Citable, turnSources(t)...)
+	}
 	return fc.Messages(q), nil
+}
+
+// turnSources are the web sources a kept turn recorded; one that cannot
+// be read is left out.
+func turnSources(t course.Turn) []assistant.WebSource {
+	var out []assistant.WebSource
+	for _, raw := range t.Meta.Sources {
+		var src assistant.WebSource
+		if json.Unmarshal(raw, &src) == nil && src.URL != "" {
+			out = append(out, src)
+		}
+	}
+	return out
+}
+
+// treeSources are the web sources of every turn of the exploration.
+func treeSources(d course.ExplorationDetail) []assistant.WebSource {
+	var out []assistant.WebSource
+	for _, n := range d.Nodes {
+		for _, t := range n.Turns {
+			out = append(out, turnSources(t)...)
+		}
+	}
+	return out
 }
 
 // withLinks is a kept turn's reply as the reader saw it (ADR 0011).

@@ -115,16 +115,18 @@ func CheckAnalysis(raw string) (Analysis, []string) {
 }
 
 // CheckReply lists what is wrong with a reply of the dialogue by what the
-// follow-up prompt asks of it (#141): Markdown with no link (the sources
-// are recorded by the system), no SVG, no raw tool call markup, at most
-// one diagram of an allowed kind. The loop takes a reply as it is written;
-// keine-eval judges replies by these rules.
+// follow-up prompt asks of it (#141): Markdown that cites a source by its
+// number, [n], and writes no address or link of its own (ADR 0013: the
+// system turns the number into the link it recorded), no SVG, no raw tool
+// call markup, at most one diagram of an allowed kind. The loop takes a
+// reply as it is written; keine-eval judges replies by these rules.
 func CheckReply(md string) []string {
 	var problems []string
 	if rawToolCall.MatchString(md) {
 		problems = append(problems, "回复里有原始的工具调用标记")
 	}
-	if markdownLink.MatchString(md) || bareURL.MatchString(md) {
+	// [1][2] is two citations, not a reference link
+	if bare := citation.ReplaceAllString(md, ""); markdownLink.MatchString(bare) || bareURL.MatchString(bare) {
 		problems = append(problems, "回复里不能有链接")
 	}
 	if svgTag.MatchString(md) {
