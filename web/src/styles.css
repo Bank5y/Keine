@@ -1577,11 +1577,23 @@ a.rn:hover .t { color: var(--brand); }
   from { clip-path: inset(0 0 calc(100% - var(--from, 56px)) calc(100% - var(--from-w, 220px)) round 6px); transform: translateY(var(--lift, 0px)); }
   to { clip-path: inset(0 0 0 0 round 6px); transform: none; } }
 @keyframes exp-card-open-content { from { opacity: 0; transform: translateY(6px); } }
-@media (prefers-reduced-motion: reduce) { .exp-card-open.opening, .exp-card-open.opening > * { animation: none; } }
-.exp-open-head { flex: none; display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 14px 6px 18px; border: 0; background: none; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
-.exp-open-head svg { flex: none; width: 12px; height: 12px; color: var(--explore); }
-.exp-open-head span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.exp-open-head .lucide-chevron-up { margin-left: auto; color: var(--text-3); }
+/* folding plays the opening back: what it shows fades first, then it
+   shrinks into the card's own box in the rail and goes */
+.exp-card-open.folding { animation: exp-card-fold 320ms cubic-bezier(.4,0,.2,1) both; pointer-events: none; }
+.exp-card-open.folding > * { animation: exp-card-fold-content 120ms ease-in both; }
+@keyframes exp-card-fold {
+  from { clip-path: inset(0 0 0 0 round 6px); transform: none; }
+  80% { opacity: 1; }
+  to { clip-path: inset(0 0 calc(100% - var(--from, 56px)) calc(100% - var(--from-w, 220px)) round 6px); transform: translateY(var(--lift, 0px)); opacity: 0; } }
+@keyframes exp-card-fold-content { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .exp-card-open.opening, .exp-card-open.opening > *, .exp-card-open.folding, .exp-card-open.folding > * { animation: none; } }
+.exp-open-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 10px 4px 12px; }
+.exp-open-fold { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px; border: 0; border-radius: var(--radius); background: none; text-align: left; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
+.exp-open-fold svg { flex: none; width: 12px; height: 12px; color: var(--explore); }
+.exp-open-fold span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.exp-open-chevron { flex: none; display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius); background: none; cursor: pointer; color: var(--text-3); }
+.exp-open-chevron:hover, .exp-open-fold:hover { background: var(--surface-2); }
+.exp-open-chevron svg { width: 14px; height: 14px; }
 .exp-card-open .exp-doc { flex: 1; min-height: 0; padding: 4px 20px 12px; scrollbar-width: thin; }
 .exp-card-open .exp-doc-quote { margin: 4px 0 10px; }
 .exp-card-open .exp-doc-quote span { font-size: 13px; }
@@ -1591,8 +1603,7 @@ a.rn:hover .t { color: var(--brand); }
 .exp-card-open .exp-doc-concept { font-size: 14px; line-height: 1.7; margin-bottom: 12px; }
 .exp-card-open .exp-doc hr { margin-bottom: 10px; }
 .exp-card-open .exp-doc .analysis-explanation .prose { font-size: 14px; line-height: 1.75; }
-.exp-open-foot { flex: none; display: flex; align-items: center; gap: 4px; padding: 6px 12px 6px 14px; border-top: 1px solid var(--line); }
-.exp-open-foot .grow { flex: 1; }
+.exp-open-foot { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 6px 12px 6px 14px; border-top: 1px solid var(--line); }
 .exp-open-expand, .exp-open-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-radius: var(--radius); font-size: 12px; cursor: pointer; border: 0; }
 .exp-open-expand { background: color-mix(in srgb, var(--explore) 14%, var(--surface)); color: var(--explore); font-weight: 500; }
 .exp-open-btn { background: none; color: var(--text-3); }

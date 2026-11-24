@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeOpenCard } from '@/lib/open-card';
+import { placeOpenCard, scrolledAway, SCROLL_AWAY } from '@/lib/open-card';
 
 // a 1000px-high screen with a 64px bar on top and 16px kept free at the bottom
 const screen = { viewport: 1000, top: 64, margin: 16 };
@@ -33,5 +33,17 @@ describe('placeOpenCard', () => {
     expect(placeOpenCard({ viewport: 300, top: 100, margin: 16, anchor: 280, content: 500 })).toEqual({ top: 104, height: 180 });
     // 200 high: 60% is 120, the free space only 84
     expect(placeOpenCard({ viewport: 200, top: 100, margin: 16, anchor: 150, content: 500 })).toEqual({ top: 100, height: 84 });
+  });
+});
+
+describe('scrolledAway', () => {
+  it('keeps the card open while the page moves a little either way', () => {
+    expect(scrolledAway(1000, 1000 + SCROLL_AWAY)).toBe(false);
+    expect(scrolledAway(1000, 1000 - SCROLL_AWAY)).toBe(false);
+  });
+
+  it('folds the card once the page has moved past the threshold, down or up', () => {
+    expect(scrolledAway(1000, 1000 + SCROLL_AWAY + 1)).toBe(true);
+    expect(scrolledAway(1000, 1000 - SCROLL_AWAY - 1)).toBe(true);
   });
 });

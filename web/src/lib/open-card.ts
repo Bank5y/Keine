@@ -18,3 +18,13 @@ export function placeOpenCard({ anchor, content, viewport, top, margin }: OpenCa
   const height = Math.max(0, Math.min(content, viewport * 0.6, bottom - top));
   return { top: Math.max(top, Math.min(anchor, bottom - height)), height };
 }
+
+// How far the page may scroll under an open card before it folds itself
+// away (#180): past this the reader has moved on from its passage.
+export const SCROLL_AWAY = 200;
+
+// scrolledAway says whether the page has scrolled far enough from where
+// it was when the card opened for the card to fold.
+export function scrolledAway(from: number, now: number): boolean {
+  return Math.abs(now - from) > SCROLL_AWAY;
+}
