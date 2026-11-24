@@ -277,14 +277,9 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   useEffect(() => {
     if (!open && !editing && active == null && activeExp == null) return undefined;
     const inside = (t: Node) => bar.current?.contains(t) || root?.contains(t) || (t instanceof Element && t.closest('.note-card, .exp-card, .exp-card-open'));
-    const onDown = (e: PointerEvent) => {
-      if (cardBusy.current || inside(e.target as Node)) return;
-      setOpen(null); setEditing(null); setActive(null); setActiveExp(null); setOpenExp(null);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || cardBusy.current) return;
-      setOpen(null); setEditing(null); setActive(null); setActiveExp(null); setOpenExp(null);
-    };
+    const clear = () => { setOpen(null); setEditing(null); setActive(null); setActiveExp(null); setOpenExp(null); };
+    const onDown = (e: PointerEvent) => { if (!cardBusy.current && !inside(e.target as Node)) clear(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !cardBusy.current) clear(); };
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
@@ -422,7 +417,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
             key: `exp-${e.id}`, ranges: placedExps.get(e.id)!, start: e.range?.start ?? 0, active: e.id === activeExp,
             card: <ExplorationCard e={e} active={e.id === activeExp} open={e.id === openExp} anchor={() => firstLine(placedExps.get(e.id) ?? [])?.top}
               onPick={() => { setOpen(null); setEditing(null); setActive(null); setActiveExp(e.id); setOpenExp(e.id); }}
-              onFold={() => setOpenExp(null)} busy={(on) => { cardBusy.current = on; }}
+              onFold={() => setOpenExp(null)} onBusy={(on) => { cardBusy.current = on; }}
               onDeleted={(id) => { setOpenExp(null); setActiveExp(null); setExps((list) => list.filter((x) => x.id !== id)); }}
               onNodes={(id, nodes) => setExps((list) => list.map((x) => (x.id === id ? { ...x, nodes } : x)))} />,
           })),
@@ -432,7 +427,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       {floating}
       {analysis ? (
         <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)}
-          onPinned={(e) => { setExps((list) => [...list, e]); setAnalysis(null); setActive(null); setActiveExp(e.id); }} />
+          onPinned={(e) => { setExps((list) => [...list, e]); setAnalysis(null); setActive(null); setActiveExp(e.id); setOpenExp(null); }} />
       ) : null}
     </>
   );

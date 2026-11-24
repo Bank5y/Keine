@@ -5,12 +5,11 @@ import { ExplorationDialogue } from '@/components/exploration-dialogue';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { useContainScroll, useScrollLock } from '@/lib/contain-scroll';
 import type { ExplorationDetail } from '@/lib/explorations';
-import { cn } from '@/lib/utils';
+import { cn, reducedMotion } from '@/lib/utils';
 
 const MS = 320;
 const EASE = 'cubic-bezier(.2,.8,.2,1)';
 
-export const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // the exploration's card open in the rail, where the dialogue grows from
 const openCard = (id: number) => document.querySelector<HTMLElement>(`.exp-card-open[data-exploration="${id}"]`);
