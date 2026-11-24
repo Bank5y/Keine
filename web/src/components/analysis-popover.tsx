@@ -14,7 +14,7 @@ import { useContainScroll } from '@/lib/contain-scroll';
 import { pinAnalysis, type Exploration } from '@/lib/explorations';
 import type { Quote } from '@/lib/annotations';
 import { readNotice, useUser } from '@/lib/session';
-import { progressLines, summary, type ToolActivity } from '@/lib/progress';
+import { currentLine, progressLines, summary, webDown, type ProgressLine, type ToolActivity } from '@/lib/progress';
 import { creditLine, type OwnModelsState } from '@/lib/own-model';
 import { cn } from '@/lib/utils';
 
@@ -187,30 +187,85 @@ function writing(state: AnalysisState): Part | null {
   return p.explanation ? 'explanation' : p.concept ? 'concept' : 'title';
 }
 
-// Progress lists the run's lookups, a running one with a pulsing dot and a
-// failed one marked.
+// Line is a line of the progress: a running one has a pulsing dot, a
+// failed one says why, unless what is said beside it already says so.
+function Line({ l, beside }: { l: ProgressLine; beside?: string }) {
+  const note = l.failed && l.note !== beside ? <span className="analysis-failed">{l.note ?? '失败'}</span> : null;
+  return <><span className="analysis-dot" aria-hidden /><span className="analysis-line-text">{l.text}</span>{note}</>;
+}
+
+// Progress lists every lookup of the run.
 export function Progress({ activities }: { activities: ToolActivity[] }) {
   return (
     <ul className="analysis-progress">
-      {progressLines(activities).map((l, i) => (
-        <li key={i} className={cn(l.running && 'running', l.failed && 'failed')}>
-          <span className="analysis-dot" aria-hidden />{l.text}{l.failed ? <span className="analysis-failed">{l.note ?? '失败'}</span> : null}
-        </li>
-      ))}
+      {progressLines(activities).map((l, i) => <li key={i} className={cn(l.running && 'running', l.failed && 'failed')}><Line l={l} /></li>)}
     </ul>
   );
 }
 
-// Lookups fold into one line once the answer shows; it opens to the list.
+const SLIDE_MS = 200;
+// how long a failed call shows before the line goes back to the others
+const FLASH_MS = 1500;
+
+const keyOf = (l: ProgressLine | null) => (l ? `${l.text}|${l.running}|${l.failed}` : '');
+
+// Ticker is the progress while the run looks things up (#182): one line,
+// the latest call, the old line sliding up and out as the next slides in.
+// A failed call flashes, then the line goes back to what still runs. That
+// web search is out stays beside it. A screen reader is not told of every
+// change.
+export function Ticker({ activities }: { activities: ToolActivity[] }) {
+  // the failure on show, by the change that made it, settles after a moment
+  const latest = activities.reduce((n, a) => Math.max(n, a.seq ?? 0), 0);
+  const failing = currentLine(activities)?.failed ? latest : 0;
+  const [settled, setSettled] = useState(0);
+  useEffect(() => {
+    if (!failing) return undefined;
+    const t = window.setTimeout(() => setSettled(failing), FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [failing]);
+  const line = currentLine(activities, failing !== 0 && settled === failing);
+  const down = webDown(activities);
+  const key = keyOf(line);
+
+  // the line before slides out while this one slides in
+  const before = useRef<ProgressLine | null>(line);
+  const [leaving, setLeaving] = useState<ProgressLine | null>(null);
+  useEffect(() => {
+    const was = before.current;
+    before.current = line;
+    if (!was || keyOf(was) === key || matchMedia('(prefers-reduced-motion: reduce)').matches) { setLeaving(null); return undefined; }
+    setLeaving(was);
+    const t = window.setTimeout(() => setLeaving(null), SLIDE_MS);
+    return () => window.clearTimeout(t);
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- line changes with key
+
+  if (!line) return null;
+  const cls = (l: ProgressLine) => cn('analysis-tick', l.running && 'running', l.failed && 'failed');
+  return (
+    <div className="analysis-ticker" aria-live="off">
+      <div className="analysis-ticker-roll">
+        {leaving ? <div key={`out-${keyOf(leaving)}`} className={cn(cls(leaving), 'leaving')} aria-hidden><Line l={leaving} beside={down} /></div> : null}
+        <div key={key} className={cn(cls(line), leaving && 'entering')}><Line l={line} beside={down} /></div>
+      </div>
+      {down ? <span className="analysis-web-down">{down}</span> : null}
+    </div>
+  );
+}
+
+// Lookups fold into one line once the answer shows; it opens to the list,
+// with why each failed call failed. That web search is out stays on it.
 export function Lookups({ activities }: { activities: ToolActivity[] }) {
   const [open, setOpen] = useState(false);
   const line = summary(activities);
+  const down = webDown(activities);
   if (!line) return null;
   return (
     <div className="analysis-lookups">
       <button type="button" className={cn('analysis-lookups-toggle', open && 'open')} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         {line}<ChevronDown />
       </button>
+      {down ? <span className="analysis-web-down">{down}</span> : null}
       {open ? <Progress activities={activities} /> : null}
     </div>
   );
@@ -221,7 +276,7 @@ function Body({ state }: { state: Exclude<AnalysisState, { status: 'choose' }> }
     const looking = state.activities.length > 0;
     return (
       <div className="analysis-body" aria-busy="true">
-        {looking ? <Progress activities={state.activities} /> : null}
+        {looking ? <Ticker activities={state.activities} /> : null}
         {state.thinking
           ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p>
           : looking ? null : <p className="analysis-wait">正在结合本讲上下文分析…</p>}
