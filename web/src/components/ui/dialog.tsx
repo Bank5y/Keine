@@ -10,7 +10,7 @@ export function Dialog({ open, onOpenChange, title, children, wide }: { open: bo
         <D.Overlay className="fixed inset-0 z-40 bg-black/40 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <D.Content
           aria-describedby={undefined}
-          className={'dlg fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-40px)] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-auto border border-rule border-t-[3px] border-t-brand bg-surface p-6 shadow-xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 ' + (wide === 'reader' ? 'max-w-[780px]' : wide ? 'max-w-[560px]' : 'max-w-[420px]')}
+          className={'modal fixed top-1/2 left-1/2 z-50 max-h-[calc(100vh-40px)] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-auto border border-rule border-t-[3px] border-t-brand bg-surface p-6 shadow-xl outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 ' + (wide === 'reader' ? 'max-w-[780px]' : wide ? 'max-w-[560px]' : 'max-w-[420px]')}
         >
           <D.Title>{title}</D.Title>
           {children}

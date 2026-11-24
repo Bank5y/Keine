@@ -505,9 +505,9 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 @media (max-width: 520px) { .rate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* ---------- dialogs ---------- */
-.dlg h2 { margin: 0 0 10px; font-family: var(--serif); font-size: 20px; }
-.dlg p { margin: 0 0 20px; color: var(--text-2); font-size: 14px; line-height: 1.7; }
-.dlg .head-actions { justify-content: flex-end; }
+.modal h2 { margin: 0 0 10px; font-family: var(--serif); font-size: 20px; }
+.modal p { margin: 0 0 20px; color: var(--text-2); font-size: 14px; line-height: 1.7; }
+.modal .head-actions { justify-content: flex-end; }
 
 /* ---------- upload ---------- */
 .drop {
@@ -1406,7 +1406,7 @@ a.rn:hover .t { color: var(--brand); }
 .lu-file .bar { flex-basis: 100%; margin: 2px 0 0; }
 .lesson-preview .video-frame, .lesson-preview .video-player { margin-bottom: 20px; }
 /* the commit dialog's list of a draft's operations: capped, scrolling inside */
-.dlg .op-list-lead { margin-bottom: 8px; }
+.modal .op-list-lead { margin-bottom: 8px; }
 .op-list {
   list-style: none; margin: 0 0 14px; padding: 0 12px; max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
