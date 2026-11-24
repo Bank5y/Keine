@@ -25,6 +25,9 @@ import (
 
 const lesson = "# 01｜任期\n\nRaft 把时间分成一个个任期，每个任期开始时进行选举。\n\n## 选举\n\n候选人在任期内拉票。\n"
 
+// lesson2 is the course's other lesson, whose concepts a reply can link to.
+const lesson2 = "# 02｜日志复制\n\n领导者把日志发给跟随者。\n\n## 复制\n\n跟随者按任期和索引核对日志，不一致时回退。\n"
+
 // privateCourse is a course alice uploaded and never published, in a
 // fresh database: its id and its version.
 func privateCourse(t *testing.T) (dbURL string, files storage.Store, id int64, version string) {
@@ -50,10 +53,11 @@ func privateCourse(t *testing.T) (dbURL string, files storage.Store, id int64, v
 	post("/api/session", map[string]any{"provider": "password", "username": "alice", "password": "alice-password"})
 
 	manifest, _ := json.Marshal(map[string]any{"version": 1, "title": "分布式系统", "type": "column",
-		"chapters": []any{map[string]any{"id": "c1", "title": "共识", "lessons": []any{map[string]any{"id": "l01", "title": "01｜任期", "file": "01.md"}}}}})
+		"chapters": []any{map[string]any{"id": "c1", "title": "共识", "lessons": []any{map[string]any{"id": "l01", "title": "01｜任期", "file": "01.md"},
+			map[string]any{"id": "l02", "title": "02｜日志复制", "file": "02.md"}}}}})
 	var zbuf bytes.Buffer
 	zw := zip.NewWriter(&zbuf)
-	for name, body := range map[string]string{"course.json": string(manifest), "01.md": lesson} {
+	for name, body := range map[string]string{"course.json": string(manifest), "01.md": lesson, "02.md": lesson2} {
 		f, _ := zw.Create(name)
 		_, _ = f.Write([]byte(body))
 	}
@@ -86,16 +90,18 @@ func privateCourse(t *testing.T) (dbURL string, files storage.Store, id int64, v
 }
 
 // script answers each call with the next text, reading the lesson first
-// when asked to.
+// when asked to, and keeps the requests it was sent.
 type script struct {
 	mu    sync.Mutex
 	steps []assistant.Event
+	asked []assistant.Request
 }
 
-func (s *script) Stream(_ context.Context, _ assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
+func (s *script) Stream(_ context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
 	s.mu.Lock()
 	e := s.steps[0]
 	s.steps = s.steps[1:]
+	s.asked = append(s.asked, req)
 	s.mu.Unlock()
 	if err := emit(e); err != nil {
 		return assistant.Result{}, err

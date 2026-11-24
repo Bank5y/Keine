@@ -105,3 +105,32 @@ cases:
     quote: Non-Uniform Memory Access（NUMA）
     length: full
     must_include: [本地内存]
+
+  # 后续轮（#141）。这一类课程还没建概念索引：岔出那一轮的报告会写
+  # 「概念索引未建立」；在管理页建好索引后再跑才有课程关联。
+  - id: net-tcp-small-packets
+    # #159 的例子：讲 01 讲 TCP，子节点问小数据包怎么传，应关联到讲
+    # 「13-小数据包应对之策：理解TCP协议中的动态数据传输」
+    kind: child
+    course: 10
+    version: v1
+    lesson: l02
+    quote: 分组、序列化、流量控制、超时和容错
+    turns:
+      - ask: 这里的流量控制具体在控制什么？
+      - fork: child
+        ask: 那很小的数据包，TCP 是怎么传的？会不会每个字节都单独发一个包？
+        must_include: [Nagle]
+      - ask: Nagle 算法和延迟确认一起用会出什么问题？
+  - id: http-crlf-branch
+    kind: branch
+    course: 8
+    version: v1
+    lesson: l10
+    quote: CRLF
+    prefix: 也就是“
+    suffix: ”，十六进制
+    turns:
+      - fork: branch
+        ask: HTTP 报文里还有哪些和 CRLF 一样的分隔约定？
+      - ask: 如果 header 里混进了单独的 LF，服务器会怎么处理？

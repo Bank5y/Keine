@@ -14,3 +14,61 @@ cases:
     version: v1
     lesson: l07
     quote: observation.state
+
+  # 后续轮（#141）：分析固定后接着问，turns 里 fork 的那一轮开节点，并用
+  # 概念索引做课程关联。这门课已经建好概念索引。
+  - id: agent-g4c-branch
+    # 主节点追问一轮，再横向展开：应关联到讲「06｜Replan」等
+    kind: branch
+    course: 1
+    version: v1
+    lesson: l06
+    quote: G4C
+    prefix: "这个方法论叫做 "
+    suffix: ，是五个单词
+    turns:
+      - ask: Checkpoint 和 Correction 的区别在哪？
+      - fork: branch
+        ask: 和 G4C 相关的还有哪些概念？它们之间是什么关系？
+        must_include: [Replan]
+        # 「G4C」里含「4C」，但讲 15 用户画像的 4C 不是一回事（#177）
+        must_not_link: [4C]
+      - ask: Replan 发生时，G4C 里哪一项最先起作用？
+  - id: agent-checkpoint-child
+    # 表格里的一格，在分析上直接开子节点
+    kind: child
+    course: 1
+    version: v1
+    lesson: l06
+    quote: 无法及时发现问题，发现问题只能重来
+    turns:
+      - fork: child
+        ask: Checkpoint 具体要怎么设计，才能及时发现问题？
+      - ask: 检查点放得太密会有什么代价？
+  - id: agent-context-window-divergent
+    kind: divergent
+    course: 1
+    version: v1
+    lesson: l12
+    quote: Context Window = f(Context)
+    prefix: 由此得到标题中的表达：
+    suffix: 。实际上
+    turns:
+      - ask: 这里的 f 具体包括哪些步骤？
+      - fork: divergent
+        ask: 其他领域有没有类似「从仓库挑东西放到工作台」的做法？比如操作系统或数据库。
+      - ask: 这些类比在哪一点上不成立？
+  - id: agent-context-window-late-child
+    # 主节点问了两轮后，在第二轮上开子节点：应关联到讲「12｜上下文窗口」「13｜摘要-压缩」
+    kind: child
+    course: 1
+    version: v1
+    lesson: l12
+    quote: Context Window = f(Context)
+    prefix: 由此得到标题中的表达：
+    suffix: 。实际上
+    turns:
+      - ask: Context 和 Memory 是什么关系？
+      - ask: Memory 放不进 Context Window 的时候怎么办？
+      - fork: child
+        ask: 压缩之后细节丢了，怎么再找回来？

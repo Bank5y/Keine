@@ -56,7 +56,8 @@ var linkSpec = ToolSpec{
 		`"required":["entry","note"],"additionalProperties":false}}},"required":["links"],"additionalProperties":false}`),
 }
 
-func entryRef(i int) string { return fmt.Sprintf("c%d", i+1) }
+// EntryRef is how the linking step names the candidate at place i.
+func EntryRef(i int) string { return fmt.Sprintf("c%d", i+1) }
 
 // linkMessage shows the candidates to the model.
 func linkMessage(cs []LinkCandidate) string {
@@ -71,7 +72,7 @@ func linkMessage(cs []LinkCandidate) string {
 		if r := []rune(text); len(r) > maxCandidateText {
 			text = string(r[:maxCandidateText]) + "…"
 		}
-		fmt.Fprintf(&b, "\n\n[%s] %s\n位置：%s\n正文：\n%s", entryRef(i), c.Concept, where, text)
+		fmt.Fprintf(&b, "\n\n[%s] %s\n位置：%s\n正文：\n%s", EntryRef(i), c.Concept, where, text)
 	}
 	return b.String()
 }
@@ -96,7 +97,7 @@ func picked(calls []ToolCall, n int) []CourseLink {
 		}
 		for _, l := range args.Links {
 			for i := range n {
-				if strings.TrimSpace(l.Entry) == entryRef(i) && !seen[i] {
+				if strings.TrimSpace(l.Entry) == EntryRef(i) && !seen[i] {
 					seen[i] = true
 					out = append(out, CourseLink{Candidate: i, Note: strings.TrimSpace(l.Note)})
 				}

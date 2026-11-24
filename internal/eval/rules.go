@@ -28,10 +28,23 @@ const (
 	// RuleRun: the run did not end with an answer (the model failing, a
 	// timeout).
 	RuleRun = "run_completes"
+	// RuleReply: a reply of the dialogue breaks what the follow-up prompt
+	// asks (a link, SVG, raw tool call markup, a diagram not allowed).
+	RuleReply = "reply_check"
+	// RuleNarration: a reply talks about the document or the course instead
+	// of answering («本文档», «基于本讲»).
+	RuleNarration = "no_meta_narration"
+	// RuleLinkCourse: the linking step named an entry it was not offered.
+	RuleLinkCourse = "link_course_candidates"
+	// RuleMustNotLink: the turn linked a concept the case says it must not.
+	RuleMustNotLink = "must_not_link"
 )
 
-// Failure is a hard rule an analysis broke, and how.
+// Failure is a hard rule an analysis or a turn after it broke, and how.
 type Failure struct {
+	// Turn is the turn of a follow-up case that broke it, from 1; 0 for
+	// the analysis.
+	Turn   int    `json:"turn,omitempty"`
 	Rule   string `json:"rule"`
 	Detail string `json:"detail"`
 }
@@ -51,27 +64,59 @@ func Check(raw string, c Case, lesson string, mermaid MermaidParser) []Failure {
 	for _, p := range problems {
 		out = append(out, Failure{Rule: RuleServer, Detail: p})
 	}
-	if diagrams := assistant.MermaidBlocks(a.Explanation); len(diagrams) > 0 {
-		errs, err := mermaid.Parse(diagrams)
-		if err != nil {
-			out = append(out, Failure{Rule: RuleMermaid, Detail: "mermaid 的解析器没有运行: " + err.Error()})
-		}
-		for i, e := range errs {
-			if e != nil {
-				out = append(out, Failure{Rule: RuleMermaid, Detail: fmt.Sprintf("第 %d 张图: %s", i+1, firstLine(e.Error()))})
-			}
-		}
-	}
+	out = append(out, parseDiagrams(a.Explanation, mermaid)...)
 	if title := strings.TrimSpace(a.Title); title != "" && !titleFollows(title, c.Quote, lesson) {
 		out = append(out, Failure{Rule: RuleLanguage, Detail: fmt.Sprintf("正文是%s, 标题不是", languageName(chinese(prose(lesson))))})
 	}
-	text := strings.ToLower(a.Title + "\n" + a.Concept + "\n" + a.Explanation)
-	for _, k := range c.MustInclude {
+	return append(out, keywords(a.Title+"\n"+a.Concept+"\n"+a.Explanation, c.MustInclude, c.MustNotInclude)...)
+}
+
+// narration is what a reply of the dialogue says when it talks about the
+// document or the course rather than answering.
+var narration = []string{"本文档", "这份文档", "本课程中", "基于本讲", "根据本讲"}
+
+// CheckReply judges a reply of the dialogue by the hard rules.
+func CheckReply(reply string, t Turn, mermaid MermaidParser) []Failure {
+	var out []Failure
+	for _, p := range assistant.CheckReply(reply) {
+		out = append(out, Failure{Rule: RuleReply, Detail: p})
+	}
+	out = append(out, parseDiagrams(reply, mermaid)...)
+	for _, w := range narration {
+		if strings.Contains(reply, w) {
+			out = append(out, Failure{Rule: RuleNarration, Detail: "出现了「" + w + "」"})
+		}
+	}
+	return append(out, keywords(reply, t.MustInclude, t.MustNotInclude)...)
+}
+
+func parseDiagrams(md string, mermaid MermaidParser) []Failure {
+	diagrams := assistant.MermaidBlocks(md)
+	if len(diagrams) == 0 {
+		return nil
+	}
+	var out []Failure
+	errs, err := mermaid.Parse(diagrams)
+	if err != nil {
+		out = append(out, Failure{Rule: RuleMermaid, Detail: "mermaid 的解析器没有运行: " + err.Error()})
+	}
+	for i, e := range errs {
+		if e != nil {
+			out = append(out, Failure{Rule: RuleMermaid, Detail: fmt.Sprintf("第 %d 张图: %s", i+1, firstLine(e.Error()))})
+		}
+	}
+	return out
+}
+
+func keywords(text string, must, mustNot []string) []Failure {
+	var out []Failure
+	text = strings.ToLower(text)
+	for _, k := range must {
 		if !strings.Contains(text, strings.ToLower(k)) {
 			out = append(out, Failure{Rule: RuleMustInclude, Detail: "没有「" + k + "」"})
 		}
 	}
-	for _, k := range c.MustNotInclude {
+	for _, k := range mustNot {
 		if strings.Contains(text, strings.ToLower(k)) {
 			out = append(out, Failure{Rule: RuleMustNotInclude, Detail: "出现了「" + k + "」"})
 		}

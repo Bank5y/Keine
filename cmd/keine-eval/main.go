@@ -1,7 +1,10 @@
-// Command keine-eval evaluates the exploration assistant's analysis on real
-// courses (#140): after a change to the prompts, the default model, the
-// context assembly or the tools, it runs the cases in eval/cases on the
-// real loop and checks what comes out. It is not run in CI.
+// Command keine-eval evaluates the exploration assistant's analysis and the
+// dialogue after it on real courses (#140, #141): after a change to the
+// prompts, the default model, the context assembly or the tools, it runs
+// the cases in eval/cases on the real loop and checks what comes out. A
+// case with turns asks them after its analysis as if it were pinned, on
+// the site's follow-up model, and links the turn a node forks with to the
+// course by the version's concept index. It is not run in CI.
 //
 // It starts with the deployment's database and file storage settings, the
 // same environment as keine (KEINE_DATABASE_URL, KEINE_STORAGE…, and
@@ -9,7 +12,7 @@
 // nothing, records no usage and signs in to no instance. Give it a
 // read-only database account; it does not migrate the database.
 //
-//	go run ./cmd/keine-eval                       # every case, twice, on the site's analysis model
+//	go run ./cmd/keine-eval                       # every case, twice, on the site's models
 //	go run ./cmd/keine-eval -only http-term,quant-sentence -runs 1
 //	go run ./cmd/keine-eval -model eval/models/deepseek.yaml
 //	go run ./cmd/keine-eval -baseline             # also write eval/baseline.json
@@ -63,7 +66,7 @@ func run() int {
 	flag.StringVar(&o.cases, "cases", "eval/cases", "the folder of case files")
 	flag.StringVar(&o.out, "out", ".scratch/eval", "where each run's folder goes")
 	flag.StringVar(&o.against, "against", "latest", "the earlier run to compare with in blind.html: latest, none, or its folder")
-	flag.StringVar(&o.model, "model", "", "a model file (YAML) to run on instead of the site's analysis model")
+	flag.StringVar(&o.model, "model", "", "a model file (YAML) every run takes instead of the site's models")
 	flag.StringVar(&o.only, "only", "", "run only these cases (ids, comma separated)")
 	flag.StringVar(&o.web, "web", "web", "the front end's folder, whose node_modules has mermaid")
 	flag.StringVar(&o.mermaid, "mermaid", "eval/mermaid-check.mjs", "the Mermaid parsing script")
@@ -121,16 +124,28 @@ func evaluate(ctx context.Context, o options) (eval.Report, string, error) {
 			return eval.Report{}, "", err
 		}
 	}
-	turn, err := modelTurn(ctx, o.model, assistant.NewModels(pool, box, adapters.For, search.For))
+	models := assistant.NewModels(pool, box, adapters.For, search.For)
+	turn, err := modelTurn(ctx, o.model, models, assistant.TurnAnalysis)
 	if err != nil {
 		return eval.Report{}, "", err
 	}
+	rep := eval.Report{Prompt: assistant.AnalysisPrompt.Version, Model: turn.DisplayName, Started: time.Now(), Runs: o.runs, Cases: cases}
+	followup := turn
+	if slices.ContainsFunc(cases, func(c eval.Case) bool { return len(c.Turns) > 0 }) {
+		if followup, err = modelTurn(ctx, o.model, models, assistant.TurnFollowup); err != nil {
+			return eval.Report{}, "", err
+		}
+		rep.Followup = assistant.FollowupPrompt.Version
+		if followup.DisplayName != turn.DisplayName {
+			rep.Model += " / " + followup.DisplayName
+		}
+	}
 	r := &eval.Runner{
 		Courses: course.NewService(pool, files), Deadline: o.deadline,
-		Mermaid: eval.NodeMermaid{Script: o.mermaid, Web: o.web},
-		Turn:    func(context.Context) (assistant.Turn, error) { return turn, nil },
+		Mermaid:  eval.NodeMermaid{Script: o.mermaid, Web: o.web},
+		Turn:     func(context.Context) (assistant.Turn, error) { return turn, nil },
+		Followup: func(context.Context) (assistant.Turn, error) { return followup, nil },
 	}
-	rep := eval.Report{Prompt: assistant.AnalysisPrompt.Version, Model: turn.DisplayName, Started: time.Now(), Runs: o.runs, Cases: cases}
 	// what finished is kept even when some runs could not be made: their
 	// answers cost money
 	var runErr error
@@ -202,7 +217,7 @@ func write(rep eval.Report, o options) (string, error) {
 	for name, data := range map[string][]byte{
 		"results.json":  results,
 		"report.md":     []byte(rep.Markdown()),
-		"blind.html":    eval.BlindHTML(rep, old, rep.Started.UnixNano()),
+		"blind.html":    eval.BlindHTML(rep, old, rep.Started.UnixNano(), mermaidFrom(dir, o.web)),
 		"baseline.json": baseline,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
@@ -215,6 +230,20 @@ func write(rep eval.Report, o options) (string, error) {
 		}
 	}
 	return dir, nil
+}
+
+// mermaidFrom is where the blind page in dir finds the front end's
+// mermaid, to draw the diagrams with when opened from the repository.
+func mermaidFrom(dir, web string) string {
+	js := filepath.Join(web, "node_modules", "mermaid", "dist", "mermaid.min.js")
+	if _, err := os.Stat(js); err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(dir, js)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }
 
 // earlier is the run to compare with: the latest folder in out before
@@ -272,13 +301,13 @@ type modelFile struct {
 	} `yaml:"rates"`
 }
 
-// modelTurn is the model the runs take: the site's analysis model, or the
-// one in the file.
-func modelTurn(ctx context.Context, file string, models *assistant.Models) (assistant.Turn, error) {
+// modelTurn is the model the runs of a kind take: the site's model of the
+// kind, or the one in the file for every kind.
+func modelTurn(ctx context.Context, file string, models *assistant.Models, kind assistant.TurnKind) (assistant.Turn, error) {
 	if file == "" {
-		t, err := models.ForTurn(ctx, assistant.TurnAnalysis)
+		t, err := models.ForTurn(ctx, kind)
 		if err != nil {
-			return t, fmt.Errorf("the site's analysis model: %w (set KEINE_MASTER_KEY, or give -model)", err)
+			return t, fmt.Errorf("the site's %s model: %w (set KEINE_MASTER_KEY, or give -model)", kind, err)
 		}
 		return t, nil
 	}

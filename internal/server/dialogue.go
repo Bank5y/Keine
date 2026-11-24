@@ -7,9 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 
-	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/auth"
 	"github.com/Bank5y/keine/internal/course"
@@ -299,25 +297,21 @@ func (s *Server) converse(w http.ResponseWriter, r *http.Request, d course.Explo
 	return true
 }
 
-// maxCandidates is how many concepts an answer's linking step looks at.
-const maxCandidates = 5
-
 // courseLinks links the answer of the turn a node forks with to the
-// course (ADR 0011), and remembers the entries it offered the model.
+// course (ADR 0011), by the index of the version the reader reads.
 type courseLinks struct {
-	s       *Server
-	viewer  auth.User
-	d       course.ExplorationDetail
-	offered []course.ConceptEntry
+	s      *Server
+	viewer auth.User
+	d      course.ExplorationDetail
+	found  *lessonctx.Links
 }
 
 func (s *Server) linksFor(viewer auth.User, d course.ExplorationDetail) *courseLinks {
 	return &courseLinks{s: s, viewer: viewer, d: d}
 }
 
-// linker finds, in an answer, the concepts of the course's other lessons,
-// by the index of the version the reader reads: none when it has no index
-// built.
+// linker finds, in an answer, the concepts of the course's other lessons:
+// none when the version has no index built.
 func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Linker {
 	x, err := l.s.courses.ConceptIndexOf(ctx, l.d.CourseID, c.FilesDir)
 	if err != nil {
@@ -327,40 +321,16 @@ func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Lin
 	if x.Status != course.ConceptIndexBuilt {
 		return nil
 	}
-	lib := lessonctx.NewLibrary(l.s.courses, l.viewer, c)
-	return func(ctx context.Context, answer string) ([]assistant.LinkCandidate, error) {
-		var out []assistant.LinkCandidate
-		for _, e := range x.Mentioned(answer, l.d.LessonKey, maxCandidates) {
-			text, err := lib.Text(ctx, e.Lesson.Key)
-			if err != nil {
-				// a lesson the reader cannot read now is not linked
-				continue
-			}
-			lc := assistant.LinkCandidate{Concept: e.Name, Lesson: e.Lesson.Title, Text: text}
-			if e.Section != nil {
-				lc.Section = e.Section.Title
-				for _, sec := range anchor.Sections(text) {
-					if sec.ID == e.Section.ID {
-						lc.Text = text[sec.Start:sec.End]
-						break
-					}
-				}
-			}
-			l.offered = append(l.offered, e)
-			out = append(out, lc)
-		}
-		return out, nil
-	}
+	l.found = lessonctx.NewLinks(lessonctx.NewLibrary(l.s.courses, l.viewer, c), x, l.d.LessonKey)
+	return l.found.Find
 }
 
 // chosen is the course links the model picked of the entries offered.
 func (l *courseLinks) chosen(picked []assistant.CourseLink) []course.CourseLink {
-	var out []course.CourseLink
-	for _, p := range picked {
-		e := l.offered[p.Candidate]
-		out = append(out, course.CourseLink{Concept: e.Name, Note: p.Note, Lesson: e.Lesson, Section: e.Section})
+	if l.found == nil {
+		return nil
 	}
-	return out
+	return l.found.Chosen(picked)
 }
 
 // followupMessages assembles a question's context (ADR 0011): the
@@ -389,23 +359,8 @@ func (s *Server) followupMessages(ctx context.Context, viewer auth.User, d cours
 	return fc.Messages(q), nil
 }
 
-// withLinks is a kept turn's reply as the reader saw it: the answer, then
-// what it linked of the course, if anything (ADR 0011).
-func withLinks(t course.Turn) string {
-	if len(t.CourseLinks) == 0 {
-		return t.Reply
-	}
-	var b strings.Builder
-	b.WriteString(t.Reply + "\n\n课程里的相关内容：")
-	for _, l := range t.CourseLinks {
-		where := "讲「" + l.Lesson.Title + "」"
-		if l.Section != nil {
-			where += " › 小节「" + l.Section.Title + "」"
-		}
-		b.WriteString("\n- " + where + "：" + l.Note)
-	}
-	return b.String()
-}
+// withLinks is a kept turn's reply as the reader saw it (ADR 0011).
+func withLinks(t course.Turn) string { return lessonctx.WithLinks(t.Reply, t.CourseLinks) }
 
 // firstQuestion is the question an exploration's analysis stands for.
 func firstQuestion(d course.ExplorationDetail) string {
