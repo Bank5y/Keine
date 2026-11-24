@@ -31,7 +31,7 @@ function configure(m: typeof import('mermaid').default) {
   });
 }
 
-// a drawn diagram, ready to embed: the SVG as a data URL and its size
+// Drawn is a diagram ready to embed: its SVG as a data URL, and its size.
 export interface Drawn { src: string; w: number; h: number }
 
 // centerLabels puts each shape's label in its middle: with SVG labels
@@ -51,7 +51,7 @@ function centerLabels(svg: SVGSVGElement) {
 // toImage makes Mermaid's SVG an image: its labels centred, measured on
 // the page out of sight; sized by its viewBox (it says width 100%, which
 // means nothing in an image); as a data URL.
-export function toImage(svg: string): Drawn | null {
+function toImage(svg: string): Drawn | null {
   const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
   const parsed = doc.documentElement;
   const box = (parsed.getAttribute('viewBox') ?? '').split(/[\s,]+/).map(Number);
@@ -70,6 +70,22 @@ export function toImage(svg: string): Drawn | null {
   return { src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(el)), w, h };
 }
 
+// useTheme is the page's theme as it is now: the one the reader picked,
+// else the system's. It changes as either does.
+function useTheme(): string {
+  const read = () => document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const [theme, setTheme] = useState(read);
+  useEffect(() => {
+    const update = () => setTheme(read());
+    const mo = new MutationObserver(update);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', update);
+    return () => { mo.disconnect(); mq.removeEventListener('change', update); };
+  }, []);
+  return theme;
+}
+
 // Mermaid draws a diagram from its source, as an image kept apart from the
 // page's styles; until it is drawn, and for good if it cannot be, the
 // fallback (the code block) shows instead. A click opens it in a lightbox.
@@ -77,6 +93,8 @@ export function Mermaid({ code, fallback }: { code: string; fallback: ReactNode 
   const id = 'mmd-' + useId().replace(/[^a-zA-Z0-9]/g, '');
   const [drawn, setDrawn] = useState<Drawn | null>(null);
   const [open, setOpen] = useState(false);
+  // the theme the colours come from: a diagram is drawn again when it changes
+  const theme = useTheme();
   useEffect(() => {
     let alive = true;
     setDrawn(null);
@@ -85,7 +103,7 @@ export function Mermaid({ code, fallback }: { code: string; fallback: ReactNode 
       .then((r) => { if (alive) setDrawn(toImage(r.svg)); })
       .catch(() => { document.getElementById('d' + id)?.remove(); });
     return () => { alive = false; };
-  }, [id, code]);
+  }, [id, code, theme]);
   if (!drawn) return <>{fallback}</>;
   return (
     <div className="mermaid-diagram">
