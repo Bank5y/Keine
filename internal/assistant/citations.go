@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"cmp"
 	"fmt"
 	"regexp"
 	"slices"
@@ -59,7 +60,7 @@ func citable(sources []WebSource) string {
 	byN := map[int]string{}
 	for _, s := range sources {
 		if s.N > 0 && byN[s.N] == "" {
-			byN[s.N] = cmpOr(strings.TrimSpace(s.Title), HostOf(s.URL))
+			byN[s.N] = cmp.Or(strings.TrimSpace(s.Title), HostOf(s.URL))
 		}
 	}
 	if len(byN) == 0 {
@@ -77,26 +78,37 @@ func citable(sources []WebSource) string {
 	return strings.Join(lines, "\n")
 }
 
-func cmpOr(s, fallback string) string {
-	if s != "" {
-		return s
-	}
-	return fallback
-}
-
 // citation is a citation as a reply writes it: one number in brackets, or
-// several, comma separated.
-var citation = regexp.MustCompile(`\[(\d+(?:\s*[,，]\s*\d+)*)\]`)
+// several, comma separated or side by side.
+var citation = regexp.MustCompile(`((?:\[\d+(?:\s*[,，]\s*\d+)*\])+)`)
+
+// number is a number inside a citation.
+var number = regexp.MustCompile(`\d+`)
 
 // codeSpan is a fenced block or an inline code span, where brackets are
 // code and cite nothing.
 var codeSpan = regexp.MustCompile("(?s)(```|~~~).*?(```|~~~)|`[^`\n]*`")
 
+// indexed tells a bracket right after a name, a call or another bracket
+// (a[1], f(x)[2], m[0][1]): an index in code, not a citation. The reply
+// shows it as text the same way.
+func indexed(s string, at int) bool {
+	if at == 0 {
+		return false
+	}
+	c := s[at-1]
+	return c == '_' || c == ')' || c == ']' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
 // Cited are the numbers a reply cites, in the order written, each once.
 func Cited(md string) []int {
 	var out []int
-	for _, m := range citation.FindAllStringSubmatch(codeSpan.ReplaceAllString(md, ""), -1) {
-		for _, f := range strings.FieldsFunc(m[1], func(r rune) bool { return r == ',' || r == '，' || r == ' ' }) {
+	text := codeSpan.ReplaceAllString(md, "")
+	for _, at := range citation.FindAllStringSubmatchIndex(text, -1) {
+		if indexed(text, at[0]) {
+			continue
+		}
+		for _, f := range number.FindAllString(text[at[2]:at[3]], -1) {
 			if n, err := strconv.Atoi(f); err == nil && !slices.Contains(out, n) {
 				out = append(out, n)
 			}

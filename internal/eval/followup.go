@@ -121,11 +121,11 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 			fail(f.Rule, f.Detail)
 		}
 		pinned.Citable = append(pinned.Citable, meta.Sources...)
-		var cited []int
+		var citable []int
 		for _, s := range pinned.Citable {
-			cited = append(cited, s.N)
+			citable = append(citable, s.N)
 		}
-		for _, f := range CheckCitations(tr.Reply, cited) {
+		for _, f := range CheckCitations(tr.Reply, citable) {
 			fail(f.Rule, f.Detail)
 		}
 		offered := 0
