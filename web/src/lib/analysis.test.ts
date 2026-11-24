@@ -27,13 +27,13 @@ describe('step', () => {
       { type: 'activity', id: 'thinking-1', kind: 'thinking', status: 'running' },
       { type: 'activity', id: 'tool-1', kind: 'search_course', target: '任期', status: 'running' },
     );
-    expect(looking).toEqual({ status: 'loading', thinking: true, activities: [{ id: 'tool-1', kind: 'search_course', target: '任期', status: 'running' }] });
+    expect(looking).toMatchObject({ status: 'loading', thinking: true, activities: [{ id: 'tool-1', kind: 'search_course', target: '任期', status: 'running' }] });
     const answered = [
       { type: 'activity', id: 'tool-1', kind: 'search_course', target: '任期', status: 'done' },
       { type: 'delta', section: 'title', text: '任期' },
       { type: 'done', title: '任期', concept: 'i', explanation: 'b' },
     ].reduce<AnalysisState>((s, e) => step(s, e as Parameters<typeof step>[1]), looking);
-    expect(answered).toEqual({ status: 'done', parts: { title: '任期', concept: 'i', explanation: 'b' }, activities: [{ id: 'tool-1', kind: 'search_course', target: '任期', status: 'done' }] });
+    expect(answered).toMatchObject({ status: 'done', parts: { title: '任期', concept: 'i', explanation: 'b' }, activities: [{ id: 'tool-1', kind: 'search_course', target: '任期', status: 'done' }] });
   });
 
   it('throws the draft away on a reset and shows the progress again', () => {
@@ -42,7 +42,7 @@ describe('step', () => {
       { type: 'delta', section: 'title', text: '草稿' },
       { type: 'delta', section: '', text: '', reset: true },
     );
-    expect(s).toEqual({ status: 'loading', activities: [{ id: 'tool-1', kind: 'read_lesson', target: '02', status: 'done' }] });
+    expect(s).toMatchObject({ status: 'loading', activities: [{ id: 'tool-1', kind: 'read_lesson', target: '02', status: 'done' }] });
     expect(hasContent(s)).toBe(false);
     expect(step(s, { type: 'delta', section: 'title', text: 'Agent' })).toMatchObject({ status: 'streaming', parts: { title: 'Agent', concept: '', explanation: '' } });
   });

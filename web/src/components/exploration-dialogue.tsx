@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react';
 import { BookOpen, ChevronLeft, Copy, FileText, Menu, Plus, RotateCcw, Square, Telescope, Trash2, X, ArrowUp } from 'lucide-react';
 import { toast } from 'sonner';
-import { Credit, documentParts, Lookups, Notice, Progress } from '@/components/analysis-popover';
+import { Credit, documentParts, Lookups, Notice, Ticker } from '@/components/analysis-popover';
 import { Confirm } from '@/components/confirm';
 import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -437,7 +437,7 @@ function Asking({ question, run, kind }: { question: Question; run: Run; kind: N
   return (
     <div className="dlg-turn asking" aria-live="polite" aria-busy="true">
       <Asked question={question} kind={kind} />
-      {run.text ? <Lookups activities={run.activities} /> : run.activities.length ? <Progress activities={run.activities} /> : null}
+      {run.text ? <Lookups activities={run.activities} /> : run.activities.length ? <Ticker activities={run.activities} /> : null}
       {run.thinking && !run.text ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p> : null}
       {!run.text && !run.thinking && !run.activities.length ? <p className="analysis-wait">正在回答…</p> : null}
       {run.text ? <div className={cn('dlg-reply analysis-explanation', !run.linking && 'caret')}><LazyMarkdown text={run.text} /></div> : null}
