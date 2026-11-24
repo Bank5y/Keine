@@ -25,7 +25,9 @@ type Case struct {
 	// Category is the kind of course (the file the case is in).
 	Category string `yaml:"-" json:"category"`
 	// Kind is what the selection is: a term, a sentence, a term easy to
-	// misread, one in code or a table, one in a long lesson.
+	// misread, one in code or a table, one in a long lesson, or noise: one
+	// that carries no concept (a heading like 精选留言, a name, a sign-off,
+	// a count), which is analyzed all the same.
 	Kind   string `yaml:"kind" json:"kind"`
 	Course int64  `yaml:"course" json:"course"`
 	// Version is the course version (its files folder) the case was

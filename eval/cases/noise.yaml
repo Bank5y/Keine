@@ -1,0 +1,40 @@
+# 不承载概念的选区：结构性标题、署名、客套话、计数。分析不拒答，这些用例
+# 守住的是这条路径下的输出仍然合格、扎根在选区附近的内容上，而不是编出讲外
+# 的东西。
+category: 无意义选区
+cases:
+  - id: agent-contract-comments-heading
+    # 文末留言区的小节标题；留言和上面的思考题都在讲多步写操作的部分成功
+    kind: noise
+    course: 13
+    version: v1
+    lesson: l03
+    quote: 精选留言
+    must_include: [补偿]
+  - id: agent-contract-sign-off
+    # 思考题后的客套话
+    kind: noise
+    course: 13
+    version: v1
+    lesson: l03
+    quote: 下节课见
+    # 应落到紧挨着的思考题上
+    must_include: [写操作]
+  - id: agent-contract-commenter
+    # 留言者的署名
+    kind: noise
+    course: 13
+    version: v1
+    lesson: l03
+    quote: 小马哥
+    # 应落到这条留言和作者回复上
+    must_include: [幂等]
+  - id: agent-contract-likes
+    # 留言的点赞数
+    kind: noise
+    course: 13
+    version: v1
+    lesson: l03
+    quote: 👍 1
+    # 点赞挂在小马哥那条留言上
+    must_include: [幂等]
