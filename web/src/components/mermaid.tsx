@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { DiagramZoom } from '@/components/zoom';
+import { Lightbox } from '@/components/zoom';
 
 let loading: Promise<typeof import('mermaid').default> | null = null;
 
@@ -110,7 +110,7 @@ export function Mermaid({ code, fallback }: { code: string; fallback: ReactNode 
       <button type="button" className="mermaid-open" aria-label="放大查看图表" onClick={() => setOpen(true)}>
         <img src={drawn.src} alt="图表" width={drawn.w} height={drawn.h} draggable={false} />
       </button>
-      {open ? <DiagramZoom picture={drawn} onClose={() => setOpen(false)} /> : null}
+      {open ? <Lightbox picture={{ ...drawn, vector: true }} label="图表" onClose={() => setOpen(false)} /> : null}
     </div>
   );
 }

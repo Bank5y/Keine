@@ -1,41 +1,40 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { X } from 'lucide-react';
 import { Dialog as D } from 'radix-ui';
-import type { Drawn } from '@/components/mermaid';
-import { fitView, zoomAt, type View } from '@/lib/pan-zoom';
+import { MAX_FIT, fitView, zoomAt, type Size, type View } from '@/lib/pan-zoom';
 
-// ImageZoom shows one image over the page; click anywhere or press Esc to close.
-export function ImageZoom({ src, onClose }: { src: string | null; onClose: () => void }) {
-  return (
-    <D.Root open={!!src} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-black/75 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
-        <D.Content aria-describedby={undefined} className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center p-6 outline-none" onClick={onClose}>
-          <D.Title className="sr-only">查看图片</D.Title>
-          {src ? <img src={src} alt="" className="max-h-full max-w-full rounded-[2px] bg-white object-contain shadow-2xl" /> : null}
-        </D.Content>
-      </D.Portal>
-    </D.Root>
-  );
-}
+// Picture is what the lightbox shows: an image's address and its own size,
+// and whether it is drawn as vectors (a diagram, an SVG), crisp at any size.
+export interface Picture extends Size { src: string; vector?: boolean }
 
 const PAD = 24;
 const LIMITS = { min: 0.1, max: 10 };
 // CLICK_SLOP is how far a press may move and still be a click, not a drag.
 const CLICK_SLOP = 4;
 
-// DiagramZoom shows a diagram over the page (#184), fitted to the screen
+// Lightbox shows a picture over the page (#184, #187), fitted to the screen
 // first. The wheel or a pinch zooms about the pointer, a drag pans; Esc,
-// the × fixed at the top right, or a click on the backdrop closes it.
-export function DiagramZoom({ picture, onClose }: { picture: Drawn; onClose: () => void }) {
+// the × fixed at the top right, or a click on the backdrop closes it, a
+// click on the picture does not. A vector picture (a diagram) is enlarged
+// to fit; a bitmap no further than its own size, lest it blur — zooming by
+// hand is not held back.
+export function Lightbox({ picture, label = '图片', onClose }: { picture: Picture; label?: string; onClose: () => void }) {
   // the stage, once the portal has put it on the page
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
-  const [view, setView] = useState<View>(() => fitView(picture, { w: innerWidth, h: innerHeight }, PAD));
+  const fit = (box: Size) => fitView(picture, box, PAD, picture.vector ? MAX_FIT : 1);
+  const [view, setView] = useState<View>(() => fit({ w: innerWidth, h: innerHeight }));
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const moved = useRef(0);
-  // whether the press began on the diagram: the stage captures the
+  // whether the press began on the picture: the stage captures the
   // pointer, so the release always lands on the stage
   const onPicture = useRef(false);
+
+  // fit to the stage itself, before it is first painted: it stops short of
+  // the scrollbar gutter the page keeps, so the window is too wide. Only
+  // once: a re-render with a fresh picture object must not undo a zoom.
+  useLayoutEffect(() => {
+    if (stage) setView(fit({ w: stage.clientWidth, h: stage.clientHeight }));
+  }, [stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the wheel listens itself, since React's wheel handler cannot prevent
   // the page from scrolling
@@ -77,7 +76,7 @@ export function DiagramZoom({ picture, onClose }: { picture: Drawn; onClose: () 
   };
   const up = (e: ReactPointerEvent) => {
     pointers.current.delete(e.pointerId);
-    // a click on the backdrop, not on the diagram and not the end of a drag
+    // a click on the backdrop, not on the picture and not the end of a drag
     if (!pointers.current.size && moved.current < CLICK_SLOP && !onPicture.current) onClose();
   };
   const cancel = (e: ReactPointerEvent) => { pointers.current.delete(e.pointerId); };
@@ -85,15 +84,15 @@ export function DiagramZoom({ picture, onClose }: { picture: Drawn; onClose: () 
   return (
     <D.Root open onOpenChange={(v) => { if (!v) onClose(); }}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-[70] bg-black/75 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
-        <D.Content aria-describedby={undefined} data-diagram-zoom="" className="diagram-zoom fixed inset-0 z-[70] outline-none"
+        <D.Overlay className="fixed inset-0 z-[70] bg-black/75 motion-safe:data-[state=open]:animate-in motion-safe:data-[state=open]:fade-in-0" />
+        <D.Content aria-describedby={undefined} data-lightbox="" className="lightbox fixed inset-0 z-[70] outline-none"
           onPointerDownOutside={(e) => e.preventDefault()}>
-          <D.Title className="sr-only">查看图表</D.Title>
-          <div ref={setStage} className="diagram-zoom-stage" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
-            <img src={picture.src} alt="图表" draggable={false} width={picture.w} height={picture.h}
+          <D.Title className="sr-only">查看{label}</D.Title>
+          <div ref={setStage} className="lightbox-stage" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel}>
+            <img src={picture.src} alt={label} draggable={false} width={picture.w} height={picture.h}
               style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }} />
           </div>
-          <D.Close className="diagram-zoom-close" aria-label="关闭"><X aria-hidden /></D.Close>
+          <D.Close className="lightbox-close" aria-label="关闭"><X aria-hidden /></D.Close>
         </D.Content>
       </D.Portal>
     </D.Root>
