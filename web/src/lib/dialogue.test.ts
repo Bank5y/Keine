@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { carried, courseLinkItems, forksAt, mapLayout, pathTo, prune, restack, seenBy, settle, spine, stepRun, type Layer } from './dialogue';
+import { carried, courseLinkItems, forksAt, mapLayout, MAX_NODES, nextQuestion, noCarry, pathTo, prune, restack, seenBy, settle, spine, stepCarry, stepRun, type Carry, type Layer } from './dialogue';
 import type { DialogueNode, NodeKind } from './explorations';
 
 let ids = 0;
@@ -134,5 +134,79 @@ describe('carried', () => {
     expect(carried(tree[1])).toBeNull();
     expect(carried(tree[2])).toBeNull();
     expect(carried(tree[3])).toBeNull();
+  });
+});
+
+describe('what the next question carries', () => {
+  // the current node is A (2): turns 20, 21
+  const A = tree[1];
+  const none = noCarry;
+  const sel = (turn: number, text: string) => ({ turn, text });
+  const plainly = (text: string) => ({ text, attachments: [] });
+
+  it('asks on in the current node, after its last turn, when it carries nothing', () => {
+    expect(nextQuestion(A, tree, none, '为什么？')).toEqual({ to: 'turn', after: 21, question: plainly('为什么？') });
+  });
+
+  it('asks on in the current node with the selection above the question, when only a selection is carried', () => {
+    const c = stepCarry(none, { type: 'select', selection: sel(20, '一段话') });
+    expect(nextQuestion(A, tree, c, '这是什么意思？')).toEqual({
+      to: 'turn', after: 21, question: { text: '这是什么意思？', attachments: [{ kind: 'selection', text: '一段话' }] },
+    });
+  });
+
+  it('opens a node of the kind picked, from the turn marked, then the selection’s turn, then the last turn', () => {
+    const kind = (c: Carry) => stepCarry(c, { type: 'kind', kind: 'branch' });
+    expect(nextQuestion(A, tree, kind(none), '问')).toMatchObject({ to: 'node', kind: 'branch', fork: 21 });
+    const selected = stepCarry(none, { type: 'select', selection: sel(20, '一段话') });
+    expect(nextQuestion(A, tree, kind(selected), '问')).toMatchObject({ to: 'node', fork: 20 });
+    const marked = stepCarry(selected, { type: 'fork', turn: 21 });
+    expect(nextQuestion(A, tree, kind(marked), '问')).toMatchObject({ to: 'node', fork: 21 });
+  });
+
+  it('opens the node with the selection as part of its first question', () => {
+    const c = stepCarry(stepCarry(none, { type: 'select', selection: sel(20, '一段话') }), { type: 'kind', kind: 'child' });
+    expect(nextQuestion(A, tree, c, '细说')).toEqual({
+      to: 'node', fork: 20, kind: 'child', question: { text: '细说', attachments: [{ kind: 'selection', text: '一段话' }] },
+    });
+  });
+
+  it('will not send with a turn marked to fork from but no kind picked', () => {
+    const c = stepCarry(none, { type: 'fork', turn: 20 });
+    expect(nextQuestion(A, tree, c, '问')).toEqual({ to: 'none', reason: '先选节点类型' });
+    // said before anything is typed, where the box shows it
+    expect(nextQuestion(A, tree, c, '')).toEqual({ to: 'none', reason: '先选节点类型' });
+  });
+
+  it('carries one selection at a time: another takes its place', () => {
+    const c = stepCarry(stepCarry(none, { type: 'select', selection: sel(20, '第一段') }), { type: 'select', selection: sel(21, '第二段') });
+    expect(c.selection).toEqual(sel(21, '第二段'));
+    expect(nextQuestion(A, tree, c, '问')).toMatchObject({ question: { attachments: [{ kind: 'selection', text: '第二段' }] } });
+  });
+
+  it('opens no node once the dialogue has MAX_NODES nodes, and says why', () => {
+    const many = [...tree, ...Array.from({ length: MAX_NODES - tree.length }, (_, i) => node(100 + i, 'child', [], 1, 10))];
+    const c = stepCarry(none, { type: 'kind', kind: 'child' });
+    expect(nextQuestion(A, many, c, '问')).toEqual({ to: 'none', reason: `已有 ${MAX_NODES} 个节点，删除一些后才能再开` });
+    // asking on in the node still works
+    expect(nextQuestion(A, many, none, '问')).toMatchObject({ to: 'turn' });
+  });
+
+  it('has nothing to send without words or a selection', () => {
+    expect(nextQuestion(A, tree, none, '  ')).toEqual({ to: 'none', reason: '' });
+    const c = stepCarry(stepCarry(none, { type: 'select', selection: sel(20, '一段话') }), { type: 'kind', kind: 'child' });
+    expect(nextQuestion(A, tree, c, '')).toMatchObject({ to: 'node', question: { text: '' } });
+  });
+
+  it('asks on in no node whose last turn failed until it is retried', () => {
+    const failed = { ...A, turns: [A.turns[0], { ...A.turns[1], meta: { ...A.turns[1].meta, interrupted: 'failed' as const } }] };
+    expect(nextQuestion(failed, tree, none, '问')).toEqual({ to: 'none', reason: '重试这一轮后才能接着问' });
+    expect(nextQuestion(failed, tree, none, '')).toEqual({ to: 'none', reason: '重试这一轮后才能接着问' });
+  });
+
+  it('drops what it carried once the question is sent, and the fork mark with the kind taken off', () => {
+    const c = stepCarry(stepCarry(stepCarry(none, { type: 'select', selection: sel(20, '一段话') }), { type: 'fork', turn: 21 }), { type: 'kind', kind: 'child' });
+    expect(stepCarry(c, { type: 'sent' })).toEqual(none);
+    expect(stepCarry(c, { type: 'unkind' })).toEqual({ ...none, selection: sel(20, '一段话') });
   });
 });
