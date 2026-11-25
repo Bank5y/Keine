@@ -60,7 +60,7 @@ export function LibraryView() {
       {courses && courses.length && narrow ? (
         <CourseList>
           {courses.map((c) => (
-            <CourseRow key={c.id} course={c} href={`/courses/${c.id}`}>
+            <CourseRow key={c.id} course={c} href={`/courses/${c.id}`} mark={q}>
               {c.subscribed ? <span className="tag subscribed">已订阅</span> : null}
             </CourseRow>
           ))}

@@ -6,6 +6,7 @@ import { Empty } from '@/components/common';
 import { CourseActions, CourseTools } from '@/components/course-actions';
 import { Fold, useChapterFolds } from '@/components/fold';
 import { SubscribeButton, subscribe } from '@/components/peek';
+import { Hit, SearchEnd } from '@/components/page-search';
 import { TabPane, Tabs, useAddressTab, useTabFade } from '@/components/tabs';
 import { ProgressBar, StateMark } from '@/components/progress';
 import { LazyMarkdown } from '@/components/lazy-markdown';
@@ -14,7 +15,9 @@ import { Skeleton } from '@/components/skeleton';
 import { api } from '@/lib/api';
 import { readTarget, readerBar } from '@/lib/course-actions';
 import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, type CourseDetail } from '@/lib/courses';
+import { filterToc } from '@/lib/page-search';
 import { Link, navigate } from '@/lib/router';
+import { usePageSearch } from '@/lib/top-search';
 import { useNarrow } from '@/lib/use-narrow';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { useStuck } from '@/lib/use-stuck';
@@ -41,6 +44,11 @@ export function CourseView({ id }: { id: number }) {
   // a phone gets the course's actions as a bar at the bottom and tools
   // beside the tabs; the colophon keeps only the title, tags and progress
   const narrow = useNarrow();
+  // the top bar's search, on a narrow screen, shows the contents, every
+  // chapter open, only the lessons that match (see page-search.ts)
+  // (a search started shows the contents at once, before anything is typed)
+  const { searching, q } = usePageSearch(narrow);
+  const found = course && q ? filterToc(course.chapters, q) : null;
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
   return (
@@ -53,7 +61,7 @@ export function CourseView({ id }: { id: number }) {
         </aside>
         <section>
           <div className="toc-head">
-            <Tabs className="toc-tabs" tabClassName="toc-tab" value={tab} onChange={setTab} items={[
+            <Tabs className="toc-tabs" tabClassName="toc-tab" value={searching ? 'toc' : tab} onChange={setTab} items={[
               ['intro', '课程介绍'],
               ['toc', <>目录{course ? <sup>{course.lessonCount}</sup> : null}</>],
             ]} />
@@ -64,7 +72,10 @@ export function CourseView({ id }: { id: number }) {
               该课程{RETENTION_LABEL[course.retention]}，你保留的 {course.retainedCount ?? 0} 讲仍可阅读
             </div>
           ) : null}
-          {!course ? <Lines /> : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} /> : <Intro c={course} />}</TabPane>}
+          {found ? <p className="search-count">本课程 {found.matches} 讲匹配</p> : null}
+          {!course ? <Lines /> : found ? <Toc c={course} found={found.chapters} q={q} />
+            : <TabPane fading={fading}>{shown === 'toc' || searching ? <Toc c={course} /> : <Intro c={course} />}</TabPane>}
+          {found ? <SearchEnd q={q} none={found.chapters.length ? null : `本课程没有讲名或章节包含「${q}」`} /> : null}
         </section>
       </div>
       {course && narrow ? <CourseBar c={course} onSubscribed={() => void reload()} /> : null}
@@ -155,8 +166,9 @@ function progressChapter(c: CourseDetail) {
 }
 
 // Toc opens the chapter the reader has got to; the reader opens or closes
-// the others.
-function Toc({ c }: { c: CourseDetail }) {
+// the others. Searched (found: the chapters and lessons that match q), it
+// shows only those, every chapter open, what matched marked.
+function Toc({ c, found, q = '' }: { c: CourseDetail; found?: CourseDetail['chapters']; q?: string }) {
   const folds = useChapterFolds(() => { const ch = progressChapter(c); return ch == null ? [] : [ch]; });
 
   // lesson numbers run through the whole course
@@ -169,37 +181,37 @@ function Toc({ c }: { c: CourseDetail }) {
   const chapterNo = useMemo(() => new Map(c.chapters.map((ch, i) => [ch.id, i + 1])), [c]);
   return (
     <div>
-      {c.chapters.map((ch) => (
+      {(found ?? c.chapters).map((ch) => (
         <div className="chapter" key={ch.id}>
-          <button type="button" className={cn('chapter-head', folds.isOpen(ch.id) && 'open')} aria-expanded={folds.isOpen(ch.id)} onClick={() => folds.toggle(ch.id)}>
+          <button type="button" className={cn('chapter-head', (found || folds.isOpen(ch.id)) && 'open')} aria-expanded={!!found || folds.isOpen(ch.id)} onClick={() => folds.toggle(ch.id)}>
             <ChevronRight className="chev" />
             <span className="c-no">第 {pad2(chapterNo.get(ch.id)!)} 章</span>
-            <span className="c-title">{ch.title}</span>
+            <span className="c-title"><Hit text={ch.title} q={q} /></span>
             {ch.total ? <span className={cn('c-meta', ch.done === ch.total && 'complete')}>{ch.done} / {ch.total}</span> : <span className="c-meta upcoming-mark">待更新</span>}
           </button>
-          <Fold open={folds.isOpen(ch.id)}>
+          <Fold open={!!found || folds.isOpen(ch.id)}>
             <div className="lessons">
               {!ch.lessons.length ? <span className="entry upcoming empty-chapter" aria-disabled="true"><span className="e-title">这一章还没有讲</span><span className="e-lead" /><span className="e-state upcoming-mark">待更新</span></span> : null}
               {ch.lessons.map((l) => l.upcoming ? (
                 <span className="entry upcoming" key={l.id} aria-disabled="true">
-                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
-                  <span className="e-title" title={l.title}>{l.title}</span>
+                  <span className="e-no"><Hit text={pad2(numbers.get(l.id)!)} q={q} /></span>
+                  <span className="e-title" title={l.title}><Hit text={l.title} q={q} /></span>
                   <span className="e-lead" />
                   <span className="e-state upcoming-mark">待更新</span>
                 </span>
               ) : l.unavailable ? (
                 <span className="entry unavailable" key={l.id} aria-disabled="true">
-                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
+                  <span className="e-no"><Hit text={pad2(numbers.get(l.id)!)} q={q} /></span>
                   {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
-                  <span className="e-title" title={l.title}>{l.title}</span>
+                  <span className="e-title" title={l.title}><Hit text={l.title} q={q} /></span>
                   <span className="e-lead" />
                   <span className="e-state gone-mark">已下架</span>
                 </span>
               ) : (
                 <Link className="entry" key={l.id} href={lessonURL(c.id, l.id)}>
-                  <span className="e-no">{pad2(numbers.get(l.id)!)}</span>
+                  <span className="e-no"><Hit text={pad2(numbers.get(l.id)!)} q={q} /></span>
                   {l.video ? <span className="e-icon" title="视频"><PlayCircle /></span> : null}
-                  <span className="e-title" title={l.title}>{l.title}</span>
+                  <span className="e-title" title={l.title}><Hit text={l.title} q={q} /></span>
                   {l.duration ? <span className="e-dur">{l.duration}</span> : null}
                   <span className="e-lead" />
                   <span className="e-state"><StateMark state={l.state} /></span>
