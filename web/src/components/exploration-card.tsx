@@ -5,7 +5,7 @@ import { Confirm } from '@/components/confirm';
 import { ExplorationDocument, ExplorationZoom } from '@/components/exploration-zoom';
 import { ApiError } from '@/lib/api';
 import { useContainScroll } from '@/lib/contain-scroll';
-import { deleteExploration, getExploration, type Exploration, type ExplorationDetail } from '@/lib/explorations';
+import { dropExploration, getExploration, type Exploration, type ExplorationDetail } from '@/lib/explorations';
 import { placeOpenCard, touchesEdge } from '@/lib/open-card';
 import { cn, reducedMotion } from '@/lib/utils';
 
@@ -148,9 +148,10 @@ function OpenCard({ id, anchor, folding, onFold, onFolded, onDeleted, onAsking, 
 
   const remove = async () => {
     try {
-      await deleteExploration(id);
+      await dropExploration(id);
     } catch (ex) {
-      if (!(ex instanceof ApiError && ex.status === 404)) { toast.error(ex instanceof ApiError ? ex.message : '删除失败，请稍后再试'); return; }
+      toast.error(ex instanceof ApiError ? ex.message : '删除失败，请稍后再试');
+      return;
     }
     ask(false);
     onDeleted(id);

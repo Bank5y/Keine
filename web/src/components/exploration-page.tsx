@@ -4,22 +4,21 @@ import { toast } from 'sonner';
 import { documentParts } from '@/components/analysis-popover';
 import { CitedMarkdown } from '@/components/cited-markdown';
 import { Confirm } from '@/components/confirm';
-import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, Refusal, useRuns, withTurn } from '@/components/exploration-dialogue';
+import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, nameOf, Refusal, useRuns, withTurn } from '@/components/exploration-dialogue';
 import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
-import { api, ApiError } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { citationTable } from '@/lib/citations';
 import {
-  askTurn, carried, forksAt, FULL_TEXT, INTERRUPTED, KINDS, MAX_NODES, nextQuestion, noCarry, openNode, pathTo, retryTurn, stepCarry,
-  type Carry, type CarryEvent,
+  askTurn, carried, forksAt, FULL_TEXT, INTERRUPTED, KINDS, MAX_NODES, NEW_KINDS, nextQuestion, noCarry, openNode, pathTo, retryTurn, stepCarry, withoutNode,
+  type Carry, type CarryEvent, type NewKind,
 } from '@/lib/dialogue';
 import { swipeAxis, swipeStarts, type SheetEvent, type SwipeOn } from '@/lib/exploration-sheet';
-import { deleteExploration, getExploration, type DialogueNode, type ExplorationDetail, type NodeKind, type Question, type Turn } from '@/lib/explorations';
+import { deleteNode, dropExploration, getExploration, type DialogueNode, type ExplorationDetail, type Question, type Turn } from '@/lib/explorations';
 import { generateReport, refusalTitle } from '@/lib/reports';
 import { navigate } from '@/lib/router';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
-import { supported } from '@/components/annotator';
-import { cn } from '@/lib/utils';
+import { cn, highlightsSupported } from '@/lib/utils';
 
 // ExplorationPage is an exploration over the whole of a narrow screen
 // (#200): its dialogue, one node at a time. The top bar holds the current
@@ -139,7 +138,7 @@ const CARRIED = 'exp-carried';
 
 // a report being written from the top bar: under way, written (the
 // version kept), or stopped (why)
-type Writing = { status: 'idle' } | { status: 'running' } | { status: 'done'; version: number } | { status: 'refused'; code: string; message: string };
+type ReportRun = { status: 'idle' } | { status: 'running' } | { status: 'done'; version: number } | { status: 'refused'; code: string; message: string };
 
 function Dialogue({ d, tree, send, onDetail, onDeleted }: {
   d: ExplorationDetail; tree: boolean; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void; onDeleted: () => void;
@@ -167,26 +166,27 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
   const { handlers, shown, swiping } = useDrawerSwipe(tree, send, W);
 
   // 生成探索报告 writes a new version; 查看 pushes its page in
-  const [writing, setWriting] = useState<Writing>({ status: 'idle' });
-  const reportRun = useRef<AbortController | null>(null);
-  useEffect(() => () => reportRun.current?.abort(), []);
+  const [reportRun, setReportRun] = useState<ReportRun>({ status: 'idle' });
+  const reportAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => reportAbort.current?.abort(), []);
   const writeReport = async () => {
-    reportRun.current?.abort();
+    reportAbort.current?.abort();
     const ac = new AbortController();
-    reportRun.current = ac;
-    setWriting({ status: 'running' });
+    reportAbort.current = ac;
+    setReportRun({ status: 'running' });
     const end = await generateReport(d.id, () => {}, ac.signal);
     if (ac.signal.aborted) return;
-    setWriting(end.ok ? { status: 'done', version: end.report.version } : { status: 'refused', code: end.code, message: end.message });
+    setReportRun(end.ok ? { status: 'done', version: end.report.version } : { status: 'refused', code: end.code, message: end.message });
   };
 
   // 删除探索, asked first
   const [dropping, setDropping] = useState(false);
-  const dropExploration = async () => {
+  const removeExploration = async () => {
     try {
-      await deleteExploration(d.id);
+      await dropExploration(d.id);
     } catch (ex) {
-      if (!(ex instanceof ApiError && ex.status === 404)) { toast.error(ex instanceof ApiError ? ex.message : '删除失败，请稍后再试'); return; }
+      toast.error(ex instanceof ApiError ? ex.message : '删除失败，请稍后再试');
+      return;
     }
     setDropping(false);
     send({ type: 'deleted' });
@@ -199,24 +199,20 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
   const removeNode = async () => {
     if (!deleting) return;
     try {
-      await api('DELETE', `/api/explorations/${d.id}/nodes/${deleting.id}`);
+      await deleteNode(d.id, deleting.id);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : '删除失败，请稍后再试');
       return;
     }
-    const gone = new Set([deleting.id]);
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const n of d.nodes) if (n.parentId != null && gone.has(n.parentId) && !gone.has(n.id)) { gone.add(n.id); grew = true; }
-    }
-    if (deleting.parentId != null && path.some((n) => gone.has(n.id))) open(deleting.parentId);
-    onDetail({ ...d, nodes: d.nodes.filter((n) => !gone.has(n.id)) });
+    const nodes = withoutNode(d.nodes, deleting.id);
+    if (deleting.parentId != null && path.some((n) => !nodes.includes(n))) open(deleting.parentId);
+    onDetail({ ...d, nodes });
     setDeleting(null);
   };
 
   // the selection carried shows grey in its reply
   useEffect(() => {
-    if (!supported() || !carriedRange) return undefined;
+    if (!highlightsSupported() || !carriedRange) return undefined;
     CSS.highlights.set(CARRIED, new Highlight(carriedRange));
     return () => { CSS.highlights.delete(CARRIED); };
   }, [carriedRange]);
@@ -281,37 +277,37 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
             </button>
           ))}
         </nav>
-        <button type="button" className={cn('exp-page-icon', writing.status === 'running' && 'busy')} aria-label="生成探索报告"
-          title={pending ? '这一轮回答完以后才能生成' : '生成探索报告'} disabled={!!pending || writing.status === 'running'} onClick={() => void writeReport()}><FileText /></button>
+        <button type="button" className={cn('exp-page-icon', reportRun.status === 'running' && 'busy')} aria-label="生成探索报告"
+          title={pending ? '这一轮回答完以后才能生成' : '生成探索报告'} disabled={!!pending || reportRun.status === 'running'} onClick={() => void writeReport()}><FileText /></button>
         <button type="button" className="exp-page-icon" aria-label="删除探索" onClick={() => setDropping(true)}><Trash2 /></button>
         {/* the most used button kept clear of the dangerous one */}
         <button type="button" className="exp-page-icon exp-page-close" aria-label="关闭" onClick={onClose}><X /></button>
       </header>
-      {writing.status === 'running' ? <div className="exp-page-banner" role="status"><span className="exp-page-pulse">探索报告生成中…</span></div> : null}
-      {writing.status === 'done' ? (
+      {reportRun.status === 'running' ? <div className="exp-page-banner" role="status"><span className="exp-page-pulse">探索报告生成中…</span></div> : null}
+      {reportRun.status === 'done' ? (
         <div className="exp-page-banner" role="status">
-          <span>已生成 · 第 {writing.version} 版</span>
+          <span>已生成 · 第 {reportRun.version} 版</span>
           <button type="button" onClick={() => send({ type: 'openReport' })}>查看</button>
-          <button type="button" className="exp-page-banner-x" aria-label="收起" onClick={() => setWriting({ status: 'idle' })}><X /></button>
+          <button type="button" className="exp-page-banner-x" aria-label="收起" onClick={() => setReportRun({ status: 'idle' })}><X /></button>
         </div>
       ) : null}
-      {writing.status === 'refused' ? (
+      {reportRun.status === 'refused' ? (
         <div className="exp-page-banner refused" role="alert">
-          <span><b>{refusalTitle(writing.code)}</b>{writing.message}</span>
-          <button type="button" className="exp-page-banner-x" aria-label="收起" onClick={() => setWriting({ status: 'idle' })}><X /></button>
+          <span><b>{refusalTitle(reportRun.code)}</b>{reportRun.message}</span>
+          <button type="button" className="exp-page-banner-x" aria-label="收起" onClick={() => setReportRun({ status: 'idle' })}><X /></button>
         </div>
       ) : null}
       <div className="exp-page-scroll" ref={scroller}>
         {node.kind === 'main' ? <blockquote className="exp-page-quote">{d.quote}</blockquote> : <ForkHead d={d} node={node} />}
         {hint ? <p className="dlg-carried">{hint}</p> : null}
         {node.turns.map((t, i) => (
-          mine?.retry === t.id ? <Asking key={t.id} question={mine.question} run={mine.run} kind={node.kind} asked={<Asked question={mine.question} />} /> : (
+          mine?.retry === t.id ? <Asking key={t.id} question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} />} /> : (
             <TurnView key={t.id} d={d} turn={t} first={node.kind === 'main' && i === 0} last={i === node.turns.length - 1}
               busy={!!pending} full={full} forking={forkAt === t.id} selected={carry.selection?.turn === t.id}
               onRetry={retry} onOpen={open} onFork={() => { carryDo({ type: 'fork', turn: t.id }); setMenu(true); }} />
           )
         ))}
-        {mine && mine.retry == null ? <Asking question={mine.question} run={mine.run} kind={node.kind} asked={<Asked question={mine.question} />} /> : null}
+        {mine && mine.retry == null ? <Asking question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} />} /> : null}
         {stopped?.message ? <Refusal refused={stopped} /> : null}
         <TakeSelection scroller={scroller} onTake={(turn, sel, range) => { carryDo({ type: 'select', selection: { turn, text: sel } }); setCarriedRange(range); }} />
       </div>
@@ -342,7 +338,7 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
           onPick={(n) => { open(n.id); send({ type: 'pickNode' }); }} onDelete={setDeleting} />
         <p className="exp-tree-hint">左滑节点可以删除</p>
       </aside>
-      <Confirm open={dropping} title="删除这个探索？" confirm="删除" onConfirm={dropExploration} onClose={() => setDropping(false)}>
+      <Confirm open={dropping} title="删除这个探索？" confirm="删除" onConfirm={removeExploration} onClose={() => setDropping(false)}>
         探索文档、整个探索对话和探索报告都会删除，无法恢复。
       </Confirm>
       <Confirm open={!!deleting} title={deleting ? `删除节点「${deleting.name}」？` : ''} confirm="删除" onConfirm={removeNode} onClose={() => setDeleting(null)}>
@@ -418,15 +414,15 @@ function TreeRow({ n, current, onPath, open, onOpen, onPick, onDelete }: {
       <button type="button" className={cn('exp-tree-row', can && 'deletable', current && 'current', onPath && 'on-path')} style={{ transform: at ? `translateX(${at}px)` : undefined }}
         aria-current={current ? 'location' : undefined}
         onClick={() => { if (moved.current) { moved.current = false; return; } if (open) { onOpen(false); return; } onPick(); }}>
-        <Dot kind={n.kind} /><span className="exp-tree-name">{n.kind === 'main' ? '主节点' : n.name}</span><small>{n.turns.length} 轮</small>
+        <Dot kind={n.kind} /><span className="exp-tree-name">{nameOf(n)}</span><small>{n.turns.length} 轮</small>
       </button>
     </div>
   );
 }
 
-// Asked is a question as asked, the selection it carried (if any) above
-// it in grey.
-function Asked({ question: q }: { question: Question }) {
+// AskedBubble is a question as asked, the selection it carried (if any)
+// above it in grey.
+function AskedBubble({ question: q }: { question: Question }) {
   return (
     <div className="exp-page-asked">
       {q.attachments.map((a, i) => <div key={i} className="exp-page-asked-sel"><TextQuote aria-hidden /><span>{a.text}</span></div>)}
@@ -453,7 +449,7 @@ function TurnView({ d, turn: t, first, last, busy, full, forking, selected, onRe
   const replied = first || !!t.reply;
   return (
     <div className={cn('dlg-turn exp-page-turn', forking && 'forking')} data-turn={t.id}>
-      <Asked question={first ? { text: d.firstQuestion, attachments: [] } : t.question} />
+      <AskedBubble question={first ? { text: d.firstQuestion, attachments: [] } : t.question} />
       {forking ? <div className="exp-page-here"><GitBranch aria-hidden />从此处岔出{selected ? ' · 已带上一段' : ''}</div> : null}
       {first ? (
         <div className="dlg-reply dlg-analysis">
@@ -529,16 +525,14 @@ function Tag({ className, label, onX, children }: { className: string; label: st
   return <span className={cn('exp-page-tag', className)}>{children}<button type="button" aria-label={label} onClick={onX}><X /></button></span>;
 }
 
-const NEW_KINDS = ['child', 'branch', 'divergent'] as const;
-
 // Composer is the box at the foot, lifted over the on-screen keyboard,
 // with the credit line: ＋ on its left offers the kinds of node (menu),
 // the tags show what the question carries, and blocked says why it cannot
 // be sent, in place of the placeholder.
 function Composer({ text, onText, busy, blocked, ready, placeholder, menu, onMenu, menuHead, full, kind, onKind, tags, onSend }: {
   text: string; onText: (t: string) => void; busy: boolean; blocked: string; ready: boolean; placeholder: string;
-  menu: boolean; onMenu: (on: boolean) => void; menuHead: string; full: boolean; kind: Exclude<NodeKind, 'main'> | null;
-  onKind: (k: Exclude<NodeKind, 'main'>) => void; tags: ReactNode; onSend: () => void;
+  menu: boolean; onMenu: (on: boolean) => void; menuHead: string; full: boolean; kind: NewKind | null;
+  onKind: (k: NewKind) => void; tags: ReactNode; onSend: () => void;
 }) {
   const keyboard = useKeyboardInset(true);
   const foot = useRef<HTMLDivElement>(null);

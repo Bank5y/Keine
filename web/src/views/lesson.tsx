@@ -68,6 +68,8 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   const right = useRef<HTMLElement>(null);
   // the rail the notes sit in on wide screens, beside the text of a column
   const [rail, setRail] = useState<HTMLElement | null>(null);
+  // where a narrow screen's top bar holds the count of the lesson's explorations
+  const [barSlot, setBarSlot] = useState<HTMLElement | null>(null);
   const noted = course?.type === 'column';
   // how many of the reader's annotations on the current lesson await migration
   const [pending, setPending] = useState<{ lesson: number; n: number } | null>(null);
@@ -148,7 +150,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
   return (
     <div className={cn('page enter docs', noted && 'with-notes')} onClick={onClick}>
       {narrow ? createPortal(
-        <LessonTopBar courseId={courseId} title={shown?.title ?? ''} shown={barShown} onList={() => { setSheetTab('headings'); setDrawer('sheet'); }} />,
+        <LessonTopBar courseId={courseId} title={shown?.title ?? ''} shown={barShown} slot={setBarSlot} onList={() => { setSheetTab('headings'); setDrawer('sheet'); }} />,
         document.body,
       ) : null}
       <aside className="docs-side docs-left" aria-label="课程目录">
@@ -180,7 +182,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
           </article>
         ) : null}
         {current && course?.type === 'column' && current.markdown
-          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} rail={rail}
+          ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} rail={rail} barSlot={barSlot}
             onPending={(n) => setPending({ lesson: current.id, n })} /> : null}
         {current ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
         {!err && shown ? (
@@ -209,12 +211,14 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
 
 // LessonTopBar is the lesson's own top bar on a narrow screen: back to the
 // course's contents, the lesson's title, and the drawer of this lesson's
-// headings and the course's contents. It slides away while reading.
-function LessonTopBar({ courseId, title, shown, onList }: { courseId: number; title: string; shown: boolean; onList: () => void }) {
+// headings and the course's contents; slot is where the annotator puts the
+// count of the lesson's explorations. It slides away while reading.
+function LessonTopBar({ courseId, title, shown, slot, onList }: { courseId: number; title: string; shown: boolean; slot: (el: HTMLElement | null) => void; onList: () => void }) {
   return (
     <header className={cn('lesson-bar', !shown && 'away')} inert={!shown}>
       <Link className="lesson-bar-btn" href={`/courses/${courseId}?tab=toc`} aria-label="返回课程"><ArrowLeft /></Link>
       <span className="lesson-bar-title">{title}</span>
+      <span className="lesson-bar-slot" ref={slot} />
       <button type="button" className="lesson-bar-btn" aria-label="本讲与目录" onClick={onList}><List /></button>
     </header>
   );

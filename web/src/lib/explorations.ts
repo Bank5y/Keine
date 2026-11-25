@@ -1,4 +1,4 @@
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 
 // An exploration is an analysis the reader pinned (ADR 0007): a stretch of
 // the lesson text, placed like an annotation by its quote and the text
@@ -108,3 +108,11 @@ export interface ExplorationDetail {
 export const getExploration = (id: number) => api<ExplorationDetail>('GET', `/api/explorations/${id}`);
 
 export const deleteExploration = (id: number) => api<void>('DELETE', `/api/explorations/${id}`);
+
+// dropExploration deletes an exploration; one already gone counts as deleted.
+export const dropExploration = (id: number) => deleteExploration(id).catch((ex: unknown) => {
+  if (!(ex instanceof ApiError && ex.status === 404)) throw ex;
+});
+
+// deleteNode deletes a node of an exploration's dialogue, and the nodes under it.
+export const deleteNode = (exp: number, node: number) => api<void>('DELETE', `/api/explorations/${exp}/nodes/${node}`);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type ComponentProps, type MutableRefObject, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronUp, Pin, RotateCcw, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -58,8 +58,12 @@ type Pinning = { status: 'idle' } | { status: 'pinning' } | ({ status: 'refused'
 // A finished answer can be pinned (固定探索), which hands the exploration
 // to onPinned. Closing it (Esc, a press outside, ×) asks first once it
 // shows some of an answer, since an analysis not pinned is thrown away.
-export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinned }: {
-  courseId: number; lessonId: number; quote: Quote; at: Anchor; onClose: () => void; onPinned: (e: Exploration) => void;
+// docked, it stands in the box it is given (a narrow screen's sheet)
+// rather than under its text, and leaves presses outside it to that box,
+// which closes it through close (asking first in the same way).
+export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinned, docked }: {
+  courseId: number; lessonId: number; quote: Quote; at: Anchor | null; onClose: () => void; onPinned: (e: Exploration) => void;
+  docked?: { close: MutableRefObject<() => void> };
 }) {
   const user = useUser();
   const [state, dispatch] = useReducer(step, initial);
@@ -97,11 +101,13 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
     if (hasContent(stateRef.current)) setAsking(true);
     else onClose();
   }, [onClose]);
+  if (docked) docked.close.current = requestClose;
 
   useEffect(() => {
     if (asking) return undefined;
     // a lightbox over the popover (a diagram's) takes its own presses and Esc
     const onDown = (e: PointerEvent) => {
+      if (docked) return;
       if (box.current?.contains(e.target as Node) || (e.target as Element).closest?.('[data-lightbox]')) return;
       requestClose();
     };
@@ -109,7 +115,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [asking, requestClose]);
+  }, [asking, requestClose, docked]);
 
   const retry = () => { dispatch({ type: 'start' }); setPinning({ status: 'idle' }); setAttempt((n) => n + 1); };
 
@@ -122,7 +128,7 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
       setPinning({ status: 'idle' });
     });
   };
-  const left = Math.max(16, Math.min(at.left - 3, innerWidth - WIDTH - 16) + scrollX);
+  const left = at ? Math.max(16, Math.min(at.left - 3, innerWidth - WIDTH - 16) + scrollX) : 0;
 
   const credit = <Credit provider={user?.aiProvider} own={user?.ownModels} open={noticeOpen} onToggle={() => setNoticeOpen((v) => !v)} />;
   let main: ReactNode, foot: ReactNode;
@@ -152,10 +158,8 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
     foot = <Foot state={state} pinning={pinning} onRetry={retry} onPin={pin}>{credit}</Foot>;
   }
 
-  return (
-    <>
-      {createPortal(
-        <div ref={box} className="analysis" role="dialog" aria-label="分析" style={{ left, top: at.bottom + 12 }}>
+  const panel = (
+        <div ref={box} className={cn('analysis', docked && 'docked')} role={docked ? 'region' : 'dialog'} aria-label="分析" style={docked || !at ? undefined : { left, top: at.bottom + 12 }}>
           <div className="analysis-head">
             <Sparkles className="analysis-mark" />
             <span className="analysis-kind">分析</span>
@@ -170,9 +174,11 @@ export function AnalysisPopover({ courseId, lessonId, quote, at, onClose, onPinn
             </div>
           ) : null}
           {foot}
-        </div>,
-        document.body,
-      )}
+        </div>
+  );
+  return (
+    <>
+      {docked ? panel : createPortal(panel, document.body)}
       <Dialog open={asking} onOpenChange={(v) => { if (!v) setAsking(false); }} title="丢弃这次分析？">
         <p>分析结果尚未固定，关闭后将丢弃。</p>
         <div className="head-actions">

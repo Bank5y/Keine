@@ -195,3 +195,49 @@ describe('the report page and deleting on the whole-screen exploration', () => {
     expect(step.history).toBe('back');
   });
 });
+
+describe('analysis and the lesson’s list on a narrow screen', () => {
+  const analyze: SheetEvent = { type: 'analyze' };
+  const list: SheetEvent = { type: 'openList' };
+
+  it('takes half the screen for an analysis, and for the list of the lesson’s explorations', () => {
+    expect(after(analyze)).toMatchObject({ detent: 'half', body: { kind: 'analysis' } });
+    expect(after(pinned(7), list)).toMatchObject({ detent: 'half', body: { kind: 'list' } });
+  });
+
+  it('folds into the new exploration’s card once the analysis is pinned', () => {
+    const step = nextSheet(after(analyze), { type: 'pinned', id: 12, y: 400 });
+    expect(step.state).toMatchObject({ detent: 'peek', body: { kind: 'exploration', id: 12 } });
+    // the half screen's history entry goes with it; the back that takes it leaves the card
+    expect(step.history).toBe('back');
+    expect(nextSheet(step.state, { type: 'back' }).state).toEqual(step.state);
+    // reading on is measured from where the page was
+    expect(shown(after(analyze, { type: 'pinned', id: 12, y: 400 }, scroll(520)))).not.toBeNull();
+    expect(shown(after(analyze, { type: 'pinned', id: 12, y: 400 }, scroll(521)))).toBeNull();
+  });
+
+  it('opens the card of an exploration picked in the list', () => {
+    const step = nextSheet(after(list), { type: 'pickExploration', id: 9, y: 300 });
+    expect(step.state).toMatchObject({ detent: 'peek', body: { kind: 'exploration', id: 9 } });
+    expect(step.history).toBe('back');
+  });
+
+  it('closes the half screen on a tap beside it, pulled down far enough, or ✕, the way the system back does', () => {
+    for (const e of [{ type: 'tapBeside' }, { type: 'release', dy: 61 }, { type: 'close' }] as SheetEvent[]) {
+      const step = nextSheet(after(list), e);
+      expect(step.history).toBe('back');
+      expect(shown(nextSheet(step.state, { type: 'back' }).state)).toBeNull();
+    }
+  });
+
+  it('stays on a short pull, and whatever the page under it does', () => {
+    expect(after(list, { type: 'release', dy: 30 })).toMatchObject({ detent: 'half' });
+    expect(after(list, scroll(5000))).toMatchObject({ detent: 'half' });
+  });
+
+  it('adds a history entry for the half screen, so the system back closes it rather than leaving the lesson', () => {
+    expect(nextSheet(closedSheet, analyze).history).toBe('push');
+    expect(nextSheet(after(pinned(7)), list).history).toBe('push');
+    expect(shown(nextSheet(after(analyze), { type: 'back' }).state)).toBeNull();
+  });
+});
