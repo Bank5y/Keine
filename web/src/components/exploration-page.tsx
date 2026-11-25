@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
-import { ArrowUp, ChevronLeft, Copy, GitBranch, Plus, RotateCcw, Square, Telescope, TextQuote, Trash2, X } from 'lucide-react';
+import { ArrowUp, ChevronLeft, Copy, FileText, GitBranch, Plus, RotateCcw, Square, Telescope, TextQuote, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { documentParts } from '@/components/analysis-popover';
 import { CitedMarkdown } from '@/components/cited-markdown';
 import { Confirm } from '@/components/confirm';
 import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, Refusal, useRuns, withTurn } from '@/components/exploration-dialogue';
+import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { api, ApiError } from '@/lib/api';
 import { citationTable } from '@/lib/citations';
@@ -13,7 +14,8 @@ import {
   type Carry, type CarryEvent,
 } from '@/lib/dialogue';
 import { swipeAxis, swipeStarts, type SheetEvent, type SwipeOn } from '@/lib/exploration-sheet';
-import { getExploration, type DialogueNode, type ExplorationDetail, type NodeKind, type Question, type Turn } from '@/lib/explorations';
+import { deleteExploration, getExploration, type DialogueNode, type ExplorationDetail, type NodeKind, type Question, type Turn } from '@/lib/explorations';
+import { generateReport, refusalTitle } from '@/lib/reports';
 import { navigate } from '@/lib/router';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { supported } from '@/components/annotator';
@@ -24,11 +26,13 @@ import { cn } from '@/lib/utils';
 // node's path, each step a way back to it, and ✕. The main node opens on
 // the passage and the exploration document; each node reads its turns and
 // takes the next question in the box at the foot. A swipe right pulls the
-// node tree out from the left (tree), where a tap switches nodes. send
+// node tree out from the left (tree), where a tap switches nodes. The top
+// bar also writes a new version of the exploration report, read on a page
+// pushed in from the right (report), and deletes the exploration. send
 // hears what the reader does to the sheet (see exploration-sheet.ts);
-// onDetail hears every change to the exploration.
-export function ExplorationPage({ id, tree, send, onDetail }: {
-  id: number; tree: boolean; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void;
+// onDetail hears every change to the exploration, onDeleted that it went.
+export function ExplorationPage({ id, tree, report, send, onDetail, onDeleted }: {
+  id: number; tree: boolean; report: boolean; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void; onDeleted: (id: number) => void;
 }) {
   const onClose = () => send({ type: 'close' });
   const [d, setD] = useState<ExplorationDetail | null>(null);
@@ -57,7 +61,7 @@ export function ExplorationPage({ id, tree, send, onDetail }: {
 
   return (
     <div className="exp-page" onClickCapture={onLink}>
-      {d ? <Dialogue d={d} tree={tree} send={send} onDetail={change} /> : (
+      {d ? <Dialogue d={d} tree={tree} send={send} onDetail={change} onDeleted={() => onDeleted(d.id)} /> : (
         <>
           <header className="exp-page-head">
             <Telescope className="exp-page-mark" aria-hidden />
@@ -67,6 +71,11 @@ export function ExplorationPage({ id, tree, send, onDetail }: {
           <p className="analysis-wait exp-page-loading">正在加载…</p>
         </>
       )}
+      {d && report ? (
+        <div className="exp-page-report">
+          <ReportView exp={d.id} onBack={onClose} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -128,7 +137,13 @@ function useDrawerSwipe(tree: boolean, send: (e: SheetEvent) => void, W: number)
 // a selection painted grey in its reply while the box carries it
 const CARRIED = 'exp-carried';
 
-function Dialogue({ d, tree, send, onDetail }: { d: ExplorationDetail; tree: boolean; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void }) {
+// a report being written from the top bar: under way, written (the
+// version kept), or stopped (why)
+type Writing = { status: 'idle' } | { status: 'running' } | { status: 'done'; version: number } | { status: 'refused'; code: string; message: string };
+
+function Dialogue({ d, tree, send, onDetail, onDeleted }: {
+  d: ExplorationDetail; tree: boolean; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void; onDeleted: () => void;
+}) {
   const onClose = () => send({ type: 'close' });
   const main = d.nodes.find((n) => n.kind === 'main')!;
   const [current, setCurrent] = useState(main.id);
@@ -150,6 +165,33 @@ function Dialogue({ d, tree, send, onDetail }: { d: ExplorationDetail; tree: boo
 
   const W = drawerWidth();
   const { handlers, shown, swiping } = useDrawerSwipe(tree, send, W);
+
+  // 生成探索报告 writes a new version; 查看 pushes its page in
+  const [writing, setWriting] = useState<Writing>({ status: 'idle' });
+  const reportRun = useRef<AbortController | null>(null);
+  useEffect(() => () => reportRun.current?.abort(), []);
+  const writeReport = async () => {
+    reportRun.current?.abort();
+    const ac = new AbortController();
+    reportRun.current = ac;
+    setWriting({ status: 'running' });
+    const end = await generateReport(d.id, () => {}, ac.signal);
+    if (ac.signal.aborted) return;
+    setWriting(end.ok ? { status: 'done', version: end.report.version } : { status: 'refused', code: end.code, message: end.message });
+  };
+
+  // 删除探索, asked first
+  const [dropping, setDropping] = useState(false);
+  const dropExploration = async () => {
+    try {
+      await deleteExploration(d.id);
+    } catch (ex) {
+      if (!(ex instanceof ApiError && ex.status === 404)) { toast.error(ex instanceof ApiError ? ex.message : '删除失败，请稍后再试'); return; }
+    }
+    setDropping(false);
+    send({ type: 'deleted' });
+    onDeleted();
+  };
 
   // a node being deleted, asked first; the node and those under it go,
   // and the reader on its path goes back to its parent
@@ -239,8 +281,26 @@ function Dialogue({ d, tree, send, onDetail }: { d: ExplorationDetail; tree: boo
             </button>
           ))}
         </nav>
+        <button type="button" className={cn('exp-page-icon', writing.status === 'running' && 'busy')} aria-label="生成探索报告"
+          title={pending ? '这一轮回答完以后才能生成' : '生成探索报告'} disabled={!!pending || writing.status === 'running'} onClick={() => void writeReport()}><FileText /></button>
+        <button type="button" className="exp-page-icon" aria-label="删除探索" onClick={() => setDropping(true)}><Trash2 /></button>
+        {/* the most used button kept clear of the dangerous one */}
         <button type="button" className="exp-page-icon exp-page-close" aria-label="关闭" onClick={onClose}><X /></button>
       </header>
+      {writing.status === 'running' ? <div className="exp-page-banner" role="status"><span className="exp-page-pulse">探索报告生成中…</span></div> : null}
+      {writing.status === 'done' ? (
+        <div className="exp-page-banner" role="status">
+          <span>已生成 · 第 {writing.version} 版</span>
+          <button type="button" onClick={() => send({ type: 'openReport' })}>查看</button>
+          <button type="button" className="exp-page-banner-x" aria-label="收起" onClick={() => setWriting({ status: 'idle' })}><X /></button>
+        </div>
+      ) : null}
+      {writing.status === 'refused' ? (
+        <div className="exp-page-banner refused" role="alert">
+          <span><b>{refusalTitle(writing.code)}</b>{writing.message}</span>
+          <button type="button" className="exp-page-banner-x" aria-label="收起" onClick={() => setWriting({ status: 'idle' })}><X /></button>
+        </div>
+      ) : null}
       <div className="exp-page-scroll" ref={scroller}>
         {node.kind === 'main' ? <blockquote className="exp-page-quote">{d.quote}</blockquote> : <ForkHead d={d} node={node} />}
         {hint ? <p className="dlg-carried">{hint}</p> : null}
@@ -282,6 +342,9 @@ function Dialogue({ d, tree, send, onDetail }: { d: ExplorationDetail; tree: boo
           onPick={(n) => { open(n.id); send({ type: 'pickNode' }); }} onDelete={setDeleting} />
         <p className="exp-tree-hint">左滑节点可以删除</p>
       </aside>
+      <Confirm open={dropping} title="删除这个探索？" confirm="删除" onConfirm={dropExploration} onClose={() => setDropping(false)}>
+        探索文档、整个探索对话和探索报告都会删除，无法恢复。
+      </Confirm>
       <Confirm open={!!deleting} title={deleting ? `删除节点「${deleting.name}」？` : ''} confirm="删除" onConfirm={removeNode} onClose={() => setDeleting(null)}>
         {deleting ? deleteText(d.nodes, deleting) : null}
       </Confirm>

@@ -453,7 +453,8 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       {root ? <PinnedPassages root={root} placed={placedExps} active={wide ? activeExp : (sheetUp ? sheet.body?.id ?? null : null)} /> : null}
       {wide ? null : (
         <ExplorationSheet sheet={sheet} exploration={exps.find((e) => e.id === sheet.body?.id) ?? null} send={sheetDispatch}
-          onDetail={(x) => setExps((list) => list.map((e) => (e.id === x.id ? { ...e, nodes: x.nodes.length - 1 } : e)))} />
+          onDetail={(x) => setExps((list) => list.map((e) => (e.id === x.id ? { ...e, nodes: x.nodes.length - 1 } : e)))}
+          onDeleted={(id) => setExps((list) => list.filter((e) => e.id !== id))} />
       )}
       {floating}
       {analysis ? (
