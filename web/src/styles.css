@@ -534,7 +534,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .console-collapse svg { width: 18px; height: 18px; }
 .console.collapsed .console-item span, .console.collapsed .console-group-label { display: none; }
 .console.collapsed .console-group + .console-group { margin-top: 20px; }
-.console-main { min-width: 0; max-width: 1240px; padding: 48px 56px var(--main-foot); }
+.console-main { min-width: 0; padding: 48px 56px var(--main-foot); }
 .console-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; }
 .console-head h1 { margin: 0; font-family: var(--serif); font-size: 28px; line-height: 1.25; }
 .console-head p { margin: 0; color: var(--text-3); }
