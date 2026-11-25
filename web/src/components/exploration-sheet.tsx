@@ -11,14 +11,15 @@ import { cn } from '@/lib/utils';
 const DRAG_START = 6;
 
 // the history entry the whole-screen exploration stands on
-const ENTRY = { keineSheet: true };
+export const ENTRY = { keineSheet: true };
 
 // useSheet keeps a narrow screen's sheet of explorations (see
 // exploration-sheet.ts) and does to the browser's history what each step
-// asks: the whole-screen exploration gets an entry of its own, so the
-// system's back closes it rather than leaving the lesson, and a back while
-// it is up arrives as a back event.
-export function useSheet(): [SheetState, (e: SheetEvent) => void] {
+// asks: the whole-screen exploration and the half screen get an entry of
+// their own, so the system's back closes them rather than leaving the
+// lesson, and a back while one is up arrives as a back event. heldBack,
+// when it returns true, has taken a back itself (and put the entry back).
+export function useSheet(heldBack?: () => boolean): [SheetState, (e: SheetEvent) => void] {
   const [sheet, setSheet] = useState(closedSheet);
   const cur = useRef(sheet);
   const send = useCallback((e: SheetEvent) => {
@@ -28,13 +29,15 @@ export function useSheet(): [SheetState, (e: SheetEvent) => void] {
     if (step.history === 'push') history.pushState(ENTRY, '');
     else if (step.history === 'back') history.back();
   }, []);
-  const full = sheet.detent === 'full';
+  const held = useRef(heldBack);
+  held.current = heldBack;
+  const entry = sheet.detent === 'full' || sheet.detent === 'half';
   useEffect(() => {
-    if (!full) return undefined;
-    const onPop = () => send({ type: 'back' });
+    if (!entry) return undefined;
+    const onPop = () => { if (!held.current?.()) send({ type: 'back' }); };
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
-  }, [full, send]);
+  }, [entry, send]);
   return [sheet, send];
 }
 

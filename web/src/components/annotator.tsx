@@ -6,7 +6,7 @@ import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
 import { ExplorationCard } from '@/components/exploration-card';
-import { ExplorationSheet, useSheet } from '@/components/exploration-sheet';
+import { ENTRY, ExplorationSheet, useSheet } from '@/components/exploration-sheet';
 import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
@@ -133,7 +133,18 @@ export function Annotator({ courseId, lessonId, root, rail, barSlot, onPending }
   const wide = useMedia(NOTE_RAIL_MEDIA);
   const railed = wide && !!rail;
   // a narrow screen's sheet of explorations (see exploration-sheet.ts)
-  const [sheet, sheetDispatch] = useSheet();
+  // the system back on an analysis not yet pinned asks first, as closing
+  // it any other way does: the back is held, its entry put back, and the
+  // analysis asked to close; leaving is set once it goes for good
+  const analysisUp = useRef(false);
+  const leavingAnalysis = useRef(false);
+  const closeAnalysis = useRef(() => {});
+  const [sheet, sheetDispatch] = useSheet(() => {
+    if (!analysisUp.current || leavingAnalysis.current) return false;
+    history.pushState(ENTRY, '');
+    closeAnalysis.current();
+    return true;
+  });
   const sheetUp = !wide && sheet.detent !== 'closed';
   // the exploration the sheet holds, if it holds one
   const sheetExp = sheet.body?.kind === 'exploration' ? sheet.body.id : null;
@@ -143,8 +154,8 @@ export function Annotator({ courseId, lessonId, root, rail, barSlot, onPending }
   const user = useUser();
   const unavailable = !user || user.aiAvailable ? '' : unavailableText(user.aiProblem, user.role === 'admin');
   const [analysis, setAnalysis] = useState<{ quote: Quote; ranges: Range[]; at: Anchor | null } | null>(null);
-  // a narrow screen's analysis, in the sheet, closes through here (asking first)
-  const closeAnalysis = useRef(() => {});
+  analysisUp.current = !wide && sheet.body?.kind === 'analysis' && !!analysis;
+  if (sheet.detent === 'closed') leavingAnalysis.current = false;
   const analyzing = useRef(false);
   analyzing.current = !!analysis;
 
@@ -481,7 +492,7 @@ export function Annotator({ courseId, lessonId, root, rail, barSlot, onPending }
           half={sheet.body?.kind === 'list' ? <ExplorationList exps={exps} onPick={pickExp} />
             : sheet.body?.kind === 'analysis' && analysis ? (
               <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={null} docked={{ close: closeAnalysis }}
-                onClose={() => { setAnalysis(null); sheetDispatch({ type: 'tapBeside' }); }} onPinned={pinned} />
+                onClose={() => { leavingAnalysis.current = true; setAnalysis(null); sheetDispatch({ type: 'close' }); }} onPinned={pinned} />
             ) : null}
           onDismiss={() => { if (sheet.body?.kind === 'analysis' && analysis) closeAnalysis.current(); else sheetDispatch({ type: 'tapBeside' }); }}
           onDetail={(x) => setExps((list) => list.map((e) => (e.id === x.id ? { ...e, nodes: x.nodes.length - 1 } : e)))}

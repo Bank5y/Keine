@@ -96,19 +96,33 @@ export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
     }
   }
   const card = (id: number, y: number) => stay({ ...closedSheet, detent: 'peek', body: { kind: 'exploration', id }, top: y });
+  if (s.detent === 'half') {
+    // the half screen has an entry of its own too: what closes it goes the
+    // system back's way, and what turns it into a card takes the entry with it
+    const leave: SheetStep = { state: s, history: 'back' };
+    switch (e.type) {
+      case 'back': return stay(closedSheet);
+      case 'close':
+      case 'tapBeside': return leave;
+      case 'release': return e.dy > DRAG_COMMIT ? leave : stay(s);
+      case 'pinned':
+      case 'pickExploration': return { state: card(e.id, e.y).state, history: 'back' };
+      // nothing under it can be reached while it is up
+      default: return stay(s);
+    }
+  }
   switch (e.type) {
     case 'tapPassage':
     case 'pinned':
     case 'pickExploration': return card(e.id, e.y);
-    case 'analyze': return stay({ ...closedSheet, detent: 'half', body: { kind: 'analysis' } });
-    case 'openList': return stay({ ...closedSheet, detent: 'half', body: { kind: 'list' } });
+    case 'analyze': return { state: { ...closedSheet, detent: 'half', body: { kind: 'analysis' } }, history: 'push' };
+    case 'openList': return { state: { ...closedSheet, detent: 'half', body: { kind: 'list' } }, history: 'push' };
     case 'tapText': return stay(closedSheet);
     case 'scroll':
       if (s.detent !== 'peek') return stay(s);
       if (e.y - s.top > CLOSE_AFTER) return stay(closedSheet);
       return stay(e.y < s.top ? { ...s, top: e.y } : s);
     case 'release':
-      if (s.detent === 'half') return stay(e.dy > DRAG_COMMIT ? closedSheet : s);
       if (s.detent !== 'peek') return stay(s);
       if (e.dy > DRAG_COMMIT) return stay(closedSheet);
       if (e.dy < -DRAG_COMMIT) return full();
@@ -116,8 +130,7 @@ export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
     case 'expand': return s.detent === 'peek' ? full() : stay(s);
     case 'close':
     case 'back':
-    // the half screen goes on a tap beside it
-    case 'tapBeside': return stay(s.detent === 'half' ? closedSheet : s);
+    case 'tapBeside':
     case 'swipe':
     case 'pickNode':
     case 'openReport':
