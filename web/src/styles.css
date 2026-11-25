@@ -980,6 +980,7 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .exp-page-loading { padding: 16px 20px; }
 .exp-page-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px 16px; }
 .exp-page-scroll .dlg-asked-bubble { max-width: 86%; }
+.exp-page-scroll .dlg-forkhead-title { flex-wrap: wrap; row-gap: 2px; }
 .exp-page-quote { margin: 4px 0 8px; padding: 8px 12px; border-left: 2px solid var(--explore-line); border-radius: 0 var(--radius) var(--radius) 0; background: var(--block); font-family: var(--serif); font-size: 13px; line-height: 1.7; color: var(--text-2); }
 .exp-page-acts { display: flex; align-items: center; gap: 2px; margin: 6px 0 0 -6px; }
 .exp-page-acts > button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--text-3); cursor: pointer; }
@@ -988,6 +989,28 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .exp-page-box { padding: 6px 6px 6px 12px; }
 .exp-page-box textarea { min-height: 28px; padding: 3px 0; }
 .exp-page-foot .dlg-credit { padding: 0; }
+/* the node tree drawer, pulled out from the left by a swipe right; the
+   page takes sideways moves for it (code and tables scroll their own) */
+.exp-page-dlg { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; touch-action: pan-y; }
+.exp-page-dlg.swiping { user-select: none; -webkit-user-select: none; }
+.exp-page-edge { position: absolute; z-index: 2; left: 0; top: 50%; width: 4px; height: 56px; margin-top: -28px; border-radius: 0 4px 4px 0; background: var(--explore-line); pointer-events: none; transition: opacity .2s; }
+.exp-tree-scrim { position: absolute; inset: 0; z-index: 5; background: #000; }
+.exp-tree-scrim.settled { transition: opacity .3s; }
+.exp-tree { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; display: flex; flex-direction: column; padding: calc(16px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--sidebar); border-right: 1px solid var(--line); }
+.exp-tree.out { box-shadow: 12px 0 32px -16px rgb(0 0 0 / .3); }
+.exp-tree.settled { transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+.exp-tree-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 8px 12px; }
+.exp-tree-head b { font-family: var(--serif); font-size: 15px; font-weight: 600; }
+.exp-tree-head span { font-size: 12px; color: var(--text-3); }
+.exp-tree-list { margin: 0 0 0 12px; padding: 0 0 0 14px; border-left: 1px solid var(--rule); list-style: none; }
+.exp-tree-list.root { margin: 0; padding: 0; border: 0; }
+.exp-tree-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 40px; padding: 0 8px; border: 0; border-radius: var(--radius); background: var(--sidebar); text-align: left; font-size: 14px; color: var(--text-3); cursor: pointer; }
+.exp-tree-row.on-path { color: var(--text); }
+.exp-tree-row.current { background: var(--surface); font-weight: 600; box-shadow: var(--shadow-soft), inset 2px 0 var(--explore); }
+.exp-tree-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.exp-tree-row small { flex: none; font-size: 11px; font-weight: 400; color: var(--text-3); }
+@media (prefers-reduced-motion: reduce) { .exp-tree.settled, .exp-tree-scrim.settled { transition: none; } }
 .note-card .note-quote { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid var(--rule); color: var(--text-3); font-family: var(--serif); font-size: 12px; }
 .note-card .note-quote.look-underline { border-left-color: var(--ink-accent); }
 .note-card .note-quote.look-yellow { border-left-color: var(--mark-yellow-solid); }

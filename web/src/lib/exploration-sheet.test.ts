@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { closedSheet, nextSheet, type SheetEvent, type SheetState } from '@/lib/exploration-sheet';
+import { closedSheet, nextSheet, swipeAxis, swipeStarts, type SheetEvent, type SheetState } from '@/lib/exploration-sheet';
 
 const after = (...events: SheetEvent[]): SheetState => events.reduce((s, e) => nextSheet(s, e).state, closedSheet);
 // a tap on the passage of exploration id, with the page scrolled to y
@@ -100,5 +100,62 @@ describe('the whole-screen exploration on a narrow screen', () => {
   it('leaves the history alone for a back it did not ask for', () => {
     expect(nextSheet(after(pinned(7)), back)).toEqual({ state: after(pinned(7)), history: null });
     expect(nextSheet(closedSheet, close).history).toBeNull();
+  });
+});
+
+describe('the node tree drawer on the whole-screen exploration', () => {
+  const expand: SheetEvent = { type: 'expand' };
+  const back: SheetEvent = { type: 'back' };
+  const swipe = (dx: number): SheetEvent => ({ type: 'swipe', dx });
+  const full = () => after(pinned(7), expand);
+
+  it('comes out on a swipe right past 60px, and settles back on a shorter one', () => {
+    expect(after(pinned(7), expand, swipe(61)).tree).toBe(true);
+    expect(after(pinned(7), expand, swipe(40)).tree).toBe(false);
+  });
+
+  it('goes on a swipe left past 60px, a tap beside it, or a node picked in it', () => {
+    expect(after(pinned(7), expand, swipe(80), swipe(-61)).tree).toBe(false);
+    expect(after(pinned(7), expand, swipe(80), swipe(-40)).tree).toBe(true);
+    expect(after(pinned(7), expand, swipe(80), { type: 'tapBeside' }).tree).toBe(false);
+    expect(after(pinned(7), expand, swipe(80), { type: 'pickNode' }).tree).toBe(false);
+  });
+
+  it('keeps no history entry of its own: opening it and switching nodes add none', () => {
+    expect(nextSheet(full(), swipe(80)).history).toBeNull();
+    expect(nextSheet(after(pinned(7), expand, swipe(80)), { type: 'pickNode' }).history).toBeNull();
+  });
+
+  it('goes first on the system back, putting back the entry the back took; the next back closes the page', () => {
+    const open = after(pinned(7), expand, swipe(80));
+    const first = nextSheet(open, back);
+    expect(first.state).toMatchObject({ detent: 'full', tree: false });
+    expect(first.history).toBe('push');
+    expect(shown(nextSheet(first.state, back).state)).toBeNull();
+  });
+
+  it('is put away with the page, and is not out when the page opens again', () => {
+    const closed = after(pinned(7), expand, swipe(80), back, back);
+    expect(after(pinned(7), expand, swipe(80), back, back, pinned(7), expand).tree).toBe(false);
+    expect(shown(closed)).toBeNull();
+  });
+});
+
+describe('where a swipe for the node tree may start', () => {
+  it('is anywhere plain on the page, past the 20px at the screen’s left edge kept for the system back', () => {
+    expect(swipeStarts({ x: 21, on: 'page', tree: false })).toBe(true);
+    expect(swipeStarts({ x: 20, on: 'page', tree: false })).toBe(false);
+    expect(swipeStarts({ x: 4, on: 'page', tree: true })).toBe(true);
+  });
+
+  it('is not in what scrolls sideways (code, tables), in a reply’s text, or on a row of the tree', () => {
+    for (const on of ['sideways', 'reply', 'row'] as const) expect(swipeStarts({ x: 200, on, tree: false })).toBe(false);
+    expect(swipeStarts({ x: 200, on: 'row', tree: true })).toBe(false);
+  });
+
+  it('is told from a scroll by its first 10px: sideways moves swipe, up and down ones scroll', () => {
+    expect(swipeAxis(6, 6)).toBeNull();
+    expect(swipeAxis(12, 3)).toBe('x');
+    expect(swipeAxis(-3, 12)).toBe('y');
   });
 });

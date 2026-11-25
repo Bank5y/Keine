@@ -41,14 +41,13 @@ export function useSheet(): [SheetState, (e: SheetEvent) => void] {
 // ExplorationSheet is the sheet a narrow screen's explorations come up in,
 // from the foot of the screen (see exploration-sheet.ts). As the card
 // (peek) it shows the exploration's title and concept and 展开探索; the
-// card follows a finger dragging it and tells onRelease how far down it
-// was let go. On the whole screen it is the exploration's dialogue
-// (ExplorationPage). Closed, it keeps showing what it held as it slides
-// away.
-export function ExplorationSheet({ detent, exploration, onRelease, onExpand, onClose, onDetail }: {
-  detent: SheetState['detent']; exploration: Exploration | null; onRelease: (dy: number) => void;
-  onExpand: () => void; onClose: () => void; onDetail: (d: ExplorationDetail) => void;
+// card follows a finger dragging it and, let go, tells send how far. On
+// the whole screen it is the exploration's dialogue (ExplorationPage).
+// Closed, it keeps showing what it held as it slides away.
+export function ExplorationSheet({ sheet, exploration, send, onDetail }: {
+  sheet: SheetState; exploration: Exploration | null; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void;
 }) {
+  const { detent } = sheet;
   const [shown, setShown] = useState(exploration);
   if (exploration && exploration !== shown) setShown(exploration);
   const [dy, setDy] = useState<number | null>(null);
@@ -80,7 +79,7 @@ export function ExplorationSheet({ detent, exploration, onRelease, onExpand, onC
     press.current = null;
     if (!p?.dragging || p.id !== e.pointerId) return;
     setDy(null);
-    onRelease(e.clientY - p.y);
+    send({ type: 'release', dy: e.clientY - p.y });
   };
 
   const open = detent !== 'closed';
@@ -90,7 +89,7 @@ export function ExplorationSheet({ detent, exploration, onRelease, onExpand, onC
       role="dialog" aria-modal={full} aria-label={shown ? `探索：${shown.title}` : '探索'} aria-hidden={!open} inert={!open}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
       {(full || paged) && shown ? (
-        <ExplorationPage key={shown.id} id={shown.id} onClose={onClose} onDetail={onDetail} />
+        <ExplorationPage key={shown.id} id={shown.id} tree={sheet.tree} send={send} onDetail={onDetail} />
       ) : (
         <>
           <span className="exp-sheet-grip" aria-hidden />
@@ -98,7 +97,7 @@ export function ExplorationSheet({ detent, exploration, onRelease, onExpand, onC
             <div className="exp-sheet-body">
               <div className="exp-sheet-head">
                 <h2 className="exp-sheet-title"><Telescope aria-hidden /><span>{shown.title}</span></h2>
-                <button type="button" className="exp-sheet-expand" onClick={onExpand}><Telescope aria-hidden />展开探索</button>
+                <button type="button" className="exp-sheet-expand" onClick={() => send({ type: 'expand' })}><Telescope aria-hidden />展开探索</button>
               </div>
               <p className="exp-sheet-concept">{shown.concept}</p>
             </div>
