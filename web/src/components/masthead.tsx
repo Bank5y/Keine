@@ -1,5 +1,5 @@
 import { useEffect, useRef, type FormEvent } from 'react';
-import { ArrowLeft, LogOut, Moon, Search, Sun, X } from 'lucide-react';
+import { ArrowLeft, LogOut, Moon, Search, Settings, Sun, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from '@/components/notification-bell';
 import { NavLink } from '@/components/bottom-nav';
@@ -12,7 +12,7 @@ import { askLibraryFocus, setTopSearch, takeLibraryFocus, useTopSearch } from '@
 import { toggleTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 
-function ThemeToggle() {
+export function ThemeToggle() {
   return (
     <Button variant="round" size="round" title="切换深色 / 浅色" aria-label="切换主题" onClick={toggleTheme}>
       <Sun className="i-sun" />
@@ -39,6 +39,11 @@ export function Masthead({ user, path }: { user: User | null | undefined; path: 
           {user ? <NotificationBell path={path} /> : null}
           {user ? <Link className="mast-user" href="/account" title="我的">{user.username}</Link> : null}
           <ThemeToggle />
+          {user?.role === 'admin' ? (
+            <Button variant="round" size="round" title="管理" aria-label="管理" asChild>
+              <Link href="/admin"><Settings /></Link>
+            </Button>
+          ) : null}
           {user ? (
             <Button variant="round" size="round" title="退出" aria-label="退出" onClick={() => void logout()}>
               <LogOut />

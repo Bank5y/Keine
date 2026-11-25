@@ -498,6 +498,49 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .subnav a.active { color: var(--text); background: var(--surface-2); }
 @media (max-width: 760px) { .subnav { gap: 4px 16px; flex-wrap: wrap; } .subnav a { white-space: nowrap; } }
 
+/* ---------- admin console (desktop): own top bar, side menu of sections ---------- */
+.main.main-console { max-width: none; padding: 0; }
+.console {
+  --console-top: 56px; --side-w: 232px;
+  display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); grid-template-rows: var(--console-top) auto;
+  min-height: 100vh; transition: grid-template-columns .18s ease;
+}
+.console.collapsed { --side-w: 64px; }
+.console-top {
+  grid-column: 1 / -1; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 28px; padding: 0 20px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: saturate(1.2) blur(8px); border-bottom: 1px solid var(--line);
+}
+.console-crumb { flex: 1; min-width: 0; color: var(--text-3); font-size: 13px; white-space: nowrap; }
+.console-crumb span { margin: 0 8px; opacity: .6; }
+.console-crumb b { color: var(--text); font-weight: 600; }
+.console-top .mast-tools { gap: 8px; }
+.console-user { font-size: 13px; color: var(--text-2); padding: 0 6px; }
+.console-side {
+  position: sticky; top: var(--console-top); height: calc(100vh - var(--console-top)); display: flex; flex-direction: column;
+  padding: 20px 12px; background: var(--sidebar); overflow: hidden auto;
+}
+.console-group + .console-group { margin-top: 16px; }
+.console-group-label { font-size: 12px; font-weight: 500; color: var(--text-3); letter-spacing: .06em; padding: 0 10px 6px; white-space: nowrap; }
+.console-item {
+  display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 10px; border-radius: var(--radius);
+  color: var(--text-2); white-space: nowrap; transition: background .12s, color .12s;
+}
+.console-item svg { width: 18px; height: 18px; }
+.console-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
+.console-item.active { background: var(--brand); color: var(--on-brand); font-weight: 500; }
+.console-collapse {
+  margin-top: auto; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px;
+  border: 0; border-radius: 6px; background: none; color: var(--text-3); font-size: 13px; white-space: nowrap;
+}
+.console-collapse:hover { color: var(--text); }
+.console-collapse svg { width: 18px; height: 18px; }
+.console.collapsed .console-item span, .console.collapsed .console-group-label { display: none; }
+.console.collapsed .console-group + .console-group { margin-top: 20px; }
+.console-main { min-width: 0; padding: 48px 56px var(--main-foot); }
+.console-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; }
+.console-head h1 { margin: 0; font-family: var(--serif); font-size: 28px; line-height: 1.25; }
+.console-head p { margin: 0; color: var(--text-3); }
+
 /* ---------- ledger rows (users list) ---------- */
 .ledger { border-top: 2px solid var(--text); border-bottom: 2px solid var(--text); padding: 6px 0; }
 .ledger-row { display: grid; grid-template-columns: 1fr 120px 150px auto; gap: 18px; padding: 10px 12px; align-items: center; }
