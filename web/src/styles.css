@@ -97,6 +97,8 @@
   --cloth-1: #606060; --cloth-2: #476666; --cloth-3: #4d4d4d; --cloth-4: #5a5f66;
   --cloth-5: #6b6b6b; --cloth-6: #3f5252; --cloth-7: #575757; --cloth-8: #4a5560;
 }
+/* a phone keeps the same 20px margins as the whole-screen exploration */
+@media (max-width: 760px) { :root { --gutter: 20px; } }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
