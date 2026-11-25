@@ -12,7 +12,7 @@ import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
 import { unavailableText } from '@/lib/ai';
 import { useUser } from '@/lib/session';
-import { cn } from '@/lib/utils';
+import { cn, highlightsSupported } from '@/lib/utils';
 
 // one CSS highlight per look; underlines paint above highlights so an
 // underline inside a highlight stays visible, and the annotation in focus
@@ -22,7 +22,7 @@ const highlightName = (look: string) => `ann-${look}`;
 const ACTIVE = 'ann-active';
 // the annotation the notes page jumped to, blinking
 const FLASH = 'ann-flash';
-export const supported = () => typeof CSS !== 'undefined' && 'highlights' in CSS;
+export const supported = highlightsSupported;
 
 // Wide screens keep notes in a rail beside the text (see .docs-notes in
 // styles.css, which shows the rail at the same width); narrower ones show a

@@ -15,7 +15,11 @@ export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
 
 // the first question a new node of each kind starts with; the reader may
 // change it, and what they send is the node's first question (ADR 0009)
-export const DEFAULT_QUESTION: Record<Exclude<NodeKind, 'main'>, string> = {
+// the kinds a reader may open a node of, in the order they are offered
+export type NewKind = Exclude<NodeKind, 'main'>;
+export const NEW_KINDS: NewKind[] = ['child', 'branch', 'divergent'];
+
+export const DEFAULT_QUESTION: Record<NewKind, string> = {
   child: '沿着这一点继续往下讲：它具体是怎么做到的，为什么要这样？',
   branch: '和它相关的还有哪些概念？它们和它是什么关系？',
   divergent: '课程之外，还有哪些同类的做法？和这里的做法相比有什么异同？',
@@ -39,6 +43,16 @@ export function pathTo(nodes: DialogueNode[], id: number): DialogueNode[] {
   const out: DialogueNode[] = [];
   for (let n = byId(nodes, id); n; n = n.parentId == null ? undefined : byId(nodes, n.parentId)) out.unshift(n);
   return out;
+}
+
+// withoutNode is the dialogue with a node gone, and every node under it.
+export function withoutNode(nodes: DialogueNode[], id: number): DialogueNode[] {
+  const gone = new Set([id]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const n of nodes) if (n.parentId != null && gone.has(n.parentId) && !gone.has(n.id)) { gone.add(n.id); grew = true; }
+  }
+  return nodes.filter((n) => !gone.has(n.id));
 }
 
 // forksAt is the nodes opened on a turn, oldest first.
@@ -71,12 +85,10 @@ export function seenBy(nodes: DialogueNode[], at: number): Turn[] {
 
 // ---- what the next question carries (a narrow screen's box) ----
 
-type Kind = Exclude<NodeKind, 'main'>;
-
 // Carry is what the next question takes along, shown as tags in the box:
 // the kind of node to open with it, the turn marked to fork from, and a
 // selection (选段) taken from a reply, with its turn. Each is optional.
-export interface Carry { kind: Kind | null; fork: number | null; selection: { turn: number; text: string } | null }
+export interface Carry { kind: NewKind | null; fork: number | null; selection: { turn: number; text: string } | null }
 
 export const noCarry: Carry = { kind: null, fork: null, selection: null };
 
@@ -84,7 +96,7 @@ export const noCarry: Carry = { kind: null, fork: null, selection: null };
 // before: one at a time); unkind takes off the kind and the fork mark
 // with it, unfork and unselect take off theirs; sent clears the box.
 export type CarryEvent =
-  | { type: 'kind'; kind: Kind }
+  | { type: 'kind'; kind: NewKind }
   | { type: 'unkind' }
   | { type: 'fork'; turn: number }
   | { type: 'unfork' }
@@ -109,7 +121,7 @@ export function stepCarry(c: Carry, e: CarryEvent): Carry {
 // nothing (reason says why, '' when there is just nothing to send)
 export type Next =
   | { to: 'turn'; after: number; question: Question }
-  | { to: 'node'; fork: number; kind: Kind; question: Question }
+  | { to: 'node'; fork: number; kind: NewKind; question: Question }
   | { to: 'none'; reason: string };
 
 export const FULL_TEXT = `已有 ${MAX_NODES} 个节点，删除一些后才能再开`;
@@ -244,7 +256,7 @@ export const askTurn = (exp: number, after: number, question: Question, on: (e: 
 export const retryTurn = (exp: number, turn: number, on: (e: StreamEvent) => void, signal: AbortSignal) =>
   run(`${base(exp)}/turns/${turn}/retry`, {}, on, signal);
 
-export const openNode = (exp: number, fork: number, kind: Exclude<NodeKind, 'main'>, question: Question, on: (e: StreamEvent) => void, signal: AbortSignal) =>
+export const openNode = (exp: number, fork: number, kind: NewKind, question: Question, on: (e: StreamEvent) => void, signal: AbortSignal) =>
   run(`${base(exp)}/nodes`, { fork, kind, question }, on, signal);
 
 // interruption says why a kept reply stops short

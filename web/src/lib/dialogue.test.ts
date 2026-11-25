@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { carried, courseLinkItems, forksAt, mapLayout, MAX_NODES, nextQuestion, noCarry, pathTo, prune, restack, seenBy, settle, spine, stepCarry, stepRun, type Carry, type Layer } from './dialogue';
+import { carried, courseLinkItems, withoutNode, forksAt, mapLayout, MAX_NODES, nextQuestion, noCarry, pathTo, prune, restack, seenBy, settle, spine, stepCarry, stepRun, type Carry, type Layer } from './dialogue';
 import type { DialogueNode, NodeKind } from './explorations';
 
 let ids = 0;
@@ -208,5 +208,12 @@ describe('what the next question carries', () => {
     const c = stepCarry(stepCarry(stepCarry(none, { type: 'select', selection: sel(20, '一段话') }), { type: 'fork', turn: 21 }), { type: 'kind', kind: 'child' });
     expect(stepCarry(c, { type: 'sent' })).toEqual(none);
     expect(stepCarry(c, { type: 'unkind' })).toEqual({ ...none, selection: sel(20, '一段话') });
+  });
+});
+
+describe('withoutNode', () => {
+  it('drops the node and every node under it, keeping the rest', () => {
+    expect(withoutNode(tree, 2).map((n) => n.id)).toEqual([1, 4]);
+    expect(withoutNode(tree, 3).map((n) => n.id)).toEqual([1, 2, 4]);
   });
 });

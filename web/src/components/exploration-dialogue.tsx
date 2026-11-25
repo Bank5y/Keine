@@ -6,13 +6,13 @@ import { Confirm } from '@/components/confirm';
 import { ReportView } from '@/components/exploration-report';
 import { CitedMarkdown } from '@/components/cited-markdown';
 import { LazyMarkdown } from '@/components/lazy-markdown';
-import { ApiError, api } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { citationTable, type Cited } from '@/lib/citations';
 import {
   askTurn, carried, courseLinkItems, DEFAULT_QUESTION, forksAt, INTERRUPTED, KINDS, mapLayout, MAX_NODES, openNode, pathTo, prune, restack, retryTurn,
-  seenBy, settle, spine, stepRun, turnAt, type Ended, type Layer, type Run,
+  seenBy, settle, spine, stepRun, turnAt, withoutNode, NEW_KINDS, type Ended, type Layer, type NewKind, type Run,
 } from '@/lib/dialogue';
-import type { DialogueNode, ExplorationDetail, NodeKind, Question, Turn } from '@/lib/explorations';
+import { deleteNode, type DialogueNode, type ExplorationDetail, type NodeKind, type Question, type Turn } from '@/lib/explorations';
 import { Link } from '@/lib/router';
 import { useUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
@@ -21,7 +21,7 @@ const SPINE = 56; // the width of each covered layer left showing
 const SHOWN = 3; // how many covered layers keep a spine
 const MS = 340;
 
-type Kind = Exclude<NodeKind, 'main'>;
+type Kind = NewKind;
 // a node being opened: its kind, the turn it forks from, the passage
 // selected in that turn's reply
 type Draft = { kind: Kind; turn: number; fragment?: string };
@@ -124,18 +124,13 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
   const removeNode = async () => {
     if (!deleting) return;
     try {
-      await api('DELETE', `/api/explorations/${d.id}/nodes/${deleting.id}`);
+      await deleteNode(d.id, deleting.id);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : '删除失败，请稍后再试');
       return;
     }
-    const gone = new Set([deleting.id]);
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const n of d.nodes) if (n.parentId != null && gone.has(n.parentId) && !gone.has(n.id)) { gone.add(n.id); grew = true; }
-    }
     if (deleting.parentId != null) setCurrent(deleting.parentId);
-    onDetail({ ...d, nodes: d.nodes.filter((n) => !gone.has(n.id)) });
+    onDetail({ ...d, nodes: withoutNode(d.nodes, deleting.id) });
     setDeleting(null);
   };
 
@@ -408,7 +403,7 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
               }}><Plus />开节点</button>
             {menu ? (
               <div className={cn('dlg-menu dlg-fork-menu', menu === 'up' && 'up')} role="menu">
-                {(['child', 'branch', 'divergent'] as const).map((k) => (
+                {NEW_KINDS.map((k) => (
                   <button type="button" key={k} role="menuitem" disabled={full} onClick={() => { setMenu(false); onFork({ kind: k, turn: t.id, fragment: fragment || undefined }); }}>
                     <Dot kind={k} /><span><b>{KINDS[k].label}</b><small>{KINDS[k].hint}</small></span>
                   </button>
@@ -431,7 +426,7 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
   );
 }
 
-export function Asked({ question: q, kind }: { question: Question; kind: NodeKind }) {
+function Asked({ question: q, kind }: { question: Question; kind: NodeKind }) {
   return (
     <div className="dlg-asked">
       <div className="dlg-asked-bubble">
