@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { NotebookPen, Pencil, Sparkles, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
@@ -6,6 +6,8 @@ import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
 import { ExplorationCard } from '@/components/exploration-card';
+import { ExplorationSheet } from '@/components/exploration-sheet';
+import { closedSheet, nextSheet, type SheetEvent, type SheetState } from '@/lib/exploration-sheet';
 import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
@@ -89,7 +91,9 @@ type Editing =
 // annotation offers to restyle or delete it (each of several, where they
 // overlap) and to write its note. On wide screens the notes sit as cards in
 // the rail, each level with the line its annotation starts on; elsewhere the
-// bar shows them. The annotations are painted with the CSS Custom Highlight
+// bar shows them. Explorations' passages show raised off the page on any
+// screen; picked, an exploration's card opens in the rail on a wide one,
+// and rises from the foot of a narrow one. The annotations are painted with the CSS Custom Highlight
 // API, so the rendered Markdown is never touched.
 // onPending hears how many of the reader's annotations on the lesson await
 // migration; only attached annotations show in the text.
@@ -103,8 +107,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     if (map) for (const a of anns) { const r = map.place(a); if (r) out.set(a.id, r); }
     return out;
   }, [map, anns]);
-  // the reader's explorations, on wide screens only (narrow ones show
-  // pinned passages as plain text and ask for none)
+  // the reader's explorations on the lesson
   const [exps, setExps] = useState<Exploration[]>([]);
   const placedExps = useMemo(() => {
     const out = new Map<number, Range[]>();
@@ -125,8 +128,12 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   // the annotation whose note card is picked, or whose text was clicked
   const [active, setActive] = useState<number | null>(null);
   const bar = useRef<HTMLDivElement>(null);
+  // wide: the rail beside the text, with the cards in it, and 分析
   const wide = useMedia(NOTE_RAIL_MEDIA);
   const railed = wide && !!rail;
+  // a narrow screen's sheet of explorations (see exploration-sheet.ts)
+  const [sheet, sheetDispatch] = useReducer((st: SheetState, e: SheetEvent) => nextSheet(st, e).state, closedSheet);
+  const sheetUp = !wide && sheet.detent !== 'closed';
   const expsRef = useRef(exps);
   expsRef.current = exps;
   // wide screens offer 分析, greyed out with the reason until the
@@ -149,11 +156,19 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   }, [courseId, lessonId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!wide) return undefined;
     let alive = true;
     listExplorations(courseId, lessonId).then((list) => { if (alive) setExps(list); }).catch(() => {});
     return () => { alive = false; };
-  }, [courseId, lessonId, wide]);
+  }, [courseId, lessonId]);
+
+  // the sheet goes once the reader reads on under it; a wide screen closes it
+  useEffect(() => {
+    if (!sheetUp) return undefined;
+    const onScroll = () => sheetDispatch({ type: 'scroll', y: scrollY });
+    addEventListener('scroll', onScroll, { passive: true });
+    return () => removeEventListener('scroll', onScroll);
+  }, [sheetUp]);
+  useEffect(() => { if (wide) sheetDispatch({ type: 'tapText' }); }, [wide]);
 
   // a pinned passage clicked in the text brings its card into view
   useEffect(() => {
@@ -223,6 +238,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       if (!quote) { setPick(null); return; }
       setOpen(null);
       setEditing(null);
+      sheetDispatch({ type: 'tapText' });
       setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange(), overlaps: !!overlapping(map.rangeOf(range), expsRef.current) });
     };
     const onChange = () => { clearTimeout(t); if (!down && !taps.recent()) t = window.setTimeout(read, 120); };
@@ -260,17 +276,22 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       // a pinned passage picks its card, and brings it into view
       const within = (ranges: Range[]) => ranges.flatMap((r) => Array.from(r.getClientRects())).some((c) => e.clientX >= c.left - PASSAGE_PAD_X && e.clientX <= c.right + PASSAGE_PAD_X && e.clientY >= c.top - PASSAGE_PAD_Y && e.clientY <= c.bottom + PASSAGE_PAD_Y);
       const exp = [...placedExps].find(([, ranges]) => within(ranges))?.[0] ?? null;
-      if (hits.length || exp != null) claimTap(e);
+      // the tap that puts a narrow screen's card away is spent on it
+      if (hits.length || exp != null || sheetUp) claimTap(e);
       setEditing(null);
       setOpen(hits.length && at ? { spot: { x: e.clientX + scrollX, top: at.top + scrollY, bottom: at.bottom + scrollY }, ids: hits } : null);
       setActive(exp != null ? null : hits.find((id) => anns.find((a) => a.id === id)?.note) ?? null);
+      if (!wide) {
+        sheetDispatch(exp != null ? { type: 'tapPassage', id: exp, y: scrollY } : { type: 'tapText' });
+        return;
+      }
       setActiveExp(exp);
       setOpenExp(exp);
       if (exp != null) setReveal((n) => n + 1);
     };
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
-  }, [root, anns, placed, placedExps]);
+  }, [root, anns, placed, placedExps, wide, sheetUp]);
 
   // an open bar closes on a click elsewhere or on Escape; so does the focus
   // on a card. A dialog over the page (a lightbox opened from a card or the
@@ -426,7 +447,11 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
           })),
         ]} />
       ) : null}
-      {wide && root ? <PinnedPassages root={root} placed={placedExps} active={activeExp} /> : null}
+      {root ? <PinnedPassages root={root} placed={placedExps} active={wide ? activeExp : (sheetUp ? sheet.body?.id ?? null : null)} /> : null}
+      {wide ? null : (
+        <ExplorationSheet detent={sheet.detent} exploration={exps.find((e) => e.id === sheet.body?.id) ?? null}
+          onRelease={(dy) => sheetDispatch({ type: 'release', dy })} />
+      )}
       {floating}
       {analysis ? (
         <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)}

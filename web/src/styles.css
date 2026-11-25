@@ -939,6 +939,29 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .pinned-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .pinned-passage { position: absolute; border: 1px solid var(--explore-line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-soft); transition: border-color .12s; }
 .pinned-passage.active { border-color: var(--explore); }
+/* a narrow screen's sheet of explorations (see exploration-sheet.ts): the
+   whole screen high, moved down so its top stands at the detent; as the
+   card at the foot it shows a picked exploration's title and concept */
+.exp-sheet {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 30; height: 100dvh; display: flex; flex-direction: column;
+  border-radius: 16px 16px 0 0; background: var(--bg); box-shadow: 0 -8px 32px -12px rgb(0 0 0 / .28);
+  touch-action: none; will-change: transform; transition: transform .3s cubic-bezier(.2, .8, .2, 1), box-shadow .3s;
+}
+.exp-sheet.at-closed { box-shadow: none; }
+.exp-sheet.dragging { transition: none; }
+.exp-sheet-grip { flex: none; display: block; width: 36px; height: 4px; margin: 9px auto; border-radius: 4px; background: var(--rule); }
+.exp-sheet-body { padding: 0 20px; }
+.exp-sheet-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.exp-sheet-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; margin: 0; font-family: var(--serif); font-size: 16px; font-weight: 600; color: var(--text); }
+.exp-sheet-title span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.exp-sheet-title svg { flex: none; width: 15px; height: 15px; color: var(--explore); }
+.exp-sheet-expand {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border: 1px solid var(--explore-line); border-radius: 99px;
+  background: var(--surface); color: var(--explore); font-size: 13px; cursor: pointer;
+}
+.exp-sheet-expand svg { width: 14px; height: 14px; }
+.exp-sheet-concept { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .exp-sheet { transition: none; } }
 .note-card .note-quote { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid var(--rule); color: var(--text-3); font-family: var(--serif); font-size: 12px; }
 .note-card .note-quote.look-underline { border-left-color: var(--ink-accent); }
 .note-card .note-quote.look-yellow { border-left-color: var(--mark-yellow-solid); }
