@@ -6,7 +6,7 @@ import { ExplorationDocument, ExplorationZoom } from '@/components/exploration-z
 import { ApiError } from '@/lib/api';
 import { useContainScroll } from '@/lib/contain-scroll';
 import { deleteExploration, getExploration, type Exploration, type ExplorationDetail } from '@/lib/explorations';
-import { placeOpenCard, scrolledAway } from '@/lib/open-card';
+import { placeOpenCard, touchesEdge } from '@/lib/open-card';
 import { cn, reducedMotion } from '@/lib/utils';
 
 // the room kept free under the top bar and at the bottom of the screen
@@ -118,14 +118,18 @@ function OpenCard({ id, anchor, folding, onFold, onFolded, onDeleted, onAsking, 
     return () => { ro.disconnect(); mo.disconnect(); window.removeEventListener('resize', measure); };
   }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // the page scrolling away from the card folds it; a dialog of its own
-  // holds it open
+  // the page carrying the card into the top bar or off the screen's bottom
+  // folds it; a dialog of its own holds it open
   const holding = useRef(false);
   holding.current = asking || folding;
   useEffect(() => {
     if (!place) return undefined;
-    const from = scrollY;
-    const onScroll = () => { if (!holding.current && scrolledAway(from, scrollY)) onFold(); };
+    const onScroll = () => {
+      const el = box.current;
+      if (holding.current || !el) return;
+      const top = Math.max(0, document.querySelector('.masthead')?.getBoundingClientRect().bottom ?? 0);
+      if (touchesEdge(el.getBoundingClientRect(), { top, viewport: innerHeight })) onFold();
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, [!!place]); // eslint-disable-line react-hooks/exhaustive-deps

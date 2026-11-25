@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeOpenCard, scrolledAway, SCROLL_AWAY } from '@/lib/open-card';
+import { placeOpenCard, touchesEdge } from '@/lib/open-card';
 
 // a 1000px-high screen with a 64px bar on top and 16px kept free at the bottom
 const screen = { viewport: 1000, top: 64, margin: 16 };
@@ -36,14 +36,20 @@ describe('placeOpenCard', () => {
   });
 });
 
-describe('scrolledAway', () => {
-  it('keeps the card open while the page moves a little either way', () => {
-    expect(scrolledAway(1000, 1000 + SCROLL_AWAY)).toBe(false);
-    expect(scrolledAway(1000, 1000 - SCROLL_AWAY)).toBe(false);
+describe('touchesEdge', () => {
+  const edges = { top: 64, viewport: 1000 };
+
+  it('keeps a card open while it stays between the top bar and the bottom, even right against them', () => {
+    expect(touchesEdge({ top: 200, bottom: 500 }, edges)).toBe(false);
+    expect(touchesEdge({ top: 64, bottom: 1000 }, edges)).toBe(false);
+    expect(touchesEdge({ top: 63.8, bottom: 1000.3 }, edges)).toBe(false);
   });
 
-  it('folds the card once the page has moved past the threshold, down or up', () => {
-    expect(scrolledAway(1000, 1000 + SCROLL_AWAY + 1)).toBe(true);
-    expect(scrolledAway(1000, 1000 - SCROLL_AWAY - 1)).toBe(true);
+  it('folds a card once it runs under the top bar, however little the page moved', () => {
+    expect(touchesEdge({ top: 63, bottom: 400 }, edges)).toBe(true);
+  });
+
+  it('folds a card once it runs past the bottom of the screen', () => {
+    expect(touchesEdge({ top: 700, bottom: 1001 }, edges)).toBe(true);
   });
 });
