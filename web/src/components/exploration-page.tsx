@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import { ArrowUp, ChevronLeft, Copy, RotateCcw, Square, Telescope, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { documentParts } from '@/components/analysis-popover';
@@ -8,6 +8,7 @@ import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError } from '@/lib/api';
 import { citationTable } from '@/lib/citations';
 import { askTurn, carried, forksAt, INTERRUPTED, pathTo, retryTurn } from '@/lib/dialogue';
+import { swipeAxis, swipeStarts, type SheetEvent, type SwipeOn } from '@/lib/exploration-sheet';
 import { getExploration, type DialogueNode, type ExplorationDetail, type Question, type Turn } from '@/lib/explorations';
 import { navigate } from '@/lib/router';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
@@ -17,11 +18,14 @@ import { cn } from '@/lib/utils';
 // (#200): its dialogue, one node at a time. The top bar holds the current
 // node's path, each step a way back to it, and ✕. The main node opens on
 // the passage and the exploration document; each node reads its turns and
-// takes the next question in the box at the foot. onDetail hears every
-// change to the exploration.
-export function ExplorationPage({ id, onClose, onDetail }: {
-  id: number; onClose: () => void; onDetail: (d: ExplorationDetail) => void;
+// takes the next question in the box at the foot. A swipe right pulls the
+// node tree out from the left (tree), where a tap switches nodes. send
+// hears what the reader does to the sheet (see exploration-sheet.ts);
+// onDetail hears every change to the exploration.
+export function ExplorationPage({ id, tree, send, onDetail }: {
+  id: number; tree: boolean; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void;
 }) {
+  const onClose = () => send({ type: 'close' });
   const [d, setD] = useState<ExplorationDetail | null>(null);
   useEffect(() => {
     let alive = true;
@@ -48,7 +52,7 @@ export function ExplorationPage({ id, onClose, onDetail }: {
 
   return (
     <div className="exp-page" onClickCapture={onLink}>
-      {d ? <Dialogue d={d} onDetail={change} onClose={onClose} /> : (
+      {d ? <Dialogue d={d} tree={tree} send={send} onDetail={change} /> : (
         <>
           <header className="exp-page-head">
             <Telescope className="exp-page-mark" aria-hidden />
@@ -62,7 +66,22 @@ export function ExplorationPage({ id, onClose, onDetail }: {
   );
 }
 
-function Dialogue({ d, onDetail, onClose }: { d: ExplorationDetail; onDetail: (d: ExplorationDetail) => void; onClose: () => void }) {
+// the node tree drawer's width: most of the screen, some of the page
+// left showing beside it
+const drawerWidth = () => Math.min(296, innerWidth - 56);
+
+// swipeOn is what a press on target starts on, for the swipe that pulls
+// out the node tree (see swipeStarts)
+function swipeOn(target: EventTarget | null): SwipeOn {
+  const t = target instanceof Element ? target : null;
+  if (t?.closest('.exp-tree-row')) return 'row';
+  if (t?.closest('pre, table, .exp-page-crumbs')) return 'sideways';
+  if (t?.closest('.dlg-reply')) return 'reply';
+  return 'page';
+}
+
+function Dialogue({ d, tree, send, onDetail }: { d: ExplorationDetail; tree: boolean; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void }) {
+  const onClose = () => send({ type: 'close' });
   const main = d.nodes.find((n) => n.kind === 'main')!;
   const [current, setCurrent] = useState(main.id);
   const { pending, refused, setRefused, go } = useRuns();
@@ -70,6 +89,39 @@ function Dialogue({ d, onDetail, onClose }: { d: ExplorationDetail; onDetail: (d
   const node = d.nodes.find((n) => n.id === current) ?? main;
   const path = pathTo(d.nodes, node.id);
   const open = (to: number) => { setRefused(null); setCurrent(to); };
+
+  // the drawer follows a finger swiping it: shown is how much of it shows
+  const [drag, setDrag] = useState<number | null>(null);
+  const press = useRef<{ id: number; x: number; y: number; axis: 'x' | 'y' | null } | null>(null);
+  const swiped = useRef(false);
+  const W = drawerWidth();
+  const shown = drag ?? (tree ? W : 0);
+  const onDown = (e: PointerEvent<HTMLDivElement>) => {
+    swiped.current = false;
+    const left = e.clientX - e.currentTarget.getBoundingClientRect().left;
+    press.current = (e.pointerType !== 'mouse' || e.button === 0) && swipeStarts({ x: left, on: swipeOn(e.target), tree })
+      ? { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null } : null;
+  };
+  const onMove = (e: PointerEvent<HTMLDivElement>) => {
+    const p = press.current;
+    if (!p || p.id !== e.pointerId) return;
+    const dx = e.clientX - p.x;
+    if (!p.axis) {
+      p.axis = swipeAxis(dx, e.clientY - p.y);
+      if (p.axis !== 'x') { if (p.axis) press.current = null; return; }
+      e.currentTarget.setPointerCapture(e.pointerId);
+      getSelection()?.removeAllRanges();
+    }
+    setDrag(Math.max(0, Math.min(W, (tree ? W : 0) + dx)));
+  };
+  const onUp = (e: PointerEvent<HTMLDivElement>) => {
+    const p = press.current;
+    press.current = null;
+    if (!p || p.id !== e.pointerId || p.axis !== 'x') return;
+    swiped.current = true;
+    setDrag(null);
+    if (e.type === 'pointerup') send({ type: 'swipe', dx: e.clientX - p.x });
+  };
 
   const ask = async (question: Question) => {
     const last = node.turns[node.turns.length - 1];
@@ -82,6 +134,9 @@ function Dialogue({ d, onDetail, onClose }: { d: ExplorationDetail; onDetail: (d
   };
 
   const scroller = useRef<HTMLDivElement>(null);
+  // the path shows its end, the current node, however long it runs
+  const crumbs = useRef<HTMLElement>(null);
+  useLayoutEffect(() => { if (crumbs.current) crumbs.current.scrollLeft = crumbs.current.scrollWidth; }, [node.id]);
   // a node opens at its top; stay at the end as a reply streams in
   useLayoutEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [node.id]);
   useLayoutEffect(() => {
@@ -95,12 +150,15 @@ function Dialogue({ d, onDetail, onClose }: { d: ExplorationDetail; onDetail: (d
   const failed = last.meta.interrupted === 'failed';
   const hint = carried(node);
   return (
-    <>
+    <div className={cn('exp-page-dlg', drag != null && 'swiping')}
+      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      // the click that ends a swipe is not a tap on what it ended over
+      onClickCapture={(e) => { if (swiped.current) { swiped.current = false; e.preventDefault(); e.stopPropagation(); } }}>
       <header className="exp-page-head">
         {path.length > 1
           ? <button type="button" className="exp-page-icon" aria-label="回到上一层" onClick={() => open(path[path.length - 2].id)}><ChevronLeft /></button>
           : <Telescope className="exp-page-mark" aria-hidden />}
-        <nav className="exp-page-crumbs" aria-label="节点路径">
+        <nav className="exp-page-crumbs" aria-label="节点路径" ref={crumbs}>
           {path.map((n, i) => (
             <button type="button" key={n.id} className={cn('exp-page-crumb', `kind-${n.kind}`, i === path.length - 1 && 'current')}
               aria-current={i === path.length - 1 ? 'location' : undefined} onClick={() => open(n.id)}>
@@ -126,7 +184,40 @@ function Dialogue({ d, onDetail, onClose }: { d: ExplorationDetail; onDetail: (d
       <Composer busy={!!pending}
         disabled={failed && !pending ? '重试这一轮后才能接着问' : stopped?.code === 'context_too_long' ? '这个节点已经太长，从更早的一轮开节点继续' : ''}
         onAsk={(text) => void ask({ text, attachments: [] })} />
-    </>
+      {/* the left edge hints at the drawer */}
+      <span className="exp-page-edge" aria-hidden style={{ opacity: shown ? 0 : 1 }} />
+      <div className={cn('exp-tree-scrim', drag == null && 'settled')} style={{ opacity: (shown / W) * 0.32, pointerEvents: tree ? 'auto' : 'none' }}
+        onClick={() => send({ type: 'tapBeside' })} aria-hidden />
+      <aside className={cn('exp-tree', drag == null && 'settled', shown > 0 && 'out')} style={{ width: W, transform: `translateX(${shown - W}px)` }}
+        aria-label="节点树" aria-hidden={!tree} inert={!tree}>
+        <div className="exp-tree-head"><b>节点树</b><span>{d.nodes.length} 个节点</span></div>
+        <Tree nodes={d.nodes} parent={null} current={node.id} path={path.map((n) => n.id)}
+          onPick={(n) => { open(n.id); send({ type: 'pickNode' }); }} />
+      </aside>
+    </div>
+  );
+}
+
+// Tree is the nodes under parent (the main node, under none), each with
+// how many turns it has and the nodes under it: the current node marked,
+// the nodes on the path to it darker.
+function Tree({ nodes, parent, current, path, onPick }: {
+  nodes: DialogueNode[]; parent: number | null; current: number; path: number[]; onPick: (n: DialogueNode) => void;
+}) {
+  const kids = nodes.filter((n) => n.parentId === parent);
+  if (!kids.length) return null;
+  return (
+    <ul className={cn('exp-tree-list', parent == null && 'root')}>
+      {kids.map((n) => (
+        <li key={n.id}>
+          <button type="button" className={cn('exp-tree-row', n.id === current && 'current', path.includes(n.id) && 'on-path')}
+            aria-current={n.id === current ? 'location' : undefined} onClick={() => onPick(n)}>
+            <Dot kind={n.kind} /><span className="exp-tree-name">{n.kind === 'main' ? '主节点' : n.name}</span><small>{n.turns.length} 轮</small>
+          </button>
+          <Tree nodes={nodes} parent={n.id} current={current} path={path} onPick={onPick} />
+        </li>
+      ))}
+    </ul>
   );
 }
 
