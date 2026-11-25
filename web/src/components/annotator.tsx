@@ -7,7 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
 import { ExplorationCard } from '@/components/exploration-card';
 import { ExplorationSheet } from '@/components/exploration-sheet';
-import { closedSheet, nextSheet } from '@/lib/exploration-sheet';
+import { closedSheet, nextSheet, type SheetEvent, type SheetState } from '@/lib/exploration-sheet';
 import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
@@ -132,7 +132,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   const wide = useMedia(NOTE_RAIL_MEDIA);
   const railed = wide && !!rail;
   // a narrow screen's sheet of explorations (see exploration-sheet.ts)
-  const [sheet, sheetDo] = useReducer((st: typeof closedSheet, e: Parameters<typeof nextSheet>[1]) => nextSheet(st, e).state, closedSheet);
+  const [sheet, sheetDispatch] = useReducer((st: SheetState, e: SheetEvent) => nextSheet(st, e).state, closedSheet);
   const sheetUp = !wide && sheet.detent !== 'closed';
   const expsRef = useRef(exps);
   expsRef.current = exps;
@@ -164,11 +164,11 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   // the sheet goes once the reader reads on under it; a wide screen closes it
   useEffect(() => {
     if (!sheetUp) return undefined;
-    const onScroll = () => sheetDo({ type: 'scroll', y: scrollY });
+    const onScroll = () => sheetDispatch({ type: 'scroll', y: scrollY });
     addEventListener('scroll', onScroll, { passive: true });
     return () => removeEventListener('scroll', onScroll);
   }, [sheetUp]);
-  useEffect(() => { if (wide) sheetDo({ type: 'page' }); }, [wide]);
+  useEffect(() => { if (wide) sheetDispatch({ type: 'tapText' }); }, [wide]);
 
   // a pinned passage clicked in the text brings its card into view
   useEffect(() => {
@@ -238,7 +238,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       if (!quote) { setPick(null); return; }
       setOpen(null);
       setEditing(null);
-      sheetDo({ type: 'page' });
+      sheetDispatch({ type: 'tapText' });
       setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange(), overlaps: !!overlapping(map.rangeOf(range), expsRef.current) });
     };
     const onChange = () => { clearTimeout(t); if (!down && !taps.recent()) t = window.setTimeout(read, 120); };
@@ -282,7 +282,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       setOpen(hits.length && at ? { spot: { x: e.clientX + scrollX, top: at.top + scrollY, bottom: at.bottom + scrollY }, ids: hits } : null);
       setActive(exp != null ? null : hits.find((id) => anns.find((a) => a.id === id)?.note) ?? null);
       if (!wide) {
-        sheetDo(exp != null ? { type: 'pinned', id: exp, y: scrollY } : { type: 'page' });
+        sheetDispatch(exp != null ? { type: 'tapPassage', id: exp, y: scrollY } : { type: 'tapText' });
         return;
       }
       setActiveExp(exp);
@@ -450,7 +450,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       {root ? <PinnedPassages root={root} placed={placedExps} active={wide ? activeExp : (sheetUp ? sheet.body?.id ?? null : null)} /> : null}
       {wide ? null : (
         <ExplorationSheet detent={sheet.detent} exploration={exps.find((e) => e.id === sheet.body?.id) ?? null}
-          onRelease={(dy) => sheetDo({ type: 'release', dy })} />
+          onRelease={(dy) => sheetDispatch({ type: 'release', dy })} />
       )}
       {floating}
       {analysis ? (

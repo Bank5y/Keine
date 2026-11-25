@@ -3,7 +3,7 @@ import { closedSheet, nextSheet, type SheetEvent, type SheetState } from '@/lib/
 
 const after = (...events: SheetEvent[]): SheetState => events.reduce((s, e) => nextSheet(s, e).state, closedSheet);
 // a tap on the passage of exploration id, with the page scrolled to y
-const pinned = (id: number, y = 1000): SheetEvent => ({ type: 'pinned', id, y });
+const pinned = (id: number, y = 1000): SheetEvent => ({ type: 'tapPassage', id, y });
 const scroll = (y: number): SheetEvent => ({ type: 'scroll', y });
 const shown = (s: SheetState) => (s.detent === 'closed' ? null : s.body);
 
@@ -21,7 +21,7 @@ describe('the exploration sheet on a narrow screen', () => {
   });
 
   it('closes on a tap on the text elsewhere', () => {
-    expect(shown(after(pinned(7), { type: 'page' }))).toBeNull();
+    expect(shown(after(pinned(7), { type: 'tapText' }))).toBeNull();
   });
 
   it('stays up while the text is read on a little, and goes once it is read on past 120px', () => {
@@ -50,7 +50,7 @@ describe('the exploration sheet on a narrow screen', () => {
   });
 
   it('keeps the card and the history as they are on the way', () => {
-    const events: SheetEvent[] = [pinned(7), pinned(9), scroll(1050), { type: 'release', dy: 20 }, { type: 'page' }];
+    const events: SheetEvent[] = [pinned(7), pinned(9), scroll(1050), { type: 'release', dy: 20 }, { type: 'tapText' }];
     let s = closedSheet;
     for (const e of events) { const step = nextSheet(s, e); expect(step.push).toBe(false); s = step.state; }
   });
