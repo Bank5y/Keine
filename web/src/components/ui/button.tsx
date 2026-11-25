@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: 'border border-primary bg-primary text-primary-foreground not-disabled:hover:border-brand-hover not-disabled:hover:bg-brand-hover',
-        outline: 'border border-foreground bg-transparent text-foreground not-disabled:hover:bg-foreground not-disabled:hover:text-background',
+        outline: 'border border-rule bg-surface text-foreground not-disabled:hover:border-ink-3 not-disabled:hover:bg-background',
         ghost: 'border border-rule bg-transparent text-foreground not-disabled:hover:border-foreground',
         destructive: 'border border-rule bg-transparent text-foreground not-disabled:hover:border-danger not-disabled:hover:bg-danger not-disabled:hover:text-white',
         text: 'bg-transparent font-normal tracking-normal text-[13px] text-ink-3 not-disabled:hover:text-brand',
