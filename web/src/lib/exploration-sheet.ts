@@ -9,7 +9,7 @@ const CLOSE_AFTER = 120;
 
 // a drag on the sheet let go past this many px moves it on a detent;
 // a shorter one lets it settle back
-const DRAG_COMMIT = 60;
+export const DRAG_COMMIT = 60;
 
 // how far the sheet's top edge stands from the top of the screen, as a
 // share of the screen's height: closed, the card at the foot (peek), half
@@ -18,8 +18,9 @@ const DRAG_COMMIT = 60;
 export type Detent = 'closed' | 'peek' | 'half' | 'full';
 export const DETENT_TOP: Record<Detent, number> = { closed: 1, peek: 0.76, half: 0.36, full: 0 };
 
-// what the sheet holds
-export type SheetBody = { kind: 'exploration'; id: number };
+// what the sheet holds: an exploration, the lesson's list of them, or an
+// analysis of a selection
+export type SheetBody = { kind: 'exploration'; id: number } | { kind: 'list' } | { kind: 'analysis' };
 
 // top: the highest the page has been scrolled to (the least scrollY) since
 // the card came up, where reading on is measured from. tree: the node tree
@@ -36,7 +37,10 @@ export interface SheetState { detent: Detent; body: SheetBody | null; top: numbe
 // exploration let go dx px right of where it began (left is negative).
 // tapBeside: a tap beside the node tree drawer. pickNode: a node picked in
 // the drawer. openReport: 查看 on a report. deleted: the exploration was
-// deleted from its page.
+// deleted from its page. analyze: 分析 on a selection. openList: the count
+// of explorations in the lesson's top bar. pinned: the analysis was pinned
+// as exploration id, the page scrolled to y. pickExploration: an
+// exploration picked in the list, the page scrolled to y.
 export type SheetEvent =
   | { type: 'tapPassage'; id: number; y: number }
   | { type: 'tapText' }
@@ -49,7 +53,11 @@ export type SheetEvent =
   | { type: 'tapBeside' }
   | { type: 'pickNode' }
   | { type: 'openReport' }
-  | { type: 'deleted' };
+  | { type: 'deleted' }
+  | { type: 'analyze' }
+  | { type: 'openList' }
+  | { type: 'pinned'; id: number; y: number }
+  | { type: 'pickExploration'; id: number; y: number };
 // the next state, and what the step does to the browser's history: push
 // an entry (so the system's back undoes the step), go back one (the back
 // that follows takes the step), or nothing
@@ -87,14 +95,20 @@ export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
       default: return stay(s);
     }
   }
+  const card = (id: number, y: number) => stay({ ...closedSheet, detent: 'peek', body: { kind: 'exploration', id }, top: y });
   switch (e.type) {
-    case 'tapPassage': return stay({ ...closedSheet, detent: 'peek', body: { kind: 'exploration', id: e.id }, top: e.y });
+    case 'tapPassage':
+    case 'pinned':
+    case 'pickExploration': return card(e.id, e.y);
+    case 'analyze': return stay({ ...closedSheet, detent: 'half', body: { kind: 'analysis' } });
+    case 'openList': return stay({ ...closedSheet, detent: 'half', body: { kind: 'list' } });
     case 'tapText': return stay(closedSheet);
     case 'scroll':
       if (s.detent !== 'peek') return stay(s);
       if (e.y - s.top > CLOSE_AFTER) return stay(closedSheet);
       return stay(e.y < s.top ? { ...s, top: e.y } : s);
     case 'release':
+      if (s.detent === 'half') return stay(e.dy > DRAG_COMMIT ? closedSheet : s);
       if (s.detent !== 'peek') return stay(s);
       if (e.dy > DRAG_COMMIT) return stay(closedSheet);
       if (e.dy < -DRAG_COMMIT) return full();
@@ -102,8 +116,9 @@ export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
     case 'expand': return s.detent === 'peek' ? full() : stay(s);
     case 'close':
     case 'back':
+    // the half screen goes on a tap beside it
+    case 'tapBeside': return stay(s.detent === 'half' ? closedSheet : s);
     case 'swipe':
-    case 'tapBeside':
     case 'pickNode':
     case 'openReport':
     case 'deleted': return stay(s);

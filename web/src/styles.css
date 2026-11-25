@@ -855,6 +855,9 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .ann-tip { position: absolute; top: calc(100% + 10px); left: 50%; z-index: 30; width: max-content; max-width: 280px; padding: 8px 12px; border-radius: 5px; background: var(--text); color: var(--bg); font-size: 12px; line-height: 1.5; text-align: left; white-space: normal; transform: translateX(-50%); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s; }
 .ann-tip::before { content: ""; position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; background: inherit; transform: translateX(-50%) rotate(45deg); }
 .ann-tip-host:hover .ann-tip, .ann-tip-host:focus-within .ann-tip { opacity: 1; visibility: visible; }
+/* a bar docked at the foot of the screen says why above it */
+.ann-bar.docked .ann-tip { top: auto; bottom: calc(100% + 10px); left: auto; right: 0; transform: none; }
+.ann-bar.docked .ann-tip::before { top: auto; bottom: -4px; left: auto; right: 24px; transform: rotate(45deg); }
 
 @keyframes blink { 50% { opacity: 0; } }
 @keyframes pulse { 50% { opacity: .55; } }
@@ -961,6 +964,29 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 }
 .exp-sheet-expand svg { width: 14px; height: 14px; }
 .exp-sheet-concept { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* half the screen (an analysis, the lesson's list): over a scrim, its
+   content scrolling inside the part that shows, dragged by its grip */
+.exp-sheet-scrim { position: fixed; inset: 0; z-index: 29; background: rgb(0 0 0 / .32); opacity: 0; pointer-events: none; transition: opacity .3s; }
+.exp-sheet-scrim.on { opacity: 1; pointer-events: auto; }
+.exp-sheet.at-half { touch-action: auto; }
+.exp-sheet.at-half .exp-sheet-grip { touch-action: none; padding: 9px 40px; margin: 0 auto; width: auto; height: auto; background: none; }
+.exp-sheet.at-half .exp-sheet-grip::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 4px; background: var(--rule); }
+.exp-sheet-half { height: calc(100dvh * .64 - 22px); overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
+.exp-sheet-half:has(> .analysis.docked) { display: flex; flex-direction: column; overflow: hidden; }
+/* docked in the half screen, the analysis fills it: its body scrolls, its
+   foot (固定探索) stays in sight */
+.exp-sheet-half .analysis.docked { position: static; flex: 1; min-height: 0; display: flex; flex-direction: column; width: auto; max-width: none; border: 0; border-radius: 0; box-shadow: none; background: none; animation: none; }
+.exp-sheet-half .analysis.docked .analysis-body { flex: 1; min-height: 0; max-height: none; }
+.exp-sheet-half .analysis.docked .analysis-foot { flex: none; border-top: 1px solid var(--line); }
+.exp-list { padding: 0 20px 20px; }
+.exp-list-head { display: flex; align-items: center; gap: 6px; margin: 2px 0 10px; font-size: 15px; font-weight: 600; }
+.exp-list-head svg { width: 15px; height: 15px; color: var(--explore); }
+.exp-list-head span { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--text-3); }
+.exp-list ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.exp-list li > button { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); text-align: left; color: var(--text); cursor: pointer; }
+.exp-list b { font-family: var(--serif); font-size: 15px; font-weight: 600; }
+.exp-list li span { font-size: 13px; line-height: 1.6; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.exp-list small { font-size: 11px; color: var(--text-3); }
 @media (prefers-reduced-motion: reduce) { .exp-sheet { transition: none; } }
 .note-card .note-quote { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid var(--rule); color: var(--text-3); font-family: var(--serif); font-size: 12px; }
 .note-card .note-quote.look-underline { border-left-color: var(--ink-accent); }
@@ -1177,6 +1203,9 @@ a.nb-quote:hover .nq-text { color: var(--ink-accent); }
   border: 0; background: none; color: var(--text); -webkit-tap-highlight-color: transparent;
 }
 .lesson-bar-btn svg { width: 22px; height: 22px; }
+.lesson-bar-slot { display: contents; }
+.lesson-bar-exps { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border: 0; border-radius: 99px; background: var(--info-soft); color: var(--explore); font-size: 12px; font-weight: 600; cursor: pointer; }
+.lesson-bar-exps svg { width: 14px; height: 14px; }
 .shell.own-top .main { padding-top: calc(56px + 32px); }
 @media (max-width: 760px) { .docs-bar { display: none; } }
 .drawer-head { position: relative; display: flex; align-items: center; gap: 12px; padding-bottom: 10px; margin-bottom: 18px; border-bottom: 1.5px solid var(--text); }

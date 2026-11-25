@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { NotebookPen, Pencil, Sparkles, Trash2, Underline } from 'lucide-react';
+import { NotebookPen, Pencil, Sparkles, Telescope, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
 import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
@@ -95,9 +95,11 @@ type Editing =
 // and rises from the foot of a narrow one. The annotations are painted with the CSS Custom Highlight
 // API, so the rendered Markdown is never touched.
 // onPending hears how many of the reader's annotations on the lesson await
-// migration; only attached annotations show in the text.
-export function Annotator({ courseId, lessonId, root, rail, onPending }: {
-  courseId: number; lessonId: number; root: HTMLElement | null; rail: HTMLElement | null; onPending?: (n: number) => void;
+// migration; only attached annotations show in the text. On a narrow
+// screen the lesson's top bar holds, in barSlot, how many explorations the
+// lesson has, which opens their list.
+export function Annotator({ courseId, lessonId, root, rail, barSlot, onPending }: {
+  courseId: number; lessonId: number; root: HTMLElement | null; rail: HTMLElement | null; barSlot?: HTMLElement | null; onPending?: (n: number) => void;
 }) {
   const [anns, setAnns] = useState<Annotation[]>([]);
   const map = useTextMap(root);
@@ -133,13 +135,16 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   // a narrow screen's sheet of explorations (see exploration-sheet.ts)
   const [sheet, sheetDispatch] = useSheet();
   const sheetUp = !wide && sheet.detent !== 'closed';
+  // the exploration the sheet holds, if it holds one
+  const sheetExp = sheet.body?.kind === 'exploration' ? sheet.body.id : null;
   const expsRef = useRef(exps);
   expsRef.current = exps;
-  // wide screens offer 分析, greyed out with the reason until the
-  // assistant is set up ('' once it is)
+  // 分析 is greyed out with the reason until the assistant is set up ('' once it is)
   const user = useUser();
   const unavailable = !user || user.aiAvailable ? '' : unavailableText(user.aiProblem, user.role === 'admin');
-  const [analysis, setAnalysis] = useState<{ quote: Quote; ranges: Range[]; at: Anchor } | null>(null);
+  const [analysis, setAnalysis] = useState<{ quote: Quote; ranges: Range[]; at: Anchor | null } | null>(null);
+  // a narrow screen's analysis, in the sheet, closes through here (asking first)
+  const closeAnalysis = useRef(() => {});
   const analyzing = useRef(false);
   analyzing.current = !!analysis;
 
@@ -353,7 +358,8 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     } catch (ex) { failed(ex); }
   };
 
-  // analyze opens the analysis popover on a quote, under its text
+  // analyze opens the analysis on a quote: in a popover under its text on
+  // a wide screen, in half the screen on a narrow one
   const analyze = (quote: Quote, ranges: Range[]) => {
     const rects = ranges.flatMap((r) => Array.from(r.getClientRects())).filter((c) => c.width > 0);
     if (!rects.length) return;
@@ -363,7 +369,22 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     setPick(null);
     setOpen(null);
     setEditing(null);
-    setAnalysis({ quote, ranges, at: { left, bottom } });
+    setAnalysis({ quote, ranges, at: wide ? { left, bottom } : null });
+    if (!wide) sheetDispatch({ type: 'analyze' });
+  };
+  const pinned = (e: Exploration) => {
+    setExps((list) => [...list, e]);
+    setAnalysis(null);
+    setActive(null);
+    if (!wide) { sheetDispatch({ type: 'pinned', id: e.id, y: scrollY }); return; }
+    setActiveExp(e.id);
+    setOpenExp(null);
+  };
+  // an exploration picked in the list: its passage into view, its card up
+  const pickExp = (id: number) => {
+    const line = firstLine(placedExps.get(id) ?? []);
+    if (line) window.scrollTo({ top: line.top + scrollY - innerHeight / 3, behavior: 'instant' });
+    sheetDispatch({ type: 'pickExploration', id, y: scrollY });
   };
 
   // startNote opens the note editor on an annotation, at its text
@@ -394,7 +415,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
         <span className="ann-sep" />
         <span className="ann-acts">
           <button type="button" className="ann-btn" onClick={() => { setEditing({ spot: pick.spot, quote: pick.quote, ranges: [pick.range], look: { style: 'highlight', color: 'yellow' }, draft: '' }); setPick(null); }}><NotebookPen />写笔记</button>
-          {wide ? <AnalyzeButton unavailable={unavailable || (pick.overlaps ? OVERLAP_TEXT : '')} onAnalyze={() => analyze(pick.quote, [pick.range])} /> : null}
+          <AnalyzeButton unavailable={unavailable || (pick.overlaps ? OVERLAP_TEXT : '')} onAnalyze={() => analyze(pick.quote, [pick.range])} />
         </span>
       </Floating>
     );
@@ -412,7 +433,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
               <span className="ann-sep" />
               <span className="ann-acts">
                 {a.note ? null : <button type="button" className="ann-btn" onClick={() => startNote(a)}><NotebookPen />写笔记</button>}
-                {wide ? <AnalyzeButton unavailable={unavailable || (overlapping(a.range, exps) ? OVERLAP_TEXT : '')} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} /> : null}
+                <AnalyzeButton unavailable={unavailable || (overlapping(a.range, exps) ? OVERLAP_TEXT : '')} onAnalyze={() => analyze({ quote: a.quote, prefix: a.prefix, suffix: a.suffix }, placed.get(a.id) ?? [])} />
                 <button type="button" className="ann-btn danger" onClick={() => remove(a.id)}><Trash2 />删除</button>
               </span>
             </div>
@@ -450,18 +471,50 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
           })),
         ]} />
       ) : null}
-      {root ? <PinnedPassages root={root} placed={placedExps} active={wide ? activeExp : (sheetUp ? sheet.body?.id ?? null : null)} /> : null}
+      {root ? <PinnedPassages root={root} placed={placedExps} active={wide ? activeExp : (sheetUp ? sheetExp : null)} /> : null}
+      {!wide && barSlot && exps.length ? createPortal(
+        <button type="button" className="lesson-bar-exps" aria-label={`本讲探索 ${exps.length} 个`} onClick={() => sheetDispatch({ type: 'openList' })}><Telescope aria-hidden />{exps.length}</button>,
+        barSlot,
+      ) : null}
       {wide ? null : (
-        <ExplorationSheet sheet={sheet} exploration={exps.find((e) => e.id === sheet.body?.id) ?? null} send={sheetDispatch}
+        <ExplorationSheet sheet={sheet} exploration={exps.find((e) => e.id === sheetExp) ?? null} send={sheetDispatch}
+          half={sheet.body?.kind === 'list' ? <ExplorationList exps={exps} onPick={pickExp} />
+            : sheet.body?.kind === 'analysis' && analysis ? (
+              <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={null} docked={{ close: closeAnalysis }}
+                onClose={() => { setAnalysis(null); sheetDispatch({ type: 'tapBeside' }); }} onPinned={pinned} />
+            ) : null}
+          onDismiss={() => { if (sheet.body?.kind === 'analysis' && analysis) closeAnalysis.current(); else sheetDispatch({ type: 'tapBeside' }); }}
           onDetail={(x) => setExps((list) => list.map((e) => (e.id === x.id ? { ...e, nodes: x.nodes.length - 1 } : e)))}
           onDeleted={(id) => setExps((list) => list.filter((e) => e.id !== id))} />
       )}
       {floating}
-      {analysis ? (
-        <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)}
-          onPinned={(e) => { setExps((list) => [...list, e]); setAnalysis(null); setActive(null); setActiveExp(e.id); setOpenExp(null); }} />
+      {wide && analysis ? (
+        <AnalysisPopover courseId={courseId} lessonId={lessonId} quote={analysis.quote} at={analysis.at} onClose={() => setAnalysis(null)} onPinned={pinned} />
       ) : null}
     </>
+  );
+}
+
+// ExplorationList is the lesson's explorations, in the order of the text,
+// as a narrow screen's half sheet lists them: each its title, concept and
+// how many nodes; a tap picks one.
+function ExplorationList({ exps, onPick }: { exps: Exploration[]; onPick: (id: number) => void }) {
+  const ordered = [...exps].sort((a, b) => (a.range?.start ?? Infinity) - (b.range?.start ?? Infinity));
+  return (
+    <div className="exp-list">
+      <h2 className="exp-list-head"><Telescope aria-hidden />本讲探索<span>{exps.length} 个</span></h2>
+      <ul>
+        {ordered.map((e) => (
+          <li key={e.id}>
+            <button type="button" onClick={() => onPick(e.id)}>
+              <b>{e.title}</b>
+              <span>{e.concept}</span>
+              {e.nodes > 0 ? <small>节点 {e.nodes}</small> : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -590,8 +643,8 @@ function NoteEditor({ draft, onDraft, canClear, onSave, onCancel }: { draft: str
   );
 }
 
-// AnalyzeButton is 分析 on a wide screen. While the assistant is not set
-// up it stays, greyed out, and says why when pointed at or focused; it is
+// AnalyzeButton is 分析. While the assistant is not set up, or the text
+// already has an exploration, it stays, greyed out, and says why when pointed at or focused; it is
 // aria-disabled rather than disabled, which would take the pointer away.
 function AnalyzeButton({ unavailable, onAnalyze }: { unavailable: string; onAnalyze: () => void }) {
   const tip = useId();

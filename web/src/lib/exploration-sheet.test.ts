@@ -195,3 +195,38 @@ describe('the report page and deleting on the whole-screen exploration', () => {
     expect(step.history).toBe('back');
   });
 });
+
+describe('analysis and the lesson’s list on a narrow screen', () => {
+  const analyze: SheetEvent = { type: 'analyze' };
+  const list: SheetEvent = { type: 'openList' };
+
+  it('takes half the screen for an analysis, and for the list of the lesson’s explorations', () => {
+    expect(after(analyze)).toMatchObject({ detent: 'half', body: { kind: 'analysis' } });
+    expect(after(pinned(7), list)).toMatchObject({ detent: 'half', body: { kind: 'list' } });
+  });
+
+  it('folds into the new exploration’s card once the analysis is pinned', () => {
+    const step = nextSheet(after(analyze), { type: 'pinned', id: 12, y: 400 });
+    expect(step.state).toMatchObject({ detent: 'peek', body: { kind: 'exploration', id: 12 } });
+    expect(step.history).toBeNull();
+    // reading on is measured from where the page was
+    expect(shown(after(analyze, { type: 'pinned', id: 12, y: 400 }, scroll(520)))).not.toBeNull();
+    expect(shown(after(analyze, { type: 'pinned', id: 12, y: 400 }, scroll(521)))).toBeNull();
+  });
+
+  it('opens the card of an exploration picked in the list', () => {
+    expect(after(list, { type: 'pickExploration', id: 9, y: 300 })).toMatchObject({ detent: 'peek', body: { kind: 'exploration', id: 9 } });
+  });
+
+  it('closes the half screen on a tap beside it, or pulled down far enough; the page under it does not move it', () => {
+    expect(shown(after(list, { type: 'tapBeside' }))).toBeNull();
+    expect(shown(after(list, { type: 'release', dy: 61 }))).toBeNull();
+    expect(after(list, { type: 'release', dy: 30 })).toMatchObject({ detent: 'half' });
+    expect(after(list, scroll(5000))).toMatchObject({ detent: 'half' });
+  });
+
+  it('adds no history entry for the half screen', () => {
+    expect(nextSheet(closedSheet, analyze).history).toBeNull();
+    expect(nextSheet(closedSheet, list).history).toBeNull();
+  });
+});
