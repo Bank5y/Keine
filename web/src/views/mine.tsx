@@ -15,7 +15,10 @@ import { api, ApiError } from '@/lib/api';
 import { RETENTION_LABEL, canUnsubscribe, type CourseSummary } from '@/lib/courses';
 import { COMPLETION_OPTIONS, COURSE_TYPE_OPTIONS } from '@/lib/course-filter';
 import { MINE_STATES, STUDY_LABEL, mineParams, readMineFilter } from '@/lib/mine-filter';
+import { SearchEnd } from '@/components/page-search';
+import { filterMine } from '@/lib/page-search';
 import { setParam, useSearch } from '@/lib/router';
+import { useTopSearch } from '@/lib/top-search';
 import { useNarrow } from '@/lib/use-narrow';
 
 const stateOptions = MINE_STATES.map((v) => ({ value: v, label: STUDY_LABEL[v] }));
@@ -43,6 +46,11 @@ export function MineView() {
     try { await api(method, path); toast.success(done); setDeleting(null); setRemoving(null); void load(); } catch (ex) { toast.error(ex instanceof ApiError ? ex.message : '操作失败'); }
   };
   const filtered = !!(state || type || completion);
+  // the top bar's search, on a narrow screen, narrows the list to the
+  // courses whose name or author has the words (see page-search.ts)
+  const query = useTopSearch();
+  const q = narrow ? (query ?? '').trim() : '';
+  const shown = courses && q ? filterMine(courses, q) : courses;
 
   return (
     <div className="page enter">
@@ -71,16 +79,21 @@ export function MineView() {
         </>
       )}
       {err ? <ErrorBox message={err} /> : null}
-      {courses ? <div className="result-bar"><span className="count"><b>{courses.length}</b>门课程</span><span>按最近学习排序</span></div> : null}
+      {courses && shown ? (
+        <div className="result-bar">
+          <span className="count">{q ? <><b>{shown.length}</b> / {courses.length} 门课程匹配</> : <><b>{courses.length}</b>门课程</>}</span>
+          <span>按最近学习排序</span>
+        </div>
+      ) : null}
       {courses && !courses.length ? (
         <Empty glyph={filtered ? '无' : '空'} title={filtered ? '没有符合条件的课程' : '还没有课程'}>
           <div>{filtered ? '换个筛选条件试试' : '上传一个课程包, 或去课程库订阅一门课'}</div>
         </Empty>
       ) : null}
-      {courses && courses.length && narrow ? (
+      {shown && shown.length && narrow ? (
         <CourseList>
-          {courses.map((c) => (
-            <CourseRow key={c.id} course={c} href={`/courses/${c.id}`} action={<RowMenu course={c} onRemove={setRemoving} onDelete={setDeleting} />}>
+          {shown.map((c) => (
+            <CourseRow key={c.id} course={c} href={`/courses/${c.id}`} mark={q} action={<RowMenu course={c} onRemove={setRemoving} onDelete={setDeleting} />}>
               {c.retention ? <div className="cr-author">{RETENTION_LABEL[c.retention]}</div>
                 : c.visibility === 'private' ? <div className="cr-author">私有课程</div> : null}
               <div className="cr-progress">
@@ -91,6 +104,7 @@ export function MineView() {
           ))}
         </CourseList>
       ) : null}
+      {courses && courses.length && q ? <SearchEnd q={q} none={shown?.length ? null : `你订阅的课程里没有「${q}」`} /> : null}
       {courses && courses.length && !narrow ? <Shelf courses={courses} hrefOf={(c) => `/courses/${c.id}`} onDelete={setDeleting} onRemove={setRemoving} showProgress /> : null}
       <UploadDialog open={uploading} onClose={() => setUploading(false)} onUploaded={() => { setUploading(false); void load(); }} />
       <Confirm open={!!deleting} title="删除课程" confirm="删除" onClose={() => setDeleting(null)}

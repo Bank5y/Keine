@@ -1,13 +1,16 @@
-import { useState, type FormEvent } from 'react';
-import { LogOut, Moon, Search, Sun } from 'lucide-react';
+import { useEffect, useRef, type FormEvent } from 'react';
+import { ArrowLeft, LogOut, Moon, Search, Sun, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { NotificationBell } from '@/components/notification-bell';
 import { NavLink } from '@/components/bottom-nav';
 import { libraryHref } from '@/lib/library-filter';
 import { activeItem, navItems } from '@/lib/nav';
 import { Link, navigate, setParam, useParam } from '@/lib/router';
+import { backTarget, topBarFor, type TopBar } from '@/lib/page-search';
 import { logout, type User } from '@/lib/session';
+import { askLibraryFocus, setTopSearch, takeLibraryFocus, useTopSearch } from '@/lib/top-search';
 import { toggleTheme } from '@/lib/theme';
+import { cn } from '@/lib/utils';
 
 function ThemeToggle() {
   return (
@@ -47,44 +50,92 @@ export function Masthead({ user, path }: { user: User | null | undefined; path: 
   );
 }
 
-// TopBar is the narrow top bar: search, notifications, theme. The search
-// always searches the library: on the library it filters as you type, on
-// any other page Enter opens the library on the results.
-export function TopBar({ path }: { path: string }) {
-  return (
-    <header className="masthead topbar">
-      <div className="mast-inner">
-        <TopSearch onLibrary={path === '/library'} />
-        <div className="mast-tools">
-          <NotificationBell path={path} />
-          <ThemeToggle />
+// TopBar is the narrow top bar. Most pages have a search scoped to the
+// page (see page-search.ts), with notifications and the theme beside it:
+// tapped, it searches in place (the field widens, the others make way for
+// 清空 and 取消) or, on a page with nothing to search, opens the library's.
+// Notifications and the admin pages have ← and the page's name instead; ←
+// goes back to the page come in from (from), else to the page's default.
+export function TopBar({ path, from }: { path: string; from: string | null }) {
+  const bar = topBarFor(path);
+  const query = useTopSearch();
+  const libraryQuery = useParam('q');
+  // a search belongs to its page: another page starts with none
+  useEffect(() => () => setTopSearch(null), [path]);
+  if (bar.kind === 'back') {
+    return (
+      <header className="masthead topbar">
+        <div className="mast-inner">
+          <button type="button" className="topbar-back" aria-label="返回" onClick={() => navigate(backTarget(path, from))}><ArrowLeft /></button>
+          <b className="topbar-title">{bar.title}</b>
+          <div className="mast-tools">
+            <NotificationBell path={path} />
+            <ThemeToggle />
+          </div>
         </div>
+      </header>
+    );
+  }
+  // the library searches by its address: words there are a search under way
+  const searching = query != null || (bar.scope === 'library' && bar.inPlace && libraryQuery !== '');
+  return (
+    <header className={cn('masthead topbar', searching && 'searching')}>
+      <div className="mast-inner">
+        <TopSearch bar={bar} searching={searching} />
+        {searching ? (
+          <button type="button" className="topbar-cancel" onClick={() => cancel(bar.scope)}>取消</button>
+        ) : (
+          <div className="mast-tools">
+            <NotificationBell path={path} />
+            <ThemeToggle />
+          </div>
+        )}
       </div>
     </header>
   );
 }
 
-function TopSearch({ onLibrary }: { onLibrary: boolean }) {
-  const libraryQuery = useParam('q');
-  const [draft, setDraft] = useState('');
-  const value = onLibrary ? libraryQuery : draft;
+// cancel ends a search, the page back as it was
+function cancel(scope: string) {
+  if (scope === 'library') setParam('q', '');
+  setTopSearch(null);
+}
 
+function TopSearch({ bar, searching }: { bar: Extract<TopBar, { kind: 'search' }>; searching: boolean }) {
+  const libraryQuery = useParam('q');
+  const query = useTopSearch();
+  const library = bar.scope === 'library';
+  const value = library ? libraryQuery : query ?? '';
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (library && bar.inPlace && takeLibraryFocus()) { setTopSearch(''); input.current?.focus(); } }, [library, bar.inPlace]);
+
+  const write = (v: string) => {
+    if (library) setParam('q', v);
+    setTopSearch(library ? '' : v);
+  };
+  const start = () => {
+    if (!bar.inPlace) { askLibraryFocus(); navigate(libraryHref({})); return; }
+    if (!searching) setTopSearch('');
+  };
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    e.currentTarget.querySelector('input')?.blur();
-    if (onLibrary) return;
-    const q = draft.trim();
-    setDraft('');
-    navigate(libraryHref({ q }));
+    input.current?.blur();
   }
 
   return (
-    <form className="top-search" role="search" onSubmit={submit}>
+    <form className={cn('top-search', searching && 'on')} role="search" onSubmit={submit}>
       <Search aria-hidden="true" />
+      <b className="top-search-scope">{bar.label}</b>
+      <i className="top-search-rule" aria-hidden="true" />
       <input
-        type="search" enterKeyHint="search" placeholder="搜索课程名或讲师" aria-label="搜索课程"
-        value={value} onChange={(e) => (onLibrary ? setParam('q', e.target.value) : setDraft(e.target.value))}
+        ref={input} type="search" enterKeyHint="search" placeholder={bar.placeholder} aria-label={`搜索${bar.label}`}
+        value={value} readOnly={!bar.inPlace}
+        onFocus={start} onChange={(e) => write(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancel(bar.scope); input.current?.blur(); } }}
       />
+      {searching && value ? (
+        <button type="button" className="top-search-clear" aria-label="清空" onMouseDown={(e) => e.preventDefault()} onClick={() => { write(''); input.current?.focus(); }}><X /></button>
+      ) : null}
     </form>
   );
 }
