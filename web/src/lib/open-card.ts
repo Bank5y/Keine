@@ -19,12 +19,10 @@ export function placeOpenCard({ anchor, content, viewport, top, margin }: OpenCa
   return { top: Math.max(top, Math.min(anchor, bottom - height)), height };
 }
 
-// How far the page may scroll under an open card before it folds itself
-// away (#180): past this the reader has moved on from its passage.
-export const SCROLL_AWAY = 200;
-
-// scrolledAway says whether the page has scrolled far enough from where
-// it was when the card opened for the card to fold.
-export function scrolledAway(from: number, now: number): boolean {
-  return Math.abs(now - from) > SCROLL_AWAY;
+// touchesEdge says whether an open card, as the page scrolls under it, has
+// reached the top bar or the screen's bottom (#180): there it folds itself
+// away, the reader having moved on from its passage. All in screen
+// coordinates; a card placed against an edge has not reached it yet.
+export function touchesEdge(card: { top: number; bottom: number }, screen: { top: number; viewport: number }): boolean {
+  return card.top < screen.top - 0.5 || card.bottom > screen.viewport + 0.5;
 }
