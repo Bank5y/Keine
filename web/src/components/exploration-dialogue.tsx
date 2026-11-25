@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from 'react';
 import { BookOpen, ChevronLeft, Copy, FileText, Menu, Plus, RotateCcw, Square, Telescope, Trash2, X, ArrowUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Credit, documentParts, Lookups, Notice, Ticker } from '@/components/analysis-popover';
@@ -446,10 +446,11 @@ const NO_SOURCES = new Map<number, Cited>();
 
 // Asking is a turn being answered: the question, the lookups (a list
 // while nothing is written, one line after), and the reply as it streams.
-export function Asking({ question, run, kind }: { question: Question; run: Run; kind: NodeKind }) {
+// asked, when given, shows the question in place of the usual bubble.
+export function Asking({ question, run, kind, asked }: { question: Question; run: Run; kind: NodeKind; asked?: ReactNode }) {
   return (
     <div className="dlg-turn asking" aria-live="polite" aria-busy="true">
-      <Asked question={question} kind={kind} />
+      {asked ?? <Asked question={question} kind={kind} />}
       {run.text ? <Lookups activities={run.activities} /> : run.activities.length ? <Ticker activities={run.activities} /> : null}
       {run.thinking && !run.text ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p> : null}
       {!run.text && !run.thinking && !run.activities.length ? <p className="analysis-wait">正在回答…</p> : null}

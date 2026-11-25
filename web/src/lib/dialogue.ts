@@ -69,6 +69,70 @@ export function seenBy(nodes: DialogueNode[], at: number): Turn[] {
   return out;
 }
 
+// ---- what the next question carries (a narrow screen's box) ----
+
+type Kind = Exclude<NodeKind, 'main'>;
+
+// Carry is what the next question takes along, shown as tags in the box:
+// the kind of node to open with it, the turn marked to fork from, and a
+// selection (选段) taken from a reply, with its turn. Each is optional.
+export interface Carry { kind: Kind | null; fork: number | null; selection: { turn: number; text: string } | null }
+
+export const noCarry: Carry = { kind: null, fork: null, selection: null };
+
+// kind / fork / select add a tag (a selection takes the place of the one
+// before: one at a time); unkind takes off the kind and the fork mark
+// with it, unfork and unselect take off theirs; sent clears the box.
+export type CarryEvent =
+  | { type: 'kind'; kind: Kind }
+  | { type: 'unkind' }
+  | { type: 'fork'; turn: number }
+  | { type: 'unfork' }
+  | { type: 'select'; selection: { turn: number; text: string } }
+  | { type: 'unselect' }
+  | { type: 'sent' };
+
+export function stepCarry(c: Carry, e: CarryEvent): Carry {
+  switch (e.type) {
+    case 'kind': return { ...c, kind: e.kind };
+    case 'unkind': return { ...c, kind: null, fork: null };
+    case 'fork': return { ...c, fork: e.turn };
+    case 'unfork': return { ...c, fork: null };
+    case 'select': return { ...c, selection: e.selection };
+    case 'unselect': return { ...c, selection: null };
+    case 'sent': return noCarry;
+  }
+}
+
+// what sending the box does: ask on in the current node after its last
+// turn, open a node forked from a turn with the question as its first, or
+// nothing (reason says why, '' when there is just nothing to send)
+export type Next =
+  | { to: 'turn'; after: number; question: Question }
+  | { to: 'node'; fork: number; kind: Kind; question: Question }
+  | { to: 'none'; reason: string };
+
+export const FULL_TEXT = `已有 ${MAX_NODES} 个节点，删除一些后才能再开`;
+
+// nextQuestion is what the box sends from node, with what it carries and
+// the words typed. A new node forks from the turn marked, else the
+// selection's turn, else the node's last turn; a fork marked waits for a
+// kind. No node opens past MAX_NODES.
+export function nextQuestion(node: DialogueNode, nodes: DialogueNode[], c: Carry, text: string): Next {
+  const question: Question = { text: text.trim(), attachments: c.selection ? [{ kind: 'selection', text: c.selection.text }] : [] };
+  const empty = !question.text && !question.attachments.length;
+  const last = node.turns[node.turns.length - 1];
+  if (c.kind) {
+    if (nodes.length >= MAX_NODES) return { to: 'none', reason: FULL_TEXT };
+    if (empty) return { to: 'none', reason: '' };
+    return { to: 'node', fork: c.fork ?? c.selection?.turn ?? last.id, kind: c.kind, question };
+  }
+  if (c.fork != null) return { to: 'none', reason: '先选节点类型' };
+  if (last.meta.interrupted === 'failed') return { to: 'none', reason: '重试这一轮后才能接着问' };
+  if (empty) return { to: 'none', reason: '' };
+  return { to: 'turn', after: last.id, question };
+}
+
 // ---- the stack of drawers ----
 
 // Layer is a drawer on screen: entering slides in from the right, leaving
