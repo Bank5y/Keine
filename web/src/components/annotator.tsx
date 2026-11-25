@@ -273,16 +273,19 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   }, [root, anns, placed, placedExps]);
 
   // an open bar closes on a click elsewhere or on Escape; so does the focus
-  // on a card
+  // on a card. A dialog over the page (a lightbox opened from a card or the
+  // text) is a layer of its own: clicking in it, or Escape closing it, leaves
+  // the card as it was.
   useEffect(() => {
     if (!open && !editing && active == null && activeExp == null) return undefined;
-    const inside = (t: Node) => bar.current?.contains(t) || root?.contains(t) || (t instanceof Element && t.closest('.note-card, .exp-card, .exp-card-open'));
+    const inside = (t: Node) => bar.current?.contains(t) || root?.contains(t) || (t instanceof Element && t.closest('.note-card, .exp-card, .exp-card-open, [role="dialog"]'));
     const clear = () => { setOpen(null); setEditing(null); setActive(null); setActiveExp(null); setOpenExp(null); };
     const onDown = (e: PointerEvent) => { if (!cardBusy.current && !inside(e.target as Node)) clear(); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !cardBusy.current) clear(); };
+    // on the window's capture, ahead of the dialog closing itself on the same key
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !cardBusy.current && !document.querySelector('[role="dialog"]')) clear(); };
     document.addEventListener('pointerdown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+    window.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey, true); };
   }, [open, editing, active, activeExp, root]);
 
   const create = async (look: Look, note?: string) => {
