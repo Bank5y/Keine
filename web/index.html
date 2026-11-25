@@ -5,7 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Keine</title>
     <script>
-      try { var t = localStorage.getItem('keine.theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+      // appearance before the first paint; keep in step with src/lib/appearance.ts
+      try {
+        var r = document.documentElement, ls = localStorage;
+        var t = ls.getItem('keine.theme'); if (t) r.dataset.theme = t;
+        if (ls.getItem('keine.palette') === 'mokou') r.dataset.palette = 'mokou';
+        [['read', 'fontRead', 'serif'], ['code', 'fontCode', 'mono']].forEach(function (f) {
+          var v = ls.getItem('keine.font.' + f[0]);
+          if (!v) return;
+          if (v.indexOf('family:') === 0) r.style.setProperty('--' + f[0] + '-custom', '"' + v.slice(7).replace(/["\\]/g, '') + '", var(--' + f[2] + ')');
+          else r.dataset[f[1]] = v;
+        });
+      } catch (e) {}
     </script>
   </head>
   <body>

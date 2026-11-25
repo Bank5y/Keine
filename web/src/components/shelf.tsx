@@ -6,12 +6,12 @@ import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, canUnsubs
 import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
-// deterministic muted "book cloth" color for courses without a cover image
-const CLOTH = ['#606060', '#476666', '#4d4d4d', '#5a5f66', '#6b6b6b', '#3f5252', '#575757', '#4a5560'];
+// deterministic muted "book cloth" color for courses without a cover image,
+// one of the palette's eight (--cloth-1 … --cloth-8 in styles.css)
 function clothColor(s: string) {
   let h = 0;
   for (const ch of s) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
-  return CLOTH[h % CLOTH.length];
+  return `var(--cloth-${(h % 8) + 1})`;
 }
 
 export function Plate({ title }: { title: string }) {
