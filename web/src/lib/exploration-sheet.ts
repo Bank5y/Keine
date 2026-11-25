@@ -28,20 +28,38 @@ export interface SheetState { detent: Detent; body: SheetBody | null; top: numbe
 // tapPassage: a pinned passage tapped in the text, the page scrolled to y.
 // tapText: a tap on the text away from any pinned passage. scroll: the
 // page scrolled to y. release: a drag on the sheet let go dy px down from
-// where it began (up is negative).
+// where it began (up is negative). expand: 展开探索 on the card. close: ✕
+// on the whole-screen exploration. back: the system's back (the browser
+// went back an entry).
 export type SheetEvent =
   | { type: 'tapPassage'; id: number; y: number }
   | { type: 'tapText' }
   | { type: 'scroll'; y: number }
-  | { type: 'release'; dy: number };
-// the next state, and whether the step adds an entry to the browser's
-// history (so the system's back undoes it)
-export interface SheetStep { state: SheetState; push: boolean }
+  | { type: 'release'; dy: number }
+  | { type: 'expand' }
+  | { type: 'close' }
+  | { type: 'back' };
+// the next state, and what the step does to the browser's history: push
+// an entry (so the system's back undoes the step), go back one (the back
+// that follows takes the step), or nothing
+export interface SheetStep { state: SheetState; history: 'push' | 'back' | null }
 
 export const closedSheet: SheetState = { detent: 'closed', body: null, top: 0 };
 
 export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
-  const stay = (state: SheetState): SheetStep => ({ state, push: false });
+  const stay = (state: SheetState): SheetStep => ({ state, history: null });
+  // the whole screen opens at once from the card, over the page and its
+  // bars, with an entry of its own in the history
+  const full = (): SheetStep => ({ state: { ...s, detent: 'full' }, history: 'push' });
+  if (s.detent === 'full') {
+    switch (e.type) {
+      // ✕ goes the system back's way, so the entry the page pushed goes too
+      case 'close': return { state: s, history: 'back' };
+      case 'back': return stay(closedSheet);
+      // nothing under the page can be reached while it is up
+      default: return stay(s);
+    }
+  }
   switch (e.type) {
     case 'tapPassage': return stay({ detent: 'peek', body: { kind: 'exploration', id: e.id }, top: e.y });
     case 'tapText': return stay(closedSheet);
@@ -50,6 +68,12 @@ export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
       if (e.y - s.top > CLOSE_AFTER) return stay(closedSheet);
       return stay(e.y < s.top ? { ...s, top: e.y } : s);
     case 'release':
-      return stay(s.detent === 'peek' && e.dy > DRAG_COMMIT ? closedSheet : s);
+      if (s.detent !== 'peek') return stay(s);
+      if (e.dy > DRAG_COMMIT) return stay(closedSheet);
+      if (e.dy < -DRAG_COMMIT) return full();
+      return stay(s);
+    case 'expand': return s.detent === 'peek' ? full() : stay(s);
+    case 'close':
+    case 'back': return stay(s);
   }
 }

@@ -27,9 +27,36 @@ type Kind = Exclude<NodeKind, 'main'>;
 type Draft = { kind: Kind; turn: number; fragment?: string };
 // a turn being answered: on which node, after which turn (or as a node's
 // first, or a retry in place), and what was asked
-type Pending = { layer: string; question: Question; run: Run; retry?: number };
+export type Pending = { layer: string; question: Question; run: Run; retry?: number };
 // what stopped a question before it ran, shown where it was asked
-type Refused = { layer: string; code: string; message: string };
+export type Refused = { layer: string; code: string; message: string };
+
+// useRuns runs the dialogue one turn at a time: go streams a run into
+// pending, kept into the exploration however it ends, and returns what was
+// kept, or null when nothing was (refused says why). A new run stops the
+// one before; leaving stops it too. layer names where the run shows.
+export function useRuns() {
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [refused, setRefused] = useState<Refused | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  useEffect(() => () => abort.current?.abort(), []);
+  const go = async (layer: string, question: Question, start: (on: (e: any) => void, signal: AbortSignal) => Promise<Ended>, retry?: number) => {
+    abort.current?.abort();
+    const ac = new AbortController();
+    abort.current = ac;
+    setRefused(null);
+    setPending({ layer, question, run: { text: '', activities: [], thinking: false }, retry });
+    const end = await start((e) => setPending((p) => (p ? { ...p, run: stepRun(p.run, e) } : p)), ac.signal);
+    if (ac.signal.aborted) return null;
+    setPending(null);
+    if (!end.result) {
+      setRefused({ layer, code: end.ok ? '' : end.code, message: end.ok ? '' : end.message });
+      return null;
+    }
+    return end.result;
+  };
+  return { pending, refused, setRefused, go };
+}
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -46,13 +73,10 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
   const main = d.nodes.find((n) => n.kind === 'main')!;
   const [current, setCurrent] = useState(main.id);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
-  const [refused, setRefused] = useState<Refused | null>(null);
+  const { pending, refused, setRefused, go } = useRuns();
   const [deleting, setDeleting] = useState<DialogueNode | null>(null);
   // the report's drawer is open over the node (#160)
   const [reporting, setReporting] = useState(false);
-  const abort = useRef<AbortController | null>(null);
-  useEffect(() => () => abort.current?.abort(), []);
 
   // the node shown may be gone (deleted with its parent)
   const node = d.nodes.find((n) => n.id === current) ?? main;
@@ -75,23 +99,6 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
     return false;
   };
   escTaken.current = () => pop();
-
-  // a run of the dialogue, kept into the exploration however it ends
-  const go = async (layer: string, question: Question, start: (on: (e: any) => void, signal: AbortSignal) => Promise<Ended>, retry?: number) => {
-    abort.current?.abort();
-    const ac = new AbortController();
-    abort.current = ac;
-    setRefused(null);
-    setPending({ layer, question, run: { text: '', activities: [], thinking: false }, retry });
-    const end = await start((e) => setPending((p) => (p ? { ...p, run: stepRun(p.run, e) } : p)), ac.signal);
-    if (ac.signal.aborted) return null;
-    setPending(null);
-    if (!end.result) {
-      setRefused({ layer, code: end.ok ? '' : end.code, message: end.ok ? '' : end.message });
-      return null;
-    }
-    return end.result;
-  };
 
   const ask = async (question: Question) => {
     const last = node.turns[node.turns.length - 1];
@@ -189,7 +196,7 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
 
 // withTurn puts a kept turn into its node: in place of one with its ID
 // (a retry), or after the others.
-function withTurn(d: ExplorationDetail, nodeId: number, t: Turn): ExplorationDetail {
+export function withTurn(d: ExplorationDetail, nodeId: number, t: Turn): ExplorationDetail {
   return {
     ...d,
     nodes: d.nodes.map((n) => {
@@ -200,7 +207,7 @@ function withTurn(d: ExplorationDetail, nodeId: number, t: Turn): ExplorationDet
   };
 }
 
-function deleteText(nodes: DialogueNode[], n: DialogueNode) {
+export function deleteText(nodes: DialogueNode[], n: DialogueNode) {
   let under = 0;
   const walk = (id: number) => nodes.filter((x) => x.parentId === id).forEach((x) => { under++; walk(x.id); });
   walk(n.id);
@@ -210,9 +217,9 @@ function deleteText(nodes: DialogueNode[], n: DialogueNode) {
 // ---- pieces ----
 
 // a node as the reader names it: the main node is 主节点, others by name
-const nameOf = (n: DialogueNode) => (n.kind === 'main' ? '主节点' : n.name);
+export const nameOf = (n: DialogueNode) => (n.kind === 'main' ? '主节点' : n.name);
 
-function Dot({ kind }: { kind: NodeKind }) {
+export function Dot({ kind }: { kind: NodeKind }) {
   return <span className={cn('dlg-dot', `kind-${kind}`)} aria-hidden />;
 }
 
@@ -309,7 +316,7 @@ function NodeView({ d, node, pending, refused, busy, onOpen, onFork, onAsk, onRe
 
 // ForkHead says where a node forked and what it reads: the turn it forked
 // from, then a line: everything above it is inherited, nothing after.
-function ForkHead({ d, node }: { d: ExplorationDetail; node: DialogueNode }) {
+export function ForkHead({ d, node }: { d: ExplorationDetail; node: DialogueNode }) {
   const at = node.forkTurnId == null ? null : turnAt(d.nodes, node.forkTurnId);
   const seen = node.forkTurnId == null ? 0 : seenBy(d.nodes, node.forkTurnId).length;
   if (!at) return null;
@@ -424,7 +431,7 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
   );
 }
 
-function Asked({ question: q, kind }: { question: Question; kind: NodeKind }) {
+export function Asked({ question: q, kind }: { question: Question; kind: NodeKind }) {
   return (
     <div className="dlg-asked">
       <div className="dlg-asked-bubble">
@@ -439,7 +446,7 @@ const NO_SOURCES = new Map<number, Cited>();
 
 // Asking is a turn being answered: the question, the lookups (a list
 // while nothing is written, one line after), and the reply as it streams.
-function Asking({ question, run, kind }: { question: Question; run: Run; kind: NodeKind }) {
+export function Asking({ question, run, kind }: { question: Question; run: Run; kind: NodeKind }) {
   return (
     <div className="dlg-turn asking" aria-live="polite" aria-busy="true">
       <Asked question={question} kind={kind} />
@@ -456,7 +463,7 @@ function Asking({ question, run, kind }: { question: Question; run: Run; kind: N
 // CourseLinks is the end of a reply that links it to the course (ADR
 // 0011): a line for each lesson and section, with how it relates; nothing
 // when the turn linked none.
-function CourseLinks({ courseId, links }: { courseId: number; links: Turn['courseLinks'] }) {
+export function CourseLinks({ courseId, links }: { courseId: number; links: Turn['courseLinks'] }) {
   const items = courseLinkItems(courseId, links);
   if (!items.length) return null;
   return (
@@ -474,7 +481,7 @@ function CourseLinks({ courseId, links }: { courseId: number; links: Turn['cours
   );
 }
 
-function Refusal({ refused }: { refused: Refused }) {
+export function Refusal({ refused }: { refused: Refused }) {
   const title = refused.code === 'context_too_long' ? '对话太长，模型容纳不下' : refused.code === 'credits_insufficient' ? '积分不足' : '没能发出这一轮';
   return <div className="dlg-stop" role="alert"><div><b>{title}</b><span>{refused.message}</span></div></div>;
 }
@@ -560,7 +567,7 @@ function DraftView({ d, draft, pending, refused, onCancel, onStart }: {
 
 // CreditLine names the service that writes the replies; it opens what is
 // sent to it. It stays at the foot of every drawer.
-function CreditLine() {
+export function CreditLine() {
   const [notice, setNotice] = useState(false);
   const user = useUser();
   return (
