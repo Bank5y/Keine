@@ -75,10 +75,12 @@ export function App() {
   // signed out, a phone keeps the plain masthead: there is nothing to search or navigate yet;
   // signed in, chrome carries the user for the bars
   const chrome = narrow && user ? { ...chromeFor(path), user } : null;
+  // on the desktop the admin pages are a console with a top bar of their own
+  const adminConsole = !narrow && user?.role === 'admin' && path.startsWith('/admin');
   return (
     <div className={cn('shell', chrome && chrome.bottom !== 'none' && 'with-bar', chrome?.top === 'own' && 'own-top')}>
-      {chrome ? (chrome.top === 'main' ? <TopBar path={path} entered={was.current.entered} /> : null) : <Masthead user={user} path={path} />}
-      <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
+      {chrome ? (chrome.top === 'main' ? <TopBar path={path} entered={was.current.entered} /> : null) : adminConsole ? null : <Masthead user={user} path={path} />}
+      <main className={cn('main', adminConsole && 'main-console')} id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
       {chrome?.bottom === 'nav' ? <BottomNav user={chrome.user} path={path} /> : null}
       <Toaster position="top-center" toastOptions={{ style: { background: 'var(--text)', color: 'var(--bg)', border: 0, borderRadius: 'var(--radius)' } }} />
     </div>

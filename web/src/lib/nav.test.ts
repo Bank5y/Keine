@@ -11,9 +11,9 @@ describe('navItems', () => {
     expect(labels(navItems('bottom', admin))).toEqual(['课程库', '我的课程', '笔记', '我的']);
   });
 
-  it('adds 管理 to the desktop masthead for admins only', () => {
+  it('gives everyone the same three items in the desktop masthead (admin is the gear)', () => {
     expect(labels(navItems('top', user))).toEqual(['课程库', '我的课程', '笔记']);
-    expect(labels(navItems('top', admin))).toEqual(['课程库', '我的课程', '笔记', '管理']);
+    expect(labels(navItems('top', admin))).toEqual(['课程库', '我的课程', '笔记']);
   });
 });
 
@@ -27,10 +27,10 @@ describe('activeItem', () => {
     expect(current('bottom', '/account')).toBe('我的');
   });
 
-  it('puts the admin pages under 我的 on a phone, under 管理 on the desktop', () => {
+  it('puts the admin pages under 我的 on a phone, under no item on the desktop', () => {
     for (const path of ['/admin', '/admin/users']) {
       expect(current('bottom', path)).toBe('我的');
-      expect(current('top', path)).toBe('管理');
+      expect(current('top', path)).toBeNull();
     }
   });
 

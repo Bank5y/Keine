@@ -1,4 +1,4 @@
-import { BookMarked, Library, NotebookPen, ShieldCheck, UserRound, type LucideIcon } from 'lucide-react';
+import { BookMarked, Library, NotebookPen, UserRound, type LucideIcon } from 'lucide-react';
 import type { User } from '@/lib/session';
 
 // The main navigation, declared once: the desktop masthead and the narrow
@@ -6,6 +6,8 @@ import type { User } from '@/lib/session';
 //
 // surface: where the item shows, the masthead ('top') or the bottom bar.
 // covers: the addresses that count as being under the item.
+// The admin pages are not an item: the desktop reaches them from the gear
+// at the masthead's right, a phone from 我的.
 export type NavSurface = 'top' | 'bottom';
 
 export interface NavItem {
@@ -21,7 +23,6 @@ const ITEMS: NavItem[] = [
   { label: '课程库', icon: Library, href: '/library', covers: ['/library'], surfaces: ['top', 'bottom'] },
   { label: '我的课程', icon: BookMarked, href: '/mine', covers: ['/mine'], surfaces: ['top', 'bottom'] },
   { label: '笔记', icon: NotebookPen, href: '/notes', covers: ['/notes'], surfaces: ['top', 'bottom'] },
-  { label: '管理', icon: ShieldCheck, href: '/admin', covers: ['/admin'], surfaces: ['top'], adminOnly: true },
   // the admin pages are reached from 我的 on a phone, so they count under it
   { label: '我的', icon: UserRound, href: '/account', covers: ['/account', '/admin'], surfaces: ['bottom'] },
 ];
