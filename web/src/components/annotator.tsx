@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { NotebookPen, Pencil, Sparkles, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
@@ -6,8 +6,7 @@ import { AnalysisPopover, type Anchor } from '@/components/analysis-popover';
 import { api, ApiError } from '@/lib/api';
 import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type Annotation, type Look, type Quote } from '@/lib/annotations';
 import { ExplorationCard } from '@/components/exploration-card';
-import { ExplorationSheet } from '@/components/exploration-sheet';
-import { closedSheet, nextSheet, type SheetEvent, type SheetState } from '@/lib/exploration-sheet';
+import { ExplorationSheet, useSheet } from '@/components/exploration-sheet';
 import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
 import { claimTap } from '@/lib/use-lesson-bar';
@@ -132,7 +131,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
   const wide = useMedia(NOTE_RAIL_MEDIA);
   const railed = wide && !!rail;
   // a narrow screen's sheet of explorations (see exploration-sheet.ts)
-  const [sheet, sheetDispatch] = useReducer((st: SheetState, e: SheetEvent) => nextSheet(st, e).state, closedSheet);
+  const [sheet, sheetDispatch] = useSheet();
   const sheetUp = !wide && sheet.detent !== 'closed';
   const expsRef = useRef(exps);
   expsRef.current = exps;
@@ -167,8 +166,12 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     const onScroll = () => sheetDispatch({ type: 'scroll', y: scrollY });
     addEventListener('scroll', onScroll, { passive: true });
     return () => removeEventListener('scroll', onScroll);
-  }, [sheetUp]);
-  useEffect(() => { if (wide) sheetDispatch({ type: 'tapText' }); }, [wide]);
+  }, [sheetUp, sheetDispatch]);
+  useEffect(() => {
+    if (!wide) return;
+    sheetDispatch({ type: 'close' });
+    sheetDispatch({ type: 'tapText' });
+  }, [wide, sheetDispatch]);
 
   // a pinned passage clicked in the text brings its card into view
   useEffect(() => {
@@ -258,7 +261,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onUp);
     };
-  }, [map, root]);
+  }, [map, root, sheetDispatch]);
 
   // a click on annotated text opens what lies under it, and picks its card
   useEffect(() => {
@@ -291,7 +294,7 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
     };
     root.addEventListener('click', onClick);
     return () => root.removeEventListener('click', onClick);
-  }, [root, anns, placed, placedExps, wide, sheetUp]);
+  }, [root, anns, placed, placedExps, wide, sheetUp, sheetDispatch]);
 
   // an open bar closes on a click elsewhere or on Escape; so does the focus
   // on a card. A dialog over the page (a lightbox opened from a card or the
@@ -450,7 +453,9 @@ export function Annotator({ courseId, lessonId, root, rail, onPending }: {
       {root ? <PinnedPassages root={root} placed={placedExps} active={wide ? activeExp : (sheetUp ? sheet.body?.id ?? null : null)} /> : null}
       {wide ? null : (
         <ExplorationSheet detent={sheet.detent} exploration={exps.find((e) => e.id === sheet.body?.id) ?? null}
-          onRelease={(dy) => sheetDispatch({ type: 'release', dy })} />
+          onRelease={(dy) => sheetDispatch({ type: 'release', dy })} onExpand={() => sheetDispatch({ type: 'expand' })}
+          onClose={() => sheetDispatch({ type: 'close' })}
+          onDetail={(x) => setExps((list) => list.map((e) => (e.id === x.id ? { ...e, nodes: x.nodes.length - 1 } : e)))} />
       )}
       {floating}
       {analysis ? (

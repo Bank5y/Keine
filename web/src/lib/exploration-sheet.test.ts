@@ -52,10 +52,53 @@ describe('the exploration sheet on a narrow screen', () => {
   it('keeps the card and the history as they are on the way', () => {
     const events: SheetEvent[] = [pinned(7), pinned(9), scroll(1050), { type: 'release', dy: 20 }, { type: 'tapText' }];
     let s = closedSheet;
-    for (const e of events) { const step = nextSheet(s, e); expect(step.push).toBe(false); s = step.state; }
+    for (const e of events) { const step = nextSheet(s, e); expect(step.history).toBeNull(); s = step.state; }
   });
 
   it('stays closed whatever the scrolling', () => {
     expect(shown(after(scroll(300), scroll(0)))).toBeNull();
+  });
+});
+
+describe('the whole-screen exploration on a narrow screen', () => {
+  const expand: SheetEvent = { type: 'expand' };
+  const back: SheetEvent = { type: 'back' };
+  const close: SheetEvent = { type: 'close' };
+
+  it('opens straight from the card on 展开探索, and adds a history entry for it', () => {
+    const step = nextSheet(after(pinned(7)), expand);
+    expect(step.state).toMatchObject({ detent: 'full', body: { kind: 'exploration', id: 7 } });
+    expect(step.history).toBe('push');
+  });
+
+  it('opens straight from the card pulled up far enough; a short pull settles back', () => {
+    const up = nextSheet(after(pinned(7)), { type: 'release', dy: -61 });
+    expect(up.state).toMatchObject({ detent: 'full', body: { id: 7 } });
+    expect(up.history).toBe('push');
+    expect(after(pinned(7), { type: 'release', dy: -40 })).toMatchObject({ detent: 'peek' });
+  });
+
+  it('closes on the system back, card and all, back to the text', () => {
+    const step = nextSheet(after(pinned(7), expand), back);
+    expect(shown(step.state)).toBeNull();
+    expect(step.history).toBeNull();
+  });
+
+  it('closes on ✕ the way the system back does: by going back through the history', () => {
+    const open = after(pinned(7), expand);
+    const step = nextSheet(open, close);
+    expect(step.history).toBe('back');
+    // the back that follows closes it
+    expect(shown(nextSheet(step.state, back).state)).toBeNull();
+  });
+
+  it('stays open whatever the page under it does', () => {
+    const open = after(pinned(7), expand);
+    expect(after(pinned(7), expand, scroll(5000), { type: 'tapText' })).toEqual(open);
+  });
+
+  it('leaves the history alone for a back it did not ask for', () => {
+    expect(nextSheet(after(pinned(7)), back)).toEqual({ state: after(pinned(7)), history: null });
+    expect(nextSheet(closedSheet, close).history).toBeNull();
   });
 });

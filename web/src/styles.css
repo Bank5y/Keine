@@ -962,6 +962,32 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .exp-sheet-expand svg { width: 14px; height: 14px; }
 .exp-sheet-concept { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .exp-sheet { transition: none; } }
+/* the sheet on the whole screen (and sliding away from it) is the
+   exploration's page: square, over the bars, scrolling inside */
+.exp-sheet.at-full, .exp-sheet.paged { border-radius: 0; touch-action: auto; }
+.exp-sheet.at-full { box-shadow: none; }
+.exp-page { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.exp-page-head { flex: none; display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 12px; padding-top: env(safe-area-inset-top); border-bottom: 1px solid var(--line); }
+.exp-page-mark { flex: none; width: 16px; height: 16px; margin: 0 4px; color: var(--explore); }
+.exp-page-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); cursor: pointer; }
+.exp-page-icon svg { width: 18px; height: 18px; }
+.exp-page-icon:disabled { opacity: .4; cursor: default; }
+.exp-page-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.exp-page-crumb { flex: none; display: inline-flex; align-items: center; gap: 5px; max-width: 70vw; height: 32px; padding: 0 4px; border: 0; background: none; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.exp-page-crumb > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.exp-page-crumb.current { font-weight: 600; color: var(--text); }
+.exp-page-sep { margin-right: 2px; color: var(--text-3); }
+.exp-page-loading { padding: 16px 20px; }
+.exp-page-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px 16px; }
+.exp-page-scroll .dlg-asked-bubble { max-width: 86%; }
+.exp-page-quote { margin: 4px 0 8px; padding: 8px 12px; border-left: 2px solid var(--explore-line); border-radius: 0 var(--radius) var(--radius) 0; background: var(--block); font-family: var(--serif); font-size: 13px; line-height: 1.7; color: var(--text-2); }
+.exp-page-acts { display: flex; align-items: center; gap: 2px; margin: 6px 0 0 -6px; }
+.exp-page-acts > button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--text-3); cursor: pointer; }
+.exp-page-acts > button svg { width: 15px; height: 15px; }
+.exp-page-foot { flex: none; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
+.exp-page-box { padding: 6px 6px 6px 12px; }
+.exp-page-box textarea { min-height: 28px; padding: 3px 0; }
+.exp-page-foot .dlg-credit { padding: 0; }
 .note-card .note-quote { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid var(--rule); color: var(--text-3); font-family: var(--serif); font-size: 12px; }
 .note-card .note-quote.look-underline { border-left-color: var(--ink-accent); }
 .note-card .note-quote.look-yellow { border-left-color: var(--mark-yellow-solid); }
