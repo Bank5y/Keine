@@ -6,7 +6,7 @@ import { NavLink } from '@/components/bottom-nav';
 import { libraryHref } from '@/lib/library-filter';
 import { activeItem, navItems } from '@/lib/nav';
 import { Link, navigate, setParam, useParam } from '@/lib/router';
-import { backTarget, topBarFor, type TopBar } from '@/lib/page-search';
+import { backFrom, topBarFor, type Entered, type TopBar } from '@/lib/page-search';
 import { logout, type User } from '@/lib/session';
 import { askLibraryFocus, setTopSearch, takeLibraryFocus, useTopSearch } from '@/lib/top-search';
 import { toggleTheme } from '@/lib/theme';
@@ -55,8 +55,9 @@ export function Masthead({ user, path }: { user: User | null | undefined; path: 
 // tapped, it searches in place (the field widens, the others make way for
 // 清空 and 取消) or, on a page with nothing to search, opens the library's.
 // Notifications and the admin pages have ← and the page's name instead; ←
-// goes back to the page come in from (from), else to the page's default.
-export function TopBar({ path, from }: { path: string; from: string | null }) {
+// goes back to the page come in from (see entered), else to the page's
+// default.
+export function TopBar({ path, entered }: { path: string; entered: Entered }) {
   const bar = topBarFor(path);
   const query = useTopSearch();
   const libraryQuery = useParam('q');
@@ -66,7 +67,7 @@ export function TopBar({ path, from }: { path: string; from: string | null }) {
     return (
       <header className="masthead topbar">
         <div className="mast-inner">
-          <button type="button" className="topbar-back" aria-label="返回" onClick={() => navigate(backTarget(path, from))}><ArrowLeft /></button>
+          <button type="button" className="topbar-back" aria-label="返回" onClick={() => { const b = backFrom(path, entered); if ('back' in b) history.back(); else navigate(b.to, { replace: b.replace }); }}><ArrowLeft /></button>
           <b className="topbar-title">{bar.title}</b>
           <div className="mast-tools">
             <NotificationBell path={path} />
@@ -96,7 +97,7 @@ export function TopBar({ path, from }: { path: string; from: string | null }) {
 }
 
 // cancel ends a search, the page back as it was
-function cancel(scope: string) {
+function cancel(scope: Extract<TopBar, { kind: 'search' }>['scope']) {
   if (scope === 'library') setParam('q', '');
   setTopSearch(null);
 }

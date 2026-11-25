@@ -21,6 +21,13 @@ export function setTopSearch(q: string | null) {
 
 export const useTopSearch = () => useSyncExternalStore(subscribe, () => query);
 
+// usePageSearch is the top bar's search as a page reads it, on a narrow
+// screen (on): whether it is searching, and the words, trimmed.
+export function usePageSearch(on: boolean) {
+  const q = useTopSearch();
+  return { searching: on && q != null, q: on ? (q ?? '').trim() : '' };
+}
+
 export function askLibraryFocus() { focusLibrary = true; }
 // takeLibraryFocus says, once, whether the library's bar should take the keyboard.
 export function takeLibraryFocus() { const on = focusLibrary; focusLibrary = false; return on; }

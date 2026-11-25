@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backTarget, filterMine, filterToc, hitParts, nextFrom, topBarFor } from '@/lib/page-search';
+import { backFrom, filterMine, filterToc, hitParts, nextEntered, noEntry, topBarFor } from '@/lib/page-search';
 import type { ChapterItem, CourseSummary, LessonItem } from '@/lib/courses';
 
 const lesson = (id: number, title: string): LessonItem => ({ id, key: `l${id}`, title, video: '', duration: '', hasText: true, state: 'unstarted' });
@@ -54,6 +54,11 @@ describe('filtering a course’s contents', () => {
     expect(titles(filterToc(toc, '06'))).toEqual([['规划与执行', ['动态规划']]]);
     expect(titles(filterToc(toc, 'agent'))).toEqual([['开篇', ['为什么 Agent 值得认真对待']]]);
   });
+  it('keeps a chapter whose title matches even before it has a lesson', () => {
+    const r = filterToc([...toc, chapter(4, '记忆', [])], '记忆');
+    expect(titles(r)).toEqual([['记忆', []]]);
+    expect(r.matches).toBe(0);
+  });
   it('finds nothing where nothing matches', () => {
     expect(filterToc(toc, '向量数据库')).toEqual({ chapters: [], matches: 0 });
   });
@@ -78,23 +83,21 @@ describe('marking what matched', () => {
 });
 
 describe('where ← goes on notifications and the admin pages', () => {
-  it('goes back to the page the reader came in from', () => {
-    // nextFrom(what it was, the page left, the page come to)
-    let from = nextFrom(null, '/mine', '/courses/3');
-    from = nextFrom(from, '/courses/3', '/notifications');
-    expect(backTarget('/notifications', from)).toBe('/courses/3');
+  // nextEntered(what it was, the page left, the page come to)
+  it('goes back a step to the page the reader just came in from', () => {
+    let e = nextEntered(noEntry, '/mine', '/courses/3');
+    e = nextEntered(e, '/courses/3', '/notifications');
+    expect(backFrom('/notifications', e)).toEqual({ back: true });
   });
-  it('remembers the page before the section, not a page inside it', () => {
-    let from = nextFrom(null, '/account', '/admin');
-    from = nextFrom(from, '/admin', '/admin/users');
-    expect(backTarget('/admin/users', from)).toBe('/account');
-    from = nextFrom(null, '/notes', '/admin');
-    expect(backTarget('/admin', from)).toBe('/notes');
+  it('goes to the page before the section, not one inside it, once the reader moved within', () => {
+    let e = nextEntered(noEntry, '/account', '/admin');
+    e = nextEntered(e, '/admin', '/admin/users');
+    expect(backFrom('/admin/users', e)).toEqual({ to: '/account' });
   });
-  it('goes to the page’s default with no page before it', () => {
-    expect(backTarget('/notifications', null)).toBe('/library');
-    expect(backTarget('/admin/users', null)).toBe('/account');
+  it('goes to the page’s default, in place of the page, with no page before it', () => {
+    expect(backFrom('/notifications', noEntry)).toEqual({ to: '/library', replace: true });
+    expect(backFrom('/admin/users', noEntry)).toEqual({ to: '/account', replace: true });
     // a page from within the section does not count
-    expect(backTarget('/admin', nextFrom(null, '/admin/users', '/admin'))).toBe('/account');
+    expect(backFrom('/admin', nextEntered(noEntry, '/admin/users', '/admin'))).toEqual({ to: '/account', replace: true });
   });
 });

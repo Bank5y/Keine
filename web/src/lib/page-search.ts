@@ -36,8 +36,9 @@ const has = (text: string, k: string) => text.toLowerCase().includes(k);
 
 // filterToc keeps the lessons of a course's contents that match q: by
 // title, or by number through the course (as the contents number them);
-// a chapter whose title matches keeps all its lessons. Chapters left
-// without a lesson go. matches is how many lessons are kept.
+// a chapter whose title matches stays whole (even one with no lesson yet).
+// Other chapters left without a lesson go. matches is how many lessons
+// are kept.
 export function filterToc(chapters: ChapterItem[], q: string): { chapters: ChapterItem[]; matches: number } {
   const k = norm(q);
   const count = (chs: ChapterItem[]) => chs.reduce((n, ch) => n + ch.lessons.length, 0);
@@ -47,7 +48,7 @@ export function filterToc(chapters: ChapterItem[], q: string): { chapters: Chapt
   for (const ch of chapters) {
     const whole = has(ch.title, k);
     const lessons = ch.lessons.filter((l) => { no++; return whole || has(l.title, k) || pad2(no).includes(k); });
-    if (lessons.length) kept.push({ ...ch, lessons });
+    if (whole || lessons.length) kept.push({ ...ch, lessons });
   }
   return { chapters: kept, matches: count(kept) };
 }
@@ -75,18 +76,25 @@ export function hitParts(text: string, q: string): { text: string; hit: boolean 
   return out;
 }
 
-// nextFrom is the page a reader came into notifications or the admin pages
-// from, kept as they move from page `left` to page `to`: entering, the
-// page left; moving within, as it was; elsewhere, none.
-export function nextFrom(from: string | null, left: string, to: string): string | null {
+// Entered is how a reader came into notifications or the admin pages: the
+// page come in from, and how many pages they have been to in the section
+// since (1 on the page they came in on).
+export interface Entered { from: string | null; steps: number }
+export const noEntry: Entered = { from: null, steps: 0 };
+
+// nextEntered keeps Entered as the reader moves from page `left` to page
+// `to`: entering a section, from the page left; moving within it, one
+// more step; anywhere else, none.
+export function nextEntered(e: Entered, left: string, to: string): Entered {
   const section = sectionOf(to);
-  if (!section) return null;
-  return sectionOf(left) === section ? from : left;
+  if (!section) return noEntry;
+  return sectionOf(left) === section ? { from: e.from, steps: e.steps + 1 } : { from: left, steps: 1 };
 }
 
-// backTarget is where ← goes from path: the page come in from, else the
-// page's default.
-export function backTarget(path: string, from: string | null): string {
-  const section = sectionOf(path);
-  return from ?? section?.fallback ?? '/library';
+// backFrom is what ← does on path: back a step, straight after coming in
+// (the page before is the one come in from); to the page come in from,
+// after moving within; else to the page's default, in place of this page.
+export function backFrom(path: string, e: Entered): { back: true } | { to: string; replace?: true } {
+  if (e.from == null) return { to: sectionOf(path)?.fallback ?? '/library', replace: true };
+  return e.steps === 1 ? { back: true } : { to: e.from };
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Toaster } from 'sonner';
 import { BottomNav } from '@/components/bottom-nav';
 import { Masthead, TopBar } from '@/components/masthead';
-import { nextFrom } from '@/lib/page-search';
+import { nextEntered, noEntry, type Entered } from '@/lib/page-search';
 import { match, navigate, usePath } from '@/lib/router';
 import { useUser, type User } from '@/lib/session';
 import { useNarrow } from '@/lib/use-narrow';
@@ -56,8 +56,8 @@ export function App() {
   const path = usePath();
   // the page notifications or the admin pages were come into from, for
   // their top bar's ← (see page-search.ts)
-  const was = useRef({ path, from: null as string | null });
-  if (was.current.path !== path) was.current = { path, from: nextFrom(was.current.from, was.current.path, path) };
+  const was = useRef<{ path: string; entered: Entered }>({ path, entered: noEntry });
+  if (was.current.path !== path) was.current = { path, entered: nextEntered(was.current.entered, was.current.path, path) };
   const narrow = useNarrow();
 
   useEffect(() => {
@@ -77,7 +77,7 @@ export function App() {
   const chrome = narrow && user ? { ...chromeFor(path), user } : null;
   return (
     <div className={cn('shell', chrome && chrome.bottom !== 'none' && 'with-bar', chrome?.top === 'own' && 'own-top')}>
-      {chrome ? (chrome.top === 'main' ? <TopBar path={path} from={was.current.from} /> : null) : <Masthead user={user} path={path} />}
+      {chrome ? (chrome.top === 'main' ? <TopBar path={path} entered={was.current.entered} /> : null) : <Masthead user={user} path={path} />}
       <main className="main" id="view" tabIndex={-1}>{view && <div key={viewKey} className="contents">{view}</div>}</main>
       {chrome?.bottom === 'nav' ? <BottomNav user={chrome.user} path={path} /> : null}
       <Toaster position="top-center" toastOptions={{ style: { background: 'var(--text)', color: 'var(--bg)', border: 0, borderRadius: 'var(--radius)' } }} />

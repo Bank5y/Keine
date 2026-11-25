@@ -17,7 +17,7 @@ import { readTarget, readerBar } from '@/lib/course-actions';
 import { COMPLETION_LABEL, PUBLISH_LABEL, RETENTION_LABEL, TYPE_LABEL, lessonURL, pad2, type CourseDetail } from '@/lib/courses';
 import { filterToc } from '@/lib/page-search';
 import { Link, navigate } from '@/lib/router';
-import { useTopSearch } from '@/lib/top-search';
+import { usePageSearch } from '@/lib/top-search';
 import { useNarrow } from '@/lib/use-narrow';
 import { useScrollFade } from '@/lib/use-scroll-fade';
 import { useStuck } from '@/lib/use-stuck';
@@ -46,8 +46,8 @@ export function CourseView({ id }: { id: number }) {
   const narrow = useNarrow();
   // the top bar's search, on a narrow screen, shows the contents, every
   // chapter open, only the lessons that match (see page-search.ts)
-  const query = useTopSearch();
-  const q = narrow ? (query ?? '').trim() : '';
+  // (a search started shows the contents at once, before anything is typed)
+  const { searching, q } = usePageSearch(narrow);
   const found = course && q ? filterToc(course.chapters, q) : null;
 
   if (err) return <div className="page enter"><BackLink /><Empty glyph="阙" title={err} /></div>;
@@ -61,7 +61,7 @@ export function CourseView({ id }: { id: number }) {
         </aside>
         <section>
           <div className="toc-head">
-            <Tabs className="toc-tabs" tabClassName="toc-tab" value={found ? 'toc' : tab} onChange={setTab} items={[
+            <Tabs className="toc-tabs" tabClassName="toc-tab" value={searching ? 'toc' : tab} onChange={setTab} items={[
               ['intro', '课程介绍'],
               ['toc', <>目录{course ? <sup>{course.lessonCount}</sup> : null}</>],
             ]} />
@@ -74,8 +74,8 @@ export function CourseView({ id }: { id: number }) {
           ) : null}
           {found ? <p className="search-count">本课程 {found.matches} 讲匹配</p> : null}
           {!course ? <Lines /> : found ? <Toc c={course} found={found.chapters} q={q} />
-            : <TabPane fading={fading}>{shown === 'toc' ? <Toc c={course} /> : <Intro c={course} />}</TabPane>}
-          {found ? <SearchEnd q={q} none={found.matches ? null : `本课程没有讲名或章节包含「${q}」`} /> : null}
+            : <TabPane fading={fading}>{shown === 'toc' || searching ? <Toc c={course} /> : <Intro c={course} />}</TabPane>}
+          {found ? <SearchEnd q={q} none={found.chapters.length ? null : `本课程没有讲名或章节包含「${q}」`} /> : null}
         </section>
       </div>
       {course && narrow ? <CourseBar c={course} onSubscribed={() => void reload()} /> : null}

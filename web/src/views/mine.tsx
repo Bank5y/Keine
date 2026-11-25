@@ -18,7 +18,7 @@ import { MINE_STATES, STUDY_LABEL, mineParams, readMineFilter } from '@/lib/mine
 import { SearchEnd } from '@/components/page-search';
 import { filterMine } from '@/lib/page-search';
 import { setParam, useSearch } from '@/lib/router';
-import { useTopSearch } from '@/lib/top-search';
+import { usePageSearch } from '@/lib/top-search';
 import { useNarrow } from '@/lib/use-narrow';
 
 const stateOptions = MINE_STATES.map((v) => ({ value: v, label: STUDY_LABEL[v] }));
@@ -48,8 +48,7 @@ export function MineView() {
   const filtered = !!(state || type || completion);
   // the top bar's search, on a narrow screen, narrows the list to the
   // courses whose name or author has the words (see page-search.ts)
-  const query = useTopSearch();
-  const q = narrow ? (query ?? '').trim() : '';
+  const { q } = usePageSearch(narrow);
   const shown = courses && q ? filterMine(courses, q) : courses;
 
   return (
