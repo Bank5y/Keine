@@ -179,7 +179,7 @@ export function LessonView({ courseId, lessonId }: { courseId: number; lessonId:
               : (shown.video ? null : <p className="text-ink-3">这一讲没有文字内容。</p>)}
           </article>
         ) : null}
-        {current && course?.type === 'column' && !current.video && current.markdown
+        {current && course?.type === 'column' && current.markdown
           ? <Annotator key={`annotations-${current.id}`} courseId={courseId} lessonId={current.id} root={prose} rail={rail}
             onPending={(n) => setPending({ lesson: current.id, n })} /> : null}
         {current ? <DoneBar state={state} onToggle={() => setDone(state !== 'done')} /> : null}
