@@ -7,7 +7,7 @@ import { Link } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
 // deterministic muted "book cloth" color for courses without a cover image
-const CLOTH = ['#7a3b2e', '#2f5446', '#34466b', '#6b5530', '#5a3f5e', '#2d5c6b', '#5c4a3a', '#3f5a3a'];
+const CLOTH = ['#606060', '#476666', '#4d4d4d', '#5a5f66', '#6b6b6b', '#3f5252', '#575757', '#4a5560'];
 function clothColor(s: string) {
   let h = 0;
   for (const ch of s) h = (h * 31 + ch.codePointAt(0)!) >>> 0;

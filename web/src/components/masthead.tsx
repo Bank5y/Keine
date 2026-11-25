@@ -27,7 +27,7 @@ export function Masthead({ user, path }: { user: User | null | undefined; path: 
       <div className="mast-inner">
         <Link className="wordmark" href={user ? '/library' : '/login'} aria-label="Keine">
           <span className="seal" aria-hidden="true">慧</span>
-          <span className="wm-text">Keine<span className="wm-sub">学习空间</span></span>
+          <span className="wm-text">Keine</span>
         </Link>
         <nav className="nav" aria-label="主导航">
           {nav.map((item) => <NavLink key={item.href} item={item} current={item === current} />)}
