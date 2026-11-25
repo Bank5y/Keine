@@ -962,101 +962,6 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .exp-sheet-expand svg { width: 14px; height: 14px; }
 .exp-sheet-concept { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .exp-sheet { transition: none; } }
-/* the sheet on the whole screen (and sliding away from it) is the
-   exploration's page: square, over the bars, scrolling inside */
-.exp-sheet.at-full, .exp-sheet.paged { border-radius: 0; touch-action: auto; }
-.exp-sheet.at-full { box-shadow: none; }
-.exp-page { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.exp-page-head { flex: none; display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 12px; padding-top: env(safe-area-inset-top); border-bottom: 1px solid var(--line); }
-.exp-page-mark { flex: none; width: 16px; height: 16px; margin: 0 4px; color: var(--explore); }
-.exp-page-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); cursor: pointer; }
-.exp-page-icon svg { width: 18px; height: 18px; }
-.exp-page-icon:disabled { opacity: .4; cursor: default; }
-.exp-page-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
-.exp-page-crumb { flex: none; display: inline-flex; align-items: center; gap: 5px; max-width: 70vw; height: 32px; padding: 0 4px; border: 0; background: none; font-size: 13px; color: var(--text-2); cursor: pointer; }
-.exp-page-crumb > span:last-child { overflow: hidden; text-overflow: ellipsis; }
-.exp-page-crumb.current { font-weight: 600; color: var(--text); }
-.exp-page-sep { margin-right: 2px; color: var(--text-3); }
-.exp-page-loading { padding: 16px 20px; }
-.exp-page-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px 16px; }
-.exp-page-scroll .dlg-asked-bubble { max-width: 86%; }
-.exp-page-scroll .dlg-forkhead-title { flex-wrap: wrap; row-gap: 2px; }
-.exp-page-quote { margin: 4px 0 8px; padding: 8px 12px; border-left: 2px solid var(--explore-line); border-radius: 0 var(--radius) var(--radius) 0; background: var(--block); font-family: var(--serif); font-size: 13px; line-height: 1.7; color: var(--text-2); }
-.exp-page-acts { display: flex; align-items: center; gap: 2px; margin: 6px 0 0 -6px; }
-.exp-page-acts > button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--text-3); cursor: pointer; }
-.exp-page-acts > button svg { width: 15px; height: 15px; }
-.exp-page-foot { position: relative; flex: none; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
-.exp-page-box { align-items: flex-end; padding: 6px 6px 6px 4px; }
-.exp-page-box textarea { min-height: 28px; padding: 3px 0; }
-.exp-page-foot .dlg-credit { padding: 0; }
-/* the node tree drawer, pulled out from the left by a swipe right; the
-   page takes sideways moves for it (code and tables scroll their own) */
-.exp-page-dlg { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; touch-action: pan-y; }
-.exp-page-dlg.swiping { user-select: none; -webkit-user-select: none; }
-.exp-page-edge { position: absolute; z-index: 2; left: 0; top: 50%; width: 4px; height: 56px; margin-top: -28px; border-radius: 0 4px 4px 0; background: var(--explore-line); pointer-events: none; transition: opacity .2s; }
-.exp-tree-scrim { position: absolute; inset: 0; z-index: 5; background: #000; }
-.exp-tree-scrim.settled { transition: opacity .3s; }
-.exp-tree { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; display: flex; flex-direction: column; padding: calc(16px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain;
-  background: var(--sidebar); border-right: 1px solid var(--line); }
-.exp-tree.out { box-shadow: 12px 0 32px -16px rgb(0 0 0 / .3); }
-.exp-tree.settled { transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
-.exp-tree-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 8px 12px; }
-.exp-tree-head b { font-family: var(--serif); font-size: 15px; font-weight: 600; }
-.exp-tree-head span { font-size: 12px; color: var(--text-3); }
-.exp-tree-list { margin: 0 0 0 12px; padding: 0 0 0 14px; border-left: 1px solid var(--rule); list-style: none; }
-.exp-tree-list.root { margin: 0; padding: 0; border: 0; }
-.exp-tree-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 40px; padding: 0 8px; border: 0; border-radius: var(--radius); background: var(--sidebar); text-align: left; font-size: 14px; color: var(--text-3); cursor: pointer; }
-.exp-tree-row.on-path { color: var(--text); }
-.exp-tree-row.current { background: var(--surface); font-weight: 600; box-shadow: var(--shadow-soft), inset 2px 0 var(--explore); }
-.exp-tree-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.exp-tree-row small { flex: none; font-size: 11px; font-weight: 400; color: var(--text-3); }
-.exp-tree-slot { position: relative; overflow: hidden; border-radius: var(--radius); touch-action: pan-y; }
-.exp-tree-slot .exp-tree-row { position: relative; transition: transform .2s; }
-.exp-tree-slot.dragging .exp-tree-row { transition: none; }
-.exp-tree-delete { position: absolute; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0; border: 0; background: var(--danger); color: #fff; font-size: 12px; cursor: pointer; }
-.exp-tree-delete svg { width: 14px; height: 14px; }
-.exp-tree-slot:not(.open, .dragging) .exp-tree-delete { visibility: hidden; }
-.exp-tree-hint { margin: auto 8px 0; padding-top: 16px; font-size: 11px; color: var(--text-3); }
-@media (prefers-reduced-motion: reduce) { .exp-tree.settled, .exp-tree-scrim.settled { transition: none; } }
-/* a question as asked, the selection (选段) it carried above it in grey */
-.exp-page-asked { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin: 18px 0 12px; }
-.exp-page-asked-sel { display: flex; gap: 6px; max-width: 86%; padding: 4px 10px; border-radius: var(--radius); background: var(--surface-2); color: var(--text-2); font-size: 12px; line-height: 1.6; }
-.exp-page-asked-sel svg { flex: none; width: 12px; height: 12px; margin-top: 3px; }
-.exp-page-asked .dlg-asked-bubble { max-width: 86%; }
-/* the turn a new node forks from: a mark over the reply, a line beside it */
-.exp-page-here { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-bottom: 6px; padding: 0 8px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--explore-line); color: var(--explore); font-size: 11px; font-weight: 600; }
-.exp-page-here svg { width: 12px; height: 12px; }
-.exp-page-turn.forking .dlg-reply { box-shadow: -10px 0 0 -8px var(--explore); }
-.exp-page-acts > button.on { background: var(--info-soft); color: var(--explore); }
-.exp-page-acts > button:disabled { opacity: .35; cursor: default; }
-.exp-page-forks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.exp-page-take { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border: 0; border-radius: 99px; background: var(--text); color: var(--bg); font-size: 13px; box-shadow: var(--shadow-float); cursor: pointer; }
-.exp-page-take svg { width: 14px; height: 14px; }
-::highlight(exp-carried) { background-color: var(--surface-2); color: var(--text-2); }
-/* the box: ＋ for the kinds of node, the tags the question carries */
-.exp-page-plus { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 99px; background: none; color: var(--text-2); cursor: pointer; transition: transform .2s, background .2s; }
-.exp-page-plus svg { width: 18px; height: 18px; }
-.exp-page-plus.on { transform: rotate(45deg); background: var(--surface-2); }
-.exp-page-field { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.exp-page-field textarea { flex: 1 1 120px; min-width: 120px; }
-/* tags: a node kind in its colour on a 14% tint; the fork point outlined
-   in the exploration's colour; a selection grey */
-.exp-page-tag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 24px; padding: 0 2px 0 8px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.exp-page-tag svg { width: 12px; height: 12px; }
-.exp-page-tag > button { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; background: none; color: inherit; opacity: .6; cursor: pointer; }
-.exp-page-tag.kind-child, .exp-page-tag.kind-branch, .exp-page-tag.kind-divergent { background: color-mix(in srgb, var(--kind) 14%, var(--surface)); color: var(--kind); }
-.exp-page-tag .dlg-dot { width: 7px; height: 7px; }
-.exp-page-tag.fork { background: var(--surface); box-shadow: inset 0 0 0 1px var(--explore-line); color: var(--explore); }
-.exp-page-tag.selection { background: var(--surface-2); color: var(--text-2); font-weight: 400; }
-.exp-page-menu { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 4px); z-index: 4; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-float); }
-.exp-page-menu-head { padding: 6px 10px 4px; font-size: 11px; letter-spacing: .06em; color: var(--text-3); }
-.exp-page-menu > button { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: none; text-align: left; cursor: pointer; color: var(--text); }
-.exp-page-menu > button .dlg-dot { margin-top: 7px; }
-.exp-page-menu > button.on, .exp-page-menu > button:active { background: var(--surface-2); }
-.exp-page-menu > button:disabled { opacity: .4; cursor: default; }
-.exp-page-menu b { display: block; font-size: 14px; font-weight: 500; }
-.exp-page-menu small { display: block; font-size: 12px; color: var(--text-3); }
-.exp-page-menu-full { padding: 6px 10px 4px; font-size: 12px; color: var(--danger); }
 .note-card .note-quote { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-bottom: 4px; padding-left: 6px; border-left: 2px solid var(--rule); color: var(--text-3); font-family: var(--serif); font-size: 12px; }
 .note-card .note-quote.look-underline { border-left-color: var(--ink-accent); }
 .note-card .note-quote.look-yellow { border-left-color: var(--mark-yellow-solid); }
@@ -2064,3 +1969,120 @@ a.rn:hover .t { color: var(--ink-accent); }
 .prose a.cite { display: inline-flex; align-items: center; height: 18px; margin: 0 1px 0 2px; padding: 0 5px; border-radius: 3px; vertical-align: 2px;
   background: color-mix(in srgb, var(--explore) 12%, var(--surface)); color: var(--explore); font-size: 11px; line-height: 1; white-space: nowrap; text-decoration: none; }
 .prose a.cite:hover { background: color-mix(in srgb, var(--explore) 22%, var(--surface)); text-decoration: none; }
+
+/* ---- a narrow screen's whole-screen exploration (#200–#204): unlayered,
+   after the dialogue's own rules, which some of it adjusts ---- */
+/* the sheet on the whole screen (and sliding away from it) is the
+   exploration's page: square, over the bars, scrolling inside */
+.exp-sheet.at-full, .exp-sheet.paged { border-radius: 0; touch-action: auto; }
+.exp-sheet.at-full { box-shadow: none; }
+.exp-page { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.exp-page-head { flex: none; display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 12px; padding-top: env(safe-area-inset-top); border-bottom: 1px solid var(--line); }
+.exp-page-mark { flex: none; width: 16px; height: 16px; margin: 0 4px; color: var(--explore); }
+.exp-page-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); cursor: pointer; }
+.exp-page-icon svg { width: 18px; height: 18px; }
+.exp-page-icon:disabled { opacity: .4; cursor: default; }
+.exp-page-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.exp-page-crumb { flex: none; display: inline-flex; align-items: center; gap: 5px; max-width: 70vw; height: 32px; padding: 0 4px; border: 0; background: none; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.exp-page-crumb > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.exp-page-crumb.current { font-weight: 600; color: var(--text); }
+.exp-page-sep { margin-right: 2px; color: var(--text-3); }
+.exp-page-loading { padding: 16px 20px; }
+.exp-page-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 20px 16px; }
+.exp-page-scroll .dlg-asked-bubble { max-width: 86%; }
+.exp-page-scroll .dlg-forkhead-title { flex-wrap: wrap; row-gap: 2px; }
+.exp-page-quote { margin: 4px 0 8px; padding: 8px 12px; border-left: 2px solid var(--explore-line); border-radius: 0 var(--radius) var(--radius) 0; background: var(--block); font-family: var(--serif); font-size: 13px; line-height: 1.7; color: var(--text-2); }
+.exp-page-acts { display: flex; align-items: center; gap: 2px; margin: 6px 0 0 -6px; }
+.exp-page-acts > button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius); background: none; color: var(--text-3); cursor: pointer; }
+.exp-page-acts > button svg { width: 15px; height: 15px; }
+.exp-page-foot { position: relative; flex: none; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
+.exp-page-box { align-items: flex-end; padding: 6px 6px 6px 4px; }
+.exp-page-box textarea { min-height: 28px; padding: 3px 0; }
+.exp-page-foot .dlg-credit { padding: 0; }
+/* the node tree drawer, pulled out from the left by a swipe right; the
+   page takes sideways moves for it (code and tables scroll their own) */
+.exp-page-dlg { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; touch-action: pan-y; }
+.exp-page-dlg.swiping { user-select: none; -webkit-user-select: none; }
+.exp-page-edge { position: absolute; z-index: 2; left: 0; top: 50%; width: 4px; height: 56px; margin-top: -28px; border-radius: 0 4px 4px 0; background: var(--explore-line); pointer-events: none; transition: opacity .2s; }
+.exp-tree-scrim { position: absolute; inset: 0; z-index: 5; background: #000; }
+.exp-tree-scrim.settled { transition: opacity .3s; }
+.exp-tree { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; display: flex; flex-direction: column; padding: calc(16px + env(safe-area-inset-top)) 10px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--sidebar); border-right: 1px solid var(--line); }
+.exp-tree.out { box-shadow: 12px 0 32px -16px rgb(0 0 0 / .3); }
+.exp-tree.settled { transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+.exp-tree-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 8px 12px; }
+.exp-tree-head b { font-family: var(--serif); font-size: 15px; font-weight: 600; }
+.exp-tree-head span { font-size: 12px; color: var(--text-3); }
+.exp-tree-list { margin: 0 0 0 12px; padding: 0 0 0 14px; border-left: 1px solid var(--rule); list-style: none; }
+.exp-tree-list.root { margin: 0; padding: 0; border: 0; }
+.exp-tree-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 40px; padding: 0 8px; border: 0; border-radius: var(--radius); background: var(--sidebar); text-align: left; font-size: 14px; color: var(--text-3); cursor: pointer; }
+.exp-tree-row.on-path { color: var(--text); }
+.exp-tree-row.current { background: var(--surface); font-weight: 600; box-shadow: var(--shadow-soft), inset 2px 0 var(--explore); }
+.exp-tree-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.exp-tree-row small { flex: none; font-size: 11px; font-weight: 400; color: var(--text-3); }
+.exp-tree-slot { position: relative; overflow: hidden; border-radius: var(--radius); touch-action: pan-y; }
+.exp-tree-slot .exp-tree-row { position: relative; transition: transform .2s; }
+.exp-tree-slot.dragging .exp-tree-row { transition: none; }
+.exp-tree-delete { position: absolute; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0; border: 0; background: var(--danger); color: #fff; font-size: 12px; cursor: pointer; }
+.exp-tree-delete svg { width: 14px; height: 14px; }
+.exp-tree-slot:not(.open, .dragging) .exp-tree-delete { visibility: hidden; }
+.exp-tree-hint { margin: auto 8px 0; padding-top: 16px; font-size: 11px; color: var(--text-3); }
+.exp-page-close { margin-left: 8px; }
+.exp-page-icon.busy svg { animation: exp-pulse 1.2s ease-in-out infinite; }
+@keyframes exp-pulse { 50% { opacity: .35; } }
+.exp-page-banner { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--info-soft); font-size: 12px; color: var(--text-2); }
+.exp-page-banner > span { flex: 1; min-width: 0; }
+.exp-page-banner b { margin-right: 6px; }
+.exp-page-banner.refused { background: var(--danger-soft); }
+.exp-page-banner.refused b { color: var(--danger); }
+.exp-page-banner > button { flex: none; padding: 0; border: 0; background: none; color: var(--explore); font-size: 12px; font-weight: 600; cursor: pointer; }
+.exp-page-banner > .exp-page-banner-x { display: grid; place-items: center; width: 24px; height: 24px; color: var(--text-3); }
+.exp-page-banner-x svg { width: 14px; height: 14px; }
+.exp-page-pulse { color: var(--explore); animation: exp-pulse 1.2s ease-in-out infinite; }
+/* the report page, pushed in from the right over the dialogue */
+.exp-page-report { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); background: var(--bg); box-shadow: -12px 0 32px -16px rgb(0 0 0 / .3); animation: exp-push .32s cubic-bezier(.2, .8, .2, 1); }
+@keyframes exp-push { from { transform: translateX(100%); } }
+.exp-page-report .dlg-report-bar { flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.exp-page-report .dlg-scroll { padding: 14px 20px 24px; }
+.exp-page-report .dlg-report-doc h1 { font-size: 22px; }
+@media (prefers-reduced-motion: reduce) { .exp-page-report, .exp-page-pulse, .exp-page-icon.busy svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .exp-tree.settled, .exp-tree-scrim.settled { transition: none; } }
+/* a question as asked, the selection (选段) it carried above it in grey */
+.exp-page-asked { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin: 18px 0 12px; }
+.exp-page-asked-sel { display: flex; gap: 6px; max-width: 86%; padding: 4px 10px; border-radius: var(--radius); background: var(--surface-2); color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.exp-page-asked-sel svg { flex: none; width: 12px; height: 12px; margin-top: 3px; }
+.exp-page-asked .dlg-asked-bubble { max-width: 86%; }
+/* the turn a new node forks from: a mark over the reply, a line beside it */
+.exp-page-here { display: inline-flex; align-items: center; gap: 4px; height: 22px; margin-bottom: 6px; padding: 0 8px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--explore-line); color: var(--explore); font-size: 11px; font-weight: 600; }
+.exp-page-here svg { width: 12px; height: 12px; }
+.exp-page-turn.forking .dlg-reply { box-shadow: -10px 0 0 -8px var(--explore); }
+.exp-page-acts > button.on { background: var(--info-soft); color: var(--explore); }
+.exp-page-acts > button:disabled { opacity: .35; cursor: default; }
+.exp-page-forks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.exp-page-take { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border: 0; border-radius: 99px; background: var(--text); color: var(--bg); font-size: 13px; box-shadow: var(--shadow-float); cursor: pointer; }
+.exp-page-take svg { width: 14px; height: 14px; }
+::highlight(exp-carried) { background-color: var(--surface-2); color: var(--text-2); }
+/* the box: ＋ for the kinds of node, the tags the question carries */
+.exp-page-plus { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 99px; background: none; color: var(--text-2); cursor: pointer; transition: transform .2s, background .2s; }
+.exp-page-plus svg { width: 18px; height: 18px; }
+.exp-page-plus.on { transform: rotate(45deg); background: var(--surface-2); }
+.exp-page-field { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.exp-page-field textarea { flex: 1 1 120px; min-width: 120px; }
+/* tags: a node kind in its colour on a 14% tint; the fork point outlined
+   in the exploration's colour; a selection grey */
+.exp-page-tag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; height: 24px; padding: 0 2px 0 8px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.exp-page-tag svg { width: 12px; height: 12px; }
+.exp-page-tag > button { display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border: 0; background: none; color: inherit; opacity: .6; cursor: pointer; }
+.exp-page-tag.kind-child, .exp-page-tag.kind-branch, .exp-page-tag.kind-divergent { background: color-mix(in srgb, var(--kind) 14%, var(--surface)); color: var(--kind); }
+.exp-page-tag .dlg-dot { width: 7px; height: 7px; }
+.exp-page-tag.fork { background: var(--surface); box-shadow: inset 0 0 0 1px var(--explore-line); color: var(--explore); }
+.exp-page-tag.selection { background: var(--surface-2); color: var(--text-2); font-weight: 400; }
+.exp-page-menu { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 4px); z-index: 4; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-float); }
+.exp-page-menu-head { padding: 6px 10px 4px; font-size: 11px; letter-spacing: .06em; color: var(--text-3); }
+.exp-page-menu > button { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: none; text-align: left; cursor: pointer; color: var(--text); }
+.exp-page-menu > button .dlg-dot { margin-top: 7px; }
+.exp-page-menu > button.on, .exp-page-menu > button:active { background: var(--surface-2); }
+.exp-page-menu > button:disabled { opacity: .4; cursor: default; }
+.exp-page-menu b { display: block; font-size: 14px; font-weight: 500; }
+.exp-page-menu small { display: block; font-size: 12px; color: var(--text-3); }
+.exp-page-menu-full { padding: 6px 10px 4px; font-size: 12px; color: var(--danger); }

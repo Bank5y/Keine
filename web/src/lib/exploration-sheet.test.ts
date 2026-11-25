@@ -159,3 +159,39 @@ describe('where a swipe for the node tree may start', () => {
     expect(swipeAxis(-3, 12)).toBe('y');
   });
 });
+
+describe('the report page and deleting on the whole-screen exploration', () => {
+  const expand: SheetEvent = { type: 'expand' };
+  const back: SheetEvent = { type: 'back' };
+  const report: SheetEvent = { type: 'openReport' };
+
+  it('pushes the report page in with a history entry of its own', () => {
+    const step = nextSheet(after(pinned(7), expand), report);
+    expect(step.state).toMatchObject({ detent: 'full', report: true });
+    expect(step.history).toBe('push');
+  });
+
+  it('goes back the way it came: the report page, the drawer, the page, then the text', () => {
+    // the drawer's own back pushes the page's entry back, so each back here
+    // is one the browser really took
+    let s = after(pinned(7), expand, { type: 'swipe', dx: 80 }, report);
+    const steps: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      s = nextSheet(s, back).state;
+      steps.push(s.detent === 'closed' ? 'text' : s.tree ? 'drawer' : s.report ? 'report' : 'page');
+    }
+    expect(steps).toEqual(['drawer', 'page', 'text']);
+  });
+
+  it('closes the report page on its own back button as the system back does', () => {
+    const step = nextSheet(after(pinned(7), expand, report), { type: 'close' });
+    expect(step.history).toBe('back');
+    expect(nextSheet(step.state, back).state).toMatchObject({ detent: 'full', report: false });
+  });
+
+  it('closes, card and all, once the exploration is deleted, taking the page’s entry with it', () => {
+    const step = nextSheet(after(pinned(7), expand), { type: 'deleted' });
+    expect(shown(step.state)).toBeNull();
+    expect(step.history).toBe('back');
+  });
+});

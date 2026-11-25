@@ -44,8 +44,8 @@ export function useSheet(): [SheetState, (e: SheetEvent) => void] {
 // card follows a finger dragging it and, let go, tells send how far. On
 // the whole screen it is the exploration's dialogue (ExplorationPage).
 // Closed, it keeps showing what it held as it slides away.
-export function ExplorationSheet({ sheet, exploration, send, onDetail }: {
-  sheet: SheetState; exploration: Exploration | null; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void;
+export function ExplorationSheet({ sheet, exploration, send, onDetail, onDeleted }: {
+  sheet: SheetState; exploration: Exploration | null; send: (e: SheetEvent) => void; onDetail: (d: ExplorationDetail) => void; onDeleted: (id: number) => void;
 }) {
   const { detent } = sheet;
   const [shown, setShown] = useState(exploration);
@@ -89,7 +89,7 @@ export function ExplorationSheet({ sheet, exploration, send, onDetail }: {
       role="dialog" aria-modal={full} aria-label={shown ? `探索：${shown.title}` : '探索'} aria-hidden={!open} inert={!open}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
       {(full || paged) && shown ? (
-        <ExplorationPage key={shown.id} id={shown.id} tree={sheet.tree} send={send} onDetail={onDetail} />
+        <ExplorationPage key={shown.id} id={shown.id} tree={sheet.tree} report={sheet.report} send={send} onDetail={onDetail} onDeleted={onDeleted} />
       ) : (
         <>
           <span className="exp-sheet-grip" aria-hidden />

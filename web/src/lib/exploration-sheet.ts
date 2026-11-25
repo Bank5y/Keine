@@ -23,8 +23,9 @@ export type SheetBody = { kind: 'exploration'; id: number };
 
 // top: the highest the page has been scrolled to (the least scrollY) since
 // the card came up, where reading on is measured from. tree: the node tree
-// drawer is out over the whole-screen exploration.
-export interface SheetState { detent: Detent; body: SheetBody | null; top: number; tree: boolean }
+// drawer is out over the whole-screen exploration. report: the report page
+// is pushed in over it.
+export interface SheetState { detent: Detent; body: SheetBody | null; top: number; tree: boolean; report: boolean }
 
 // tapPassage: a pinned passage tapped in the text, the page scrolled to y.
 // tapText: a tap on the text away from any pinned passage. scroll: the
@@ -34,7 +35,8 @@ export interface SheetState { detent: Detent; body: SheetBody | null; top: numbe
 // went back an entry). swipe: a sideways swipe on the whole-screen
 // exploration let go dx px right of where it began (left is negative).
 // tapBeside: a tap beside the node tree drawer. pickNode: a node picked in
-// the drawer.
+// the drawer. openReport: 查看 on a report. deleted: the exploration was
+// deleted from its page.
 export type SheetEvent =
   | { type: 'tapPassage'; id: number; y: number }
   | { type: 'tapText' }
@@ -45,13 +47,15 @@ export type SheetEvent =
   | { type: 'back' }
   | { type: 'swipe'; dx: number }
   | { type: 'tapBeside' }
-  | { type: 'pickNode' };
+  | { type: 'pickNode' }
+  | { type: 'openReport' }
+  | { type: 'deleted' };
 // the next state, and what the step does to the browser's history: push
 // an entry (so the system's back undoes the step), go back one (the back
 // that follows takes the step), or nothing
 export interface SheetStep { state: SheetState; history: 'push' | 'back' | null }
 
-export const closedSheet: SheetState = { detent: 'closed', body: null, top: 0, tree: false };
+export const closedSheet: SheetState = { detent: 'closed', body: null, top: 0, tree: false, report: false };
 
 export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
   const stay = (state: SheetState): SheetStep => ({ state, history: null });
@@ -61,11 +65,18 @@ export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
   if (s.detent === 'full') {
     const tree = (on: boolean) => stay({ ...s, tree: on });
     switch (e.type) {
-      // ✕ goes the system back's way, so the entry the page pushed goes too
+      // ✕ (or the report page's back) goes the system back's way, so the
+      // entry the page (or the report page) pushed goes too
       case 'close': return { state: s, history: 'back' };
-      // the drawer has no entry of its own: a back puts it away and puts
-      // back the page's entry that the back took
-      case 'back': return s.tree ? { state: { ...s, tree: false }, history: 'push' } : stay(closedSheet);
+      // the report page goes first, then the drawer, then the page. The
+      // drawer has no entry of its own: a back puts it away and puts back
+      // the page's entry that the back took
+      case 'back':
+        if (s.report) return stay({ ...s, report: false });
+        return s.tree ? { state: { ...s, tree: false }, history: 'push' } : stay(closedSheet);
+      case 'openReport': return { state: { ...s, report: true }, history: 'push' };
+      // nothing is left to show, and the page's entry goes with it
+      case 'deleted': return { state: closedSheet, history: 'back' };
       case 'swipe':
         if (!s.tree && e.dx > DRAG_COMMIT) return tree(true);
         if (s.tree && e.dx < -DRAG_COMMIT) return tree(false);
@@ -93,7 +104,9 @@ export function nextSheet(s: SheetState, e: SheetEvent): SheetStep {
     case 'back':
     case 'swipe':
     case 'tapBeside':
-    case 'pickNode': return stay(s);
+    case 'pickNode':
+    case 'openReport':
+    case 'deleted': return stay(s);
   }
 }
 
