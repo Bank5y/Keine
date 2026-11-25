@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
-import { ArrowUp, ChevronLeft, Copy, GitBranch, Plus, RotateCcw, Square, Telescope, TextQuote, X } from 'lucide-react';
+import { ArrowUp, ChevronLeft, Copy, GitBranch, Plus, RotateCcw, Square, Telescope, TextQuote, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { documentParts } from '@/components/analysis-popover';
 import { CitedMarkdown } from '@/components/cited-markdown';
-import { Asking, CourseLinks, CreditLine, Dot, ForkHead, Refusal, useRuns, withTurn } from '@/components/exploration-dialogue';
+import { Confirm } from '@/components/confirm';
+import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, Refusal, useRuns, withTurn } from '@/components/exploration-dialogue';
 import { LazyMarkdown } from '@/components/lazy-markdown';
-import { ApiError } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { citationTable } from '@/lib/citations';
 import {
   askTurn, carried, forksAt, FULL_TEXT, INTERRUPTED, KINDS, MAX_NODES, nextQuestion, noCarry, openNode, pathTo, retryTurn, stepCarry,
@@ -78,7 +79,7 @@ const drawerWidth = () => Math.min(296, innerWidth - 56);
 // out the node tree (see swipeStarts)
 function swipeOn(target: EventTarget | null): SwipeOn {
   const t = target instanceof Element ? target : null;
-  if (t?.closest('.exp-tree-row')) return 'row';
+  if (t?.closest('.exp-tree-row.deletable')) return 'row';
   if (t?.closest('pre, table, .exp-page-crumbs')) return 'sideways';
   if (t?.closest('.dlg-reply')) return 'reply';
   return 'page';
@@ -149,6 +150,27 @@ function Dialogue({ d, tree, send, onDetail }: { d: ExplorationDetail; tree: boo
 
   const W = drawerWidth();
   const { handlers, shown, swiping } = useDrawerSwipe(tree, send, W);
+
+  // a node being deleted, asked first; the node and those under it go,
+  // and the reader on its path goes back to its parent
+  const [deleting, setDeleting] = useState<DialogueNode | null>(null);
+  const removeNode = async () => {
+    if (!deleting) return;
+    try {
+      await api('DELETE', `/api/explorations/${d.id}/nodes/${deleting.id}`);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : '删除失败，请稍后再试');
+      return;
+    }
+    const gone = new Set([deleting.id]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const n of d.nodes) if (n.parentId != null && gone.has(n.parentId) && !gone.has(n.id)) { gone.add(n.id); grew = true; }
+    }
+    if (deleting.parentId != null && path.some((n) => gone.has(n.id))) open(deleting.parentId);
+    onDetail({ ...d, nodes: d.nodes.filter((n) => !gone.has(n.id)) });
+    setDeleting(null);
+  };
 
   // the selection carried shows grey in its reply
   useEffect(() => {
@@ -257,32 +279,85 @@ function Dialogue({ d, tree, send, onDetail }: { d: ExplorationDetail; tree: boo
         aria-label="节点树" aria-hidden={!tree} inert={!tree}>
         <div className="exp-tree-head"><b>节点树</b><span>{d.nodes.length} 个节点</span></div>
         <Tree nodes={d.nodes} parent={null} current={node.id} path={path.map((n) => n.id)}
-          onPick={(n) => { open(n.id); send({ type: 'pickNode' }); }} />
+          onPick={(n) => { open(n.id); send({ type: 'pickNode' }); }} onDelete={setDeleting} />
+        <p className="exp-tree-hint">左滑节点可以删除</p>
       </aside>
+      <Confirm open={!!deleting} title={deleting ? `删除节点「${deleting.name}」？` : ''} confirm="删除" onConfirm={removeNode} onClose={() => setDeleting(null)}>
+        {deleting ? deleteText(d.nodes, deleting) : null}
+      </Confirm>
     </div>
   );
 }
 
 // Tree is the nodes under parent (the main node, under none), each with
 // how many turns it has and the nodes under it: the current node marked,
-// the nodes on the path to it darker.
-function Tree({ nodes, parent, current, path, onPick }: {
-  nodes: DialogueNode[]; parent: number | null; current: number; path: number[]; onPick: (n: DialogueNode) => void;
+// the nodes on the path to it darker. A row swiped left shows 删除 (none
+// on the main node's), one row at a time.
+function Tree({ nodes, parent, current, path, onPick, onDelete, swiped: shared }: {
+  nodes: DialogueNode[]; parent: number | null; current: number; path: number[]; onPick: (n: DialogueNode) => void; onDelete: (n: DialogueNode) => void;
+  swiped?: [number | null, (id: number | null) => void];
 }) {
+  const own = useState<number | null>(null);
+  const [swiped, setSwiped] = shared ?? own;
   const kids = nodes.filter((n) => n.parentId === parent);
   if (!kids.length) return null;
   return (
     <ul className={cn('exp-tree-list', parent == null && 'root')}>
       {kids.map((n) => (
         <li key={n.id}>
-          <button type="button" className={cn('exp-tree-row', n.id === current && 'current', path.includes(n.id) && 'on-path')}
-            aria-current={n.id === current ? 'location' : undefined} onClick={() => onPick(n)}>
-            <Dot kind={n.kind} /><span className="exp-tree-name">{n.kind === 'main' ? '主节点' : n.name}</span><small>{n.turns.length} 轮</small>
-          </button>
-          <Tree nodes={nodes} parent={n.id} current={current} path={path} onPick={onPick} />
+          <TreeRow n={n} current={n.id === current} onPath={path.includes(n.id)} open={swiped === n.id}
+            onOpen={(on) => setSwiped(on ? n.id : null)} onPick={() => onPick(n)} onDelete={() => { setSwiped(null); onDelete(n); }} />
+          <Tree nodes={nodes} parent={n.id} current={current} path={path} onPick={onPick} onDelete={onDelete} swiped={[swiped, setSwiped]} />
         </li>
       ))}
     </ul>
+  );
+}
+
+// how far a row slides left to show 删除
+const ROW_REVEAL = 72;
+
+// TreeRow is a node in the tree. Swiped left (any node but the main one)
+// it slides over to show 删除, settling open past half way; a tap on a row
+// slid open closes it rather than picking it.
+function TreeRow({ n, current, onPath, open, onOpen, onPick, onDelete }: {
+  n: DialogueNode; current: boolean; onPath: boolean; open: boolean; onOpen: (on: boolean) => void; onPick: () => void; onDelete: () => void;
+}) {
+  const can = n.kind !== 'main';
+  const [drag, setDrag] = useState<number | null>(null);
+  const press = useRef<{ id: number; x: number; y: number; axis: 'x' | 'y' | null } | null>(null);
+  const moved = useRef(false);
+  const at = drag ?? (open ? -ROW_REVEAL : 0);
+  return (
+    <div className={cn('exp-tree-slot', drag != null && 'dragging', open && 'open')}
+      onPointerDown={(e) => { moved.current = false; press.current = can ? { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null } : null; }}
+      onPointerMove={(e) => {
+        const p = press.current;
+        if (!p || p.id !== e.pointerId) return;
+        const dx = e.clientX - p.x;
+        if (!p.axis) {
+          p.axis = swipeAxis(dx, e.clientY - p.y);
+          if (p.axis !== 'x') { if (p.axis) press.current = null; return; }
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }
+        setDrag(Math.max(-ROW_REVEAL, Math.min(0, (open ? -ROW_REVEAL : 0) + dx)));
+      }}
+      onPointerUp={(e) => {
+        const p = press.current;
+        press.current = null;
+        if (!p || p.id !== e.pointerId || p.axis !== 'x') return;
+        moved.current = true;
+        onOpen((drag ?? 0) < -ROW_REVEAL / 2);
+        setDrag(null);
+      }}
+      onPointerCancel={() => { press.current = null; setDrag(null); }}>
+      {can ? <button type="button" className="exp-tree-delete" style={{ width: ROW_REVEAL }} tabIndex={open ? 0 : -1} onClick={onDelete}><Trash2 />删除</button> : null}
+      <button type="button" className={cn('exp-tree-row', can && 'deletable', current && 'current', onPath && 'on-path')} style={{ transform: at ? `translateX(${at}px)` : undefined }}
+        aria-current={current ? 'location' : undefined}
+        onClick={() => { if (moved.current) { moved.current = false; return; } if (open) { onOpen(false); return; } onPick(); }}>
+        <Dot kind={n.kind} /><span className="exp-tree-name">{n.kind === 'main' ? '主节点' : n.name}</span><small>{n.turns.length} 轮</small>
+      </button>
+    </div>
   );
 }
 

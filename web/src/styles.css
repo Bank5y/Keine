@@ -1010,6 +1010,13 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .exp-tree-row.current { background: var(--surface); font-weight: 600; box-shadow: var(--shadow-soft), inset 2px 0 var(--explore); }
 .exp-tree-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .exp-tree-row small { flex: none; font-size: 11px; font-weight: 400; color: var(--text-3); }
+.exp-tree-slot { position: relative; overflow: hidden; border-radius: var(--radius); touch-action: pan-y; }
+.exp-tree-slot .exp-tree-row { position: relative; transition: transform .2s; }
+.exp-tree-slot.dragging .exp-tree-row { transition: none; }
+.exp-tree-delete { position: absolute; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0; border: 0; background: var(--danger); color: #fff; font-size: 12px; cursor: pointer; }
+.exp-tree-delete svg { width: 14px; height: 14px; }
+.exp-tree-slot:not(.open, .dragging) .exp-tree-delete { visibility: hidden; }
+.exp-tree-hint { margin: auto 8px 0; padding-top: 16px; font-size: 11px; color: var(--text-3); }
 @media (prefers-reduced-motion: reduce) { .exp-tree.settled, .exp-tree-scrim.settled { transition: none; } }
 /* a question as asked, the selection (选段) it carried above it in grey */
 .exp-page-asked { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin: 18px 0 12px; }
