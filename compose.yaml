@@ -18,11 +18,25 @@ services:
       # besides the public internet their address may be in, over http too
       KEINE_OWN_MODELS: ${KEINE_OWN_MODELS:-false}
       KEINE_OWN_MODEL_NETWORKS: ${KEINE_OWN_MODEL_NETWORKS:-}
+      # course media (videos, by default) goes to the bundled RustFS, an
+      # S3-compatible server. These only seed the settings: change them,
+      # test the connection and move existing files in the admin console
+      # (管理 / 系统 / 存储). KEINE_STORAGE=local starts with it off.
+      KEINE_STORAGE: ${KEINE_STORAGE:-s3}
+      KEINE_S3_ENDPOINT: ${KEINE_S3_ENDPOINT:-http://s3:9000}
+      KEINE_S3_BUCKET: ${KEINE_S3_BUCKET:-keine}
+      KEINE_S3_REGION: ${KEINE_S3_REGION:-us-east-1}
+      KEINE_S3_ACCESS_KEY: ${KEINE_S3_ACCESS_KEY:-keine}
+      KEINE_S3_SECRET_KEY: ${KEINE_S3_SECRET_KEY:-keine-s3-secret}
+      KEINE_S3_PATH_STYLE: ${KEINE_S3_PATH_STYLE:-true}
+      KEINE_S3_CREATE_BUCKET: ${KEINE_S3_CREATE_BUCKET:-true}
     volumes:
       - keine-data:/data
     depends_on:
       postgres:
         condition: service_healthy
+      s3:
+        condition: service_started
     restart: unless-stopped
 
   postgres:
@@ -40,6 +54,16 @@ services:
       retries: 20
     restart: unless-stopped
 
+  s3:
+    image: rustfs/rustfs:1.0.4
+    environment:
+      RUSTFS_ACCESS_KEY: ${KEINE_S3_ACCESS_KEY:-keine}
+      RUSTFS_SECRET_KEY: ${KEINE_S3_SECRET_KEY:-keine-s3-secret}
+    volumes:
+      - s3-data:/data
+    restart: unless-stopped
+
 volumes:
   keine-data:
   postgres-data:
+  s3-data:

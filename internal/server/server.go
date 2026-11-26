@@ -19,6 +19,7 @@ import (
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/credits"
 	"github.com/Bank5y/keine/internal/db"
+	"github.com/Bank5y/keine/internal/filestore"
 	"github.com/Bank5y/keine/internal/netguard"
 	"github.com/Bank5y/keine/internal/notify"
 	"github.com/Bank5y/keine/internal/secret"
@@ -26,10 +27,19 @@ import (
 )
 
 type Options struct {
-	DatabaseURL   string
-	Storage       storage.Store
-	AdminUsername string
-	AdminPassword string
+	DatabaseURL string
+	// Storage keeps the course files. A *storage.Routed one can send media
+	// to object storage, which the admin console then configures.
+	Storage storage.Store
+	// StorageDefaults are the object storage settings until an admin
+	// saves some, and StorageSecret the secret key they use.
+	StorageDefaults filestore.Settings
+	StorageSecret   string
+	// StorageAttempts is how often a configured bucket is tried at start
+	// (default 15, two seconds apart).
+	StorageAttempts int
+	AdminUsername   string
+	AdminPassword   string
 	// SecureCookies marks the session cookie Secure; set it behind HTTPS.
 	SecureCookies bool
 	// Web is the built front end; nil serves the API only.
@@ -83,6 +93,9 @@ type Server struct {
 	// generator helps users write a course manifest
 	generator course.Generator
 	files     storage.Store
+	// filestore configures where media goes; nil when Storage is not
+	// routed
+	filestore *filestore.Service
 	mux       *http.ServeMux
 	// stopSweeping ends the periodic draft sweep
 	stopSweeping context.CancelFunc
@@ -127,6 +140,17 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	}
 	s.models = assistant.NewModels(pool, box, opts.AdapterFor, opts.SearchFor)
 	s.own = assistant.NewOwnModels(pool, box, opts.AdapterFor, opts.SearchFor, netguard.Policy{Networks: networks}, opts.OwnModels)
+	if routed, ok := opts.Storage.(*storage.Routed); ok {
+		s.filestore = filestore.New(pool, box, routed, opts.StorageDefaults, opts.StorageSecret)
+		attempts := opts.StorageAttempts
+		if attempts <= 0 {
+			attempts = 15
+		}
+		if err := s.filestore.Start(ctx, attempts, 2*time.Second); err != nil {
+			pool.Close()
+			return nil, err
+		}
+	}
 	s.runs = assistant.NewGate(opts.MaxRuns)
 	s.credits = credits.NewService(pool, opts.Now)
 	s.staged = newStagedAnalyses()
@@ -152,6 +176,9 @@ func (s *Server) Close() {
 	s.sweeping.Wait()
 	s.stopBuilds()
 	s.building.Wait()
+	if s.filestore != nil {
+		s.filestore.Close()
+	}
 	s.db.Close()
 }
 
@@ -203,6 +230,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/users", s.createUser)
 	s.mux.HandleFunc("GET /api/site", s.getSite)
 	s.mux.HandleFunc("PUT /api/site", s.adminOnly(s.putSite))
+	s.mux.HandleFunc("GET /api/admin/storage", s.adminOnly(s.getStorage))
+	s.mux.HandleFunc("PUT /api/admin/storage", s.adminOnly(s.putStorage))
+	s.mux.HandleFunc("POST /api/admin/storage/test", s.adminOnly(s.testStorage))
+	s.mux.HandleFunc("POST /api/admin/storage/migration", s.adminOnly(s.startMigration))
+	s.mux.HandleFunc("DELETE /api/admin/storage/migration", s.adminOnly(s.cancelMigration))
 	s.mux.HandleFunc("GET /api/admin/users", s.adminOnly(s.listUsers))
 	s.mux.HandleFunc("GET /api/admin/models", s.adminOnly(s.listModels))
 	s.mux.HandleFunc("POST /api/admin/models", s.adminOnly(s.createModel))

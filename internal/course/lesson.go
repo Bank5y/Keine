@@ -110,17 +110,42 @@ func (s *Service) retainedLesson(ctx context.Context, viewer auth.User, courseID
 	return s.readText(ctx, courseID, ret.filesDir, l)
 }
 
-// File streams one stored file of a course the viewer may see. Only the
-// files the course references are stored, so nothing else can be reached.
-func (s *Service) File(ctx context.Context, viewer auth.User, courseID int64, path string) (io.ReadCloser, error) {
+// FileLink opens one stored file of a course the viewer may see, or, when
+// a browser can fetch it from object storage or a CDN itself, gives that
+// address instead (and opens nothing). Only the files the course
+// references are stored, so nothing else can be reached.
+func (s *Service) FileLink(ctx context.Context, viewer auth.User, courseID int64, path string) (io.ReadCloser, string, error) {
 	sm, ret, err := s.open(ctx, viewer, courseID, "")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if clean, ok := cleanPath(path); !ok || clean != path || (ret != nil && !ret.canRead(path)) {
-		return nil, ErrFileNotFound
+		return nil, "", ErrFileNotFound
 	}
-	rc, err := s.files.Get(ctx, filesPrefix(courseID, sm.FilesDir)+path)
+	return s.linkOrOpen(ctx, filesPrefix(courseID, sm.FilesDir)+path)
+}
+
+// linker is a store that can hand out direct addresses (storage.Routed).
+type linker interface {
+	Link(ctx context.Context, key string) (string, error)
+}
+
+func (s *Service) linkOrOpen(ctx context.Context, key string) (io.ReadCloser, string, error) {
+	if l, ok := s.files.(linker); ok {
+		u, err := l.Link(ctx, key)
+		if err != nil {
+			return nil, "", err
+		}
+		if u != "" {
+			return nil, u, nil
+		}
+	}
+	rc, err := s.openFile(ctx, key)
+	return rc, "", err
+}
+
+func (s *Service) openFile(ctx context.Context, key string) (io.ReadCloser, error) {
+	rc, err := s.files.Get(ctx, key)
 	if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrInvalidKey) {
 		return nil, ErrFileNotFound
 	}

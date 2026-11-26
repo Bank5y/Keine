@@ -64,14 +64,22 @@ func s3Server(t *testing.T) storage.S3Config {
 	return s3Cfg
 }
 
-// NewS3Store returns a store on a fresh bucket of the shared S3 server.
-func NewS3Store(t *testing.T) *storage.S3 {
+// NewS3Config points at a fresh bucket of the shared S3 server, which
+// opening it with CreateBucket makes.
+func NewS3Config(t *testing.T) storage.S3Config {
 	t.Helper()
 	cfg := s3Server(t)
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
 	cfg.Bucket = "t-" + hex.EncodeToString(b)
 	cfg.CreateBucket = true
+	return cfg
+}
+
+// NewS3Store returns a store on a fresh bucket of the shared S3 server.
+func NewS3Store(t *testing.T) *storage.S3 {
+	t.Helper()
+	cfg := NewS3Config(t)
 	var s *storage.S3
 	var err error
 	// the server accepts connections a moment before it serves requests

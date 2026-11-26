@@ -1,5 +1,5 @@
 import { createElement, useEffect, useState, type ComponentType, type ReactNode } from 'react';
-import { ArrowLeft, ChartColumn, ClipboardCheck, Cpu, Network, Package, PanelLeftClose, PanelLeftOpen, Settings2, Users, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ChartColumn, ClipboardCheck, Cpu, HardDrive, Network, Package, PanelLeftClose, PanelLeftOpen, Settings2, Users, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorBox, PageHead } from '@/components/common';
@@ -15,6 +15,7 @@ import { AdminReviews } from '@/views/admin-reviews';
 import { AdminConcepts } from '@/views/admin-concepts';
 import { AdminModels } from '@/views/admin-models';
 import { AdminPlans } from '@/views/admin-plans';
+import { AdminStorage } from '@/views/admin-storage';
 import { AdminUsage } from '@/views/admin-usage';
 import { AdminUsers } from '@/views/admin-users';
 
@@ -33,12 +34,13 @@ const GROUPS: [string, AdminSection[]][] = [
   ]],
   ['系统', [
     { href: '/admin/models', label: '模型', icon: Cpu, desc: '站点模型与连接测试' },
+    { href: '/admin/storage', label: '存储', icon: HardDrive, desc: 'S3 对象存储、访问方式与文件迁移' },
     { href: '/admin/site', label: '站点设置', icon: Settings2, desc: '注册开关等全站设置' },
   ]],
 ];
 const SECTIONS = GROUPS.flatMap(([, items]) => items);
 
-const SIMPLE: Record<string, ComponentType> = { '/admin/reviews': AdminReviews, '/admin/plans': AdminPlans, '/admin/concepts': AdminConcepts, '/admin/site': SiteSettings };
+const SIMPLE: Record<string, ComponentType> = { '/admin/reviews': AdminReviews, '/admin/plans': AdminPlans, '/admin/concepts': AdminConcepts, '/admin/site': SiteSettings, '/admin/storage': AdminStorage };
 
 function SectionView({ href, path, user }: { href: string; path: string; user: User }) {
   if (href === '/admin/users') return <AdminUsers me={user} />;
@@ -59,7 +61,7 @@ export function AdminView({ path, user }: { path: string; user: User }) {
   if (!narrow) return <AdminConsole current={current} path={path} user={user}>{body}</AdminConsole>;
   return (
     <div className="page enter">
-      <PageHead kicker="Admin" title="管理" sub="审核公开申请, 管理本站的账号、模型、套餐与设置。" />
+      <PageHead kicker="Admin" title="管理" sub="审核公开申请, 管理本站的账号、模型、套餐、存储与设置。" />
       <nav className="subnav" aria-label="管理">
         {SECTIONS.map((s) => <Link key={s.href} href={s.href} keepScroll className={cn(s === current && 'active')} aria-current={s === current ? 'page' : undefined}>{s.label}</Link>)}
       </nav>

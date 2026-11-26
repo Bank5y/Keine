@@ -47,6 +47,7 @@ import (
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/db"
 	"github.com/Bank5y/keine/internal/eval"
+	"github.com/Bank5y/keine/internal/filestore"
 	"github.com/Bank5y/keine/internal/secret"
 )
 
@@ -114,15 +115,17 @@ func evaluate(ctx context.Context, o options) (eval.Report, string, error) {
 		return eval.Report{}, "", err
 	}
 	defer pool.Close()
-	files, err := cfg.OpenStore(ctx)
-	if err != nil {
-		return eval.Report{}, "", err
-	}
 	var box *secret.Box
 	if cfg.MasterKey != "" {
 		if box, err = secret.NewBox(cfg.MasterKey); err != nil {
 			return eval.Report{}, "", err
 		}
+	}
+	// the deployment's media may be in its bucket
+	files := cfg.OpenStore()
+	storageDefaults, storageSecret := cfg.StorageDefaults()
+	if err := filestore.New(pool, box, files, storageDefaults, storageSecret).Start(ctx, 1, 0); err != nil {
+		return eval.Report{}, "", err
 	}
 	models := assistant.NewModels(pool, box, adapters.For, search.For)
 	turn, err := modelTurn(ctx, o.model, models, assistant.TurnAnalysis)

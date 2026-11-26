@@ -129,8 +129,12 @@ func (s *Server) draftFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("path")
-	rc, err := s.courses.DraftFile(r.Context(), currentUser(r), id, name)
+	rc, link, err := s.courses.DraftFile(r.Context(), currentUser(r), id, name)
 	if !writeDraftError(w, r, err) {
+		return
+	}
+	if link != "" {
+		redirectToObject(w, r, link, "private, no-cache")
 		return
 	}
 	defer rc.Close()

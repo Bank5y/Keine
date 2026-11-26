@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -82,8 +85,110 @@ func (s *S3) Put(ctx context.Context, key string, r io.Reader, size int64) error
 	if err := CheckKey(key); err != nil {
 		return err
 	}
-	_, err := s.client.PutObject(ctx, s.bucket, s.prefix+key, r, size, minio.PutObjectOptions{})
+	// a browser fetching the object straight from the bucket or a CDN gets
+	// its type from what is stored
+	_, err := s.client.PutObject(ctx, s.bucket, s.prefix+key, r, size, minio.PutObjectOptions{ContentType: contentType(key)})
 	return err
+}
+
+func contentType(key string) string {
+	if ct := mime.TypeByExtension(path.Ext(key)); ct != "" {
+		return ct
+	}
+	return "application/octet-stream"
+}
+
+// Size is the object's size; a missing object is ErrNotFound.
+func (s *S3) Size(ctx context.Context, key string) (int64, error) {
+	if err := CheckKey(key); err != nil {
+		return 0, err
+	}
+	info, err := s.client.StatObject(ctx, s.bucket, s.prefix+key, minio.StatObjectOptions{})
+	if err != nil {
+		return 0, mapS3Error(err)
+	}
+	return info.Size, nil
+}
+
+// Delivery is how a browser gets a cloud object.
+type Delivery string
+
+const (
+	// DeliverProxy streams it through the application.
+	DeliverProxy Delivery = "proxy"
+	// DeliverPresign redirects to a presigned URL of the bucket.
+	DeliverPresign Delivery = "presign"
+	// DeliverCDN redirects to the object under a CDN's address, which must
+	// be able to read the bucket itself.
+	DeliverCDN Delivery = "cdn"
+)
+
+func (d Delivery) Valid() bool { return d == DeliverProxy || d == DeliverPresign || d == DeliverCDN }
+
+// Linker builds the Route.Link of a delivery: nil for DeliverProxy. An
+// object not in the bucket (still on local disk) gets no link, so it is
+// served by the application from where it is. A presigned link lasts ttl.
+func (s *S3) Linker(d Delivery, ttl time.Duration, cdnBase string) func(ctx context.Context, key string) (string, error) {
+	link := s.linker(d, ttl, cdnBase)
+	if link == nil {
+		return nil
+	}
+	return func(ctx context.Context, key string) (string, error) {
+		// an SVG opened from the bucket's address would run its scripts
+		// there; the application serves it under a sandboxing policy
+		if strings.EqualFold(path.Ext(key), ".svg") {
+			return "", nil
+		}
+		return link(ctx, key)
+	}
+}
+
+func (s *S3) linker(d Delivery, ttl time.Duration, cdnBase string) func(ctx context.Context, key string) (string, error) {
+	switch d {
+	case DeliverPresign:
+		return func(ctx context.Context, key string) (string, error) {
+			// a playlist's segments are relative to it; presigned, they
+			// would miss their signatures, so it goes through the
+			// application and they come back here one by one
+			if strings.EqualFold(path.Ext(key), ".m3u8") {
+				return "", nil
+			}
+			if ok, err := s.has(ctx, key); !ok {
+				return "", err
+			}
+			q := url.Values{"response-content-type": {contentType(key)}}
+			u, err := s.client.PresignedGetObject(ctx, s.bucket, s.prefix+key, ttl, q)
+			if err != nil {
+				return "", err
+			}
+			return u.String(), nil
+		}
+	case DeliverCDN:
+		base := strings.TrimRight(cdnBase, "/")
+		return func(ctx context.Context, key string) (string, error) {
+			if ok, err := s.has(ctx, key); !ok {
+				return "", err
+			}
+			return base + "/" + escapePath(s.prefix+key), nil
+		}
+	}
+	return nil
+}
+
+func (s *S3) has(ctx context.Context, key string) (bool, error) {
+	_, err := s.Size(ctx, key)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func escapePath(key string) string {
+	segs := strings.Split(key, "/")
+	for i, seg := range segs {
+		segs[i] = url.PathEscape(seg)
+	}
+	return strings.Join(segs, "/")
 }
 
 func (s *S3) Get(ctx context.Context, key string) (io.ReadCloser, error) {

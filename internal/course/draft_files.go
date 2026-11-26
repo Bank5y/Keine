@@ -407,19 +407,17 @@ func (s *Service) DraftLesson(ctx context.Context, viewer auth.User, id int64, k
 
 // DraftFile streams a file of the viewer's draft's course: an uploaded one
 // from the temporary area, or one of the course's current files.
-func (s *Service) DraftFile(ctx context.Context, viewer auth.User, id int64, name string) (io.ReadCloser, error) {
+// The link is the address a browser can fetch it from itself, if any (see
+// FileLink); then no file is opened.
+func (s *Service) DraftFile(ctx context.Context, viewer auth.User, id int64, name string) (io.ReadCloser, string, error) {
 	_, files, err := s.draftCourse(ctx, viewer, id)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if clean, ok := cleanPath(name); !ok || clean != name {
-		return nil, ErrFileNotFound
+		return nil, "", ErrFileNotFound
 	}
-	rc, err := s.files.Get(ctx, files.key(name))
-	if errors.Is(err, storage.ErrNotFound) || errors.Is(err, storage.ErrInvalidKey) {
-		return nil, ErrFileNotFound
-	}
-	return rc, err
+	return s.linkOrOpen(ctx, files.key(name))
 }
 
 // dropDraftFiles removes a draft's temporary area, or one upload of it.
