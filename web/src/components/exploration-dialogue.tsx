@@ -1,18 +1,20 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode } from 'react';
-import { BookOpen, ChevronLeft, Copy, FileText, Menu, Plus, RotateCcw, Square, Telescope, Trash2, X, ArrowUp } from 'lucide-react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject, type ReactNode, type RefObject } from 'react';
+import { BookOpen, ChevronLeft, Copy, FileText, GitBranch, Menu, Plus, RotateCcw, Square, Telescope, TextQuote, Trash2, X, ArrowUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Credit, documentParts, Lookups, Notice, Ticker } from '@/components/analysis-popover';
 import { Confirm } from '@/components/confirm';
 import { ReportView } from '@/components/exploration-report';
 import { CitedMarkdown } from '@/components/cited-markdown';
 import { LazyMarkdown } from '@/components/lazy-markdown';
+import { QuotedWords, QuoteField, type FieldHandle, type TurnNo } from '@/components/quote-field';
 import { ApiError } from '@/lib/api';
 import { citationTable, type Cited } from '@/lib/citations';
 import {
-  askTurn, carried, courseLinkItems, DEFAULT_QUESTION, forksAt, INTERRUPTED, KINDS, mapLayout, MAX_NODES, openNode, pathTo, prune, restack, retryTurn,
-  seenBy, settle, spine, stepRun, turnAt, withoutNode, NEW_KINDS, type Ended, type Layer, type NewKind, type Run,
+  askTurn, atEnd, carried, courseLinkItems, forksAt, FULL_TEXT, INTERRUPTED, KINDS, mapLayout, MAX_NODES, nextQuestion, noCarry, openNode, pathTo, prune, restack, retryTurn,
+  OPENING, openingName, REPORT, rekey, seenBy, settle, spine, stepCarry, stepRun, turnAt, turnNoIn, withoutNode, NEW_KINDS, type Carry, type CarryEvent, type Ended, type Layer, type NewKind, type Next, type Opening, type Run,
 } from '@/lib/dialogue';
 import { deleteNode, type DialogueNode, type ExplorationDetail, type NodeKind, type Question, type Turn } from '@/lib/explorations';
+import { readQuestion } from '@/lib/quotes';
 import { Link } from '@/lib/router';
 import { useUser } from '@/lib/session';
 import { cn } from '@/lib/utils';
@@ -21,10 +23,6 @@ const SPINE = 56; // the width of each covered layer left showing
 const SHOWN = 3; // how many covered layers keep a spine
 const MS = 340;
 
-type Kind = NewKind;
-// a node being opened: its kind, the turn it forks from, the passage
-// selected in that turn's reply
-type Draft = { kind: Kind; turn: number; fragment?: string };
 // a turn being answered: on which node, after which turn (or as a node's
 // first, or a retry in place), and what was asked
 export type Pending = { layer: string; question: Question; run: Run; retry?: number };
@@ -63,7 +61,10 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
 // ExplorationDialogue is the level-2 zoom (#136, #137): the exploration
 // dialogue as a stack of drawers. The current node's path is the stack:
 // a node's chip under the turn it forked from pushes its drawer in from
-// the right, ‹ or Esc pops it. Covered layers keep a spine on the left,
+// the right, ‹ or Esc pops it. Each node's box opens a node of the kind
+// picked with its ＋, from the turn marked, as a narrow screen's does: its
+// drawer comes in as the question goes, the reply streaming in there, and
+// is the node's once it is kept. Covered layers keep a spine on the left,
 // three at most, older ones sliding off; the header's path reaches every
 // one. A read-only map of the whole tree sits on the right.
 export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: {
@@ -72,15 +73,22 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
 }) {
   const main = d.nodes.find((n) => n.kind === 'main')!;
   const [current, setCurrent] = useState(main.id);
-  const [draft, setDraft] = useState<Draft | null>(null);
   const { pending, refused, setRefused, go } = useRuns();
   const [deleting, setDeleting] = useState<DialogueNode | null>(null);
   // the report's drawer is open over the node (#160)
   const [reporting, setReporting] = useState(false);
+  // a node being opened: its drawer is on top while its first reply runs;
+  // the last one stays drawn as its drawer leaves (refused), and whether
+  // the reader stayed at the reply's end, for where the node opens
+  const [opening, setOpening] = useState<Opening | null>(null);
+  const lastOpening = useRef<Opening | null>(null);
+  if (opening) lastOpening.current = opening;
+  const openingFollow = useRef(true);
+  const [kept, setKept] = useState<{ id: number; atEnd: boolean } | null>(null);
 
   // the node shown may be gone (deleted with its parent)
   const node = d.nodes.find((n) => n.id === current) ?? main;
-  const want = [...pathTo(d.nodes, node.id).map((n) => String(n.id)), ...(draft ? ['draft'] : []), ...(reporting ? ['report'] : [])];
+  const want = [...pathTo(d.nodes, node.id).map((n) => String(n.id)), ...(opening ? [OPENING] : []), ...(reporting ? [REPORT] : [])];
   const [layers, setLayers] = useState<Layer[]>(() => want.map((key) => ({ key, phase: 'in' })));
   const key = want.join('/');
   useEffect(() => {
@@ -91,34 +99,46 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
     return () => { cancelAnimationFrame(raf); window.clearTimeout(t); };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const open = (id: number) => { setDraft(null); setReporting(false); setRefused(null); setCurrent(id); };
+  // no going elsewhere while a node is being opened: its drawer stays on
+  // top until its first reply is kept (or refused, back where it was asked)
+  const open = (id: number) => { if (opening) return; setReporting(false); setRefused(null); setCurrent(id); };
   const pop = () => {
     if (reporting) { setReporting(false); return true; }
-    if (draft) { setDraft(null); return true; }
+    // a node being opened stays until its first reply is kept
+    if (opening) return true;
     if (node.parentId != null) { open(node.parentId); return true; }
     return false;
   };
   escTaken.current = () => pop();
 
-  const ask = async (question: Question) => {
-    const last = node.turns[node.turns.length - 1];
-    const t = await go(String(node.id), question, (on, s) => askTurn(d.id, last.id, question, on, s));
-    if (t) onDetail(withTurn(d, node.id, t as Turn));
+  // what a node's box sends: on in the node, or a new node, opened only
+  // now its first question goes, and gone to once it is kept
+  const send = async (at: DialogueNode, next: Next) => {
+    if (next.to === 'turn') {
+      const t = await go(String(at.id), next.question, (on, s) => askTurn(d.id, next.after, next.question, on, s));
+      if (t) onDetail(withTurn(d, at.id, t as Turn));
+      return;
+    }
+    if (next.to !== 'node') return;
+    setReporting(false);
+    setOpening({ kind: next.kind, fork: next.fork });
+    const n = await go(OPENING, next.question, (on, s) => openNode(d.id, next.fork, next.kind, next.question, on, s));
+    setOpening(null);
+    if (!n) {
+      // nothing kept: back in the node it was asked from, saying why
+      setRefused((r) => (r ? { ...r, layer: String(at.id) } : r));
+      return;
+    }
+    const id = (n as DialogueNode).id;
+    setKept({ id, atEnd: openingFollow.current });
+    setLayers((l) => rekey(l, OPENING, String(id)));
+    onDetail({ ...d, nodes: [...d.nodes, n as DialogueNode] });
+    setCurrent(id);
   };
 
   const retry = async (t: Turn) => {
     const got = await go(String(node.id), t.question, (on, s) => retryTurn(d.id, t.id, on, s), t.id);
     if (got) onDetail(withTurn(d, node.id, got as Turn));
-  };
-
-  const start = async (question: Question) => {
-    if (!draft) return;
-    const { kind, turn } = draft;
-    const n = await go('draft', question, (on, s) => openNode(d.id, turn, kind, question, on, s));
-    if (!n) return;
-    onDetail({ ...d, nodes: [...d.nodes, n as DialogueNode] });
-    setDraft(null);
-    setCurrent((n as DialogueNode).id);
   };
 
   const removeNode = async () => {
@@ -142,11 +162,11 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
         <Telescope aria-hidden />
         <span className="dlg-head-title">展开探索</span>
         <span className="dlg-head-sub">· {d.title}</span>
-        <Crumbs nodes={d.nodes} current={node.id} draft={draft} onOpen={open} />
+        <Crumbs nodes={d.nodes} current={node.id} opening={opening?.kind ?? null} onOpen={open} />
         <span className="dlg-head-count">节点 {count}</span>
         <button type="button" className={cn('dlg-head-report', reporting && 'on')} disabled={!!pending} aria-pressed={reporting}
           title={pending ? '这一轮回答完以后才能生成' : '把整棵对话树整理成一份文档'}
-          aria-label="生成探索报告" onClick={() => { setDraft(null); setRefused(null); setReporting(true); }}><FileText /><span>生成探索报告</span></button>
+          aria-label="生成探索报告" onClick={() => { setRefused(null); setReporting(true); }}><FileText /><span>生成探索报告</span></button>
         <button type="button" className="dlg-close" aria-label="关闭" onClick={onClose}><X /></button>
       </header>
       <div className="dlg-body">
@@ -154,8 +174,8 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
           {layers.map((l) => {
             const i = live.indexOf(l);
             const at = l.phase === 'leave' ? { left: Math.min(live.length - 1, SHOWN) * SPINE, covered: false, gone: false } : spine(i, live.length, SPINE, SHOWN);
-            const n = l.key === 'draft' || l.key === 'report' ? null : d.nodes.find((x) => String(x.id) === l.key) ?? null;
-            if (l.key !== 'draft' && l.key !== 'report' && !n) return null;
+            const n = l.key === REPORT || l.key === OPENING ? null : d.nodes.find((x) => String(x.id) === l.key) ?? null;
+            if (l.key !== REPORT && l.key !== OPENING && !n) return null;
             const placed = { left: at.left, zIndex: l.phase === 'leave' ? 99 : i, ['--gone' as string]: `${-SPINE * Math.max(live.length - 1 - i - SHOWN, 0)}px` };
             return (
               <Fragment key={l.key}>
@@ -163,15 +183,14 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
                 <section className={cn('dlg-layer', i > 0 || l.phase === 'leave' ? 'drawer' : 'base', `phase-${l.phase}`, at.gone && 'gone')}
                   style={placed} inert={at.covered || l.phase === 'leave' || undefined}>
                   <div className={cn('dlg-layer-inner', at.covered && 'covered')}>
-                    {l.key === 'report' ? (
+                    {l.key === REPORT ? (
                       <ReportView exp={d.id} onBack={() => setReporting(false)} />
+                    ) : l.key === OPENING ? (
+                      lastOpening.current ? <OpeningView d={d} opening={lastOpening.current} pending={pending?.layer === OPENING ? pending : null} follow={openingFollow} /> : null
                     ) : n ? (
                       <NodeView d={d} node={n} pending={pending?.layer === l.key ? pending : null} refused={refused?.layer === l.key ? refused : null}
-                        busy={!!pending} onOpen={open} onFork={(f) => { setRefused(null); setDraft(f); }} onAsk={ask} onRetry={retry}
+                        busy={!!pending} atEndFirst={kept?.id === n.id && kept.atEnd} onOpen={open} onSend={(next) => void send(n, next)} onRetry={retry}
                         onBack={pop} onDelete={() => setDeleting(n)} />
-                    ) : draft ? (
-                      <DraftView d={d} draft={draft} pending={pending?.layer === 'draft' ? pending : null} refused={refused?.layer === 'draft' ? refused : null}
-                        onCancel={() => setDraft(null)} onStart={start} />
                     ) : null}
                   </div>
                 </section>
@@ -233,20 +252,20 @@ function Spine({ node, shown, gone, style, onClick }: { node: DialogueNode | nul
 
 // Crumbs is the whole path in the header, the layers gone off the left
 // too; a step with siblings lists them.
-function Crumbs({ nodes, current, draft, onOpen }: { nodes: DialogueNode[]; current: number; draft: Draft | null; onOpen: (id: number) => void }) {
+function Crumbs({ nodes, current, opening, onOpen }: { nodes: DialogueNode[]; current: number; opening: NewKind | null; onOpen: (id: number) => void }) {
   const p = pathTo(nodes, current);
   const [sib, setSib] = useState<number | null>(null);
-  if (p.length < 2 && !draft) return <span className="dlg-crumbs" />;
+  if (p.length < 2 && !opening) return <span className="dlg-crumbs" />;
   return (
     <nav className="dlg-crumbs" aria-label="节点路径">
       {p.map((n, i) => {
         const sibs = n.parentId == null ? [] : nodes.filter((x) => x.parentId === n.parentId);
-        const last = i === p.length - 1 && !draft;
+        const last = i === p.length - 1 && !opening;
         return (
           <span key={n.id} className="dlg-crumb">
             {i ? <span className="dlg-crumb-sep">›</span> : null}
             <button type="button" className={cn('dlg-crumb-btn', last && 'current', `kind-${n.kind}`)} onClick={() => onOpen(n.id)}>
-              <Dot kind={n.kind} />{nameOf(n)}
+              <Dot kind={n.kind} /><span>{nameOf(n)}</span>
             </button>
             {sibs.length > 1 ? <button type="button" className="dlg-crumb-more" aria-label="同级节点" onClick={() => setSib(sib === n.id ? null : n.id)}>▾</button> : null}
             {sib === n.id ? (
@@ -257,29 +276,96 @@ function Crumbs({ nodes, current, draft, onOpen }: { nodes: DialogueNode[]; curr
           </span>
         );
       })}
-      {draft ? <span className="dlg-crumb"><span className="dlg-crumb-sep">›</span><span className={cn('dlg-crumb-btn current', `kind-${draft.kind}`)}><Dot kind={draft.kind} />新{KINDS[draft.kind].label}</span></span> : null}
+      {opening ? <span className="dlg-crumb"><span className="dlg-crumb-sep">›</span><span className={cn('dlg-crumb-btn current', `kind-${opening}`)}><Dot kind={opening} /><span>{openingName(opening)}</span></span></span> : null}
     </nav>
   );
 }
 
+// OpeningHead says what a node being opened is and where it forks.
+export function OpeningHead({ d, opening }: { d: ExplorationDetail; opening: Opening }) {
+  const at = turnAt(d.nodes, opening.fork);
+  const from = at ? (at.node.kind === 'main' ? '主节点' : `「${at.node.name}」`) : '';
+  return <div className="dlg-forkhead-title"><Dot kind={opening.kind} /><b>{openingName(opening.kind)}</b><span>从{from}第 {(at?.index ?? 0) + 1} 轮岔出</span></div>;
+}
+
+// OpeningView is the drawer of a node being opened: what it is, and its
+// first question being answered.
+function OpeningView({ d, opening, pending, follow }: { d: ExplorationDetail; opening: Opening; pending: Pending | null; follow: MutableRefObject<boolean> }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const { onScroll } = useFollow(scroller, pending, null, follow);
+  return (
+    <div className="dlg-node">
+      <div className="dlg-scroll" ref={scroller} onScroll={onScroll}>
+        <div className="dlg-col">
+          <div className="dlg-forkhead"><OpeningHead d={d} opening={opening} /></div>
+          {pending ? <Asking question={pending.question} run={pending.run} kind={opening.kind} turnNo={turnNoIn(d.nodes)} /> : null}
+        </div>
+      </div>
+      <CreditLine />
+    </div>
+  );
+}
+
+// useFollow keeps a scroller at its end as a reply streams in (and as
+// grown changes), while the reader stays there; one who scrolled up is
+// left where they are until they scroll back down. follow, when given,
+// is where whether they stay is kept. It returns the scroller's onScroll
+// and follow.
+export function useFollow(scroller: RefObject<HTMLDivElement | null>, pending: Pending | null, grown: unknown, kept?: MutableRefObject<boolean>) {
+  const own = useRef(true);
+  const follow = kept ?? own;
+  const running = !!pending;
+  // a new run starts at the end
+  useLayoutEffect(() => { if (running) follow.current = true; }, [running, follow]);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && pending && follow.current) el.scrollTop = el.scrollHeight;
+  }, [pending?.run.text, pending?.run.activities.length, pending?.run.thinking, pending?.run.linking, grown]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { onScroll: () => { const el = scroller.current; if (el) follow.current = atEnd(el); }, follow };
+}
+
 // NodeView is one node's drawer: the way back, where it forked, its turns
 // (with the nodes opened on each), a turn being answered, and the box to
-// ask the next question.
-function NodeView({ d, node, pending, refused, busy, onOpen, onFork, onAsk, onRetry, onBack, onDelete }: {
+// ask the next question. The box is the node's own, kept while the reader
+// is in a node above it: what is typed (the passages quoted from replies
+// among the words), the kind of node to open with it and the turn marked.
+function NodeView({ d, node, pending, refused, busy, atEndFirst, onOpen, onSend, onRetry, onBack, onDelete }: {
   d: ExplorationDetail; node: DialogueNode; pending: Pending | null; refused: Refused | null; busy: boolean;
-  onOpen: (id: number) => void; onFork: (f: Draft) => void; onAsk: (q: Question) => void; onRetry: (t: Turn) => void;
+  // a node just opened from a reply the reader followed to its end opens at its end
+  atEndFirst: boolean;
+  onOpen: (id: number) => void; onSend: (next: Next) => void; onRetry: (t: Turn) => void;
   onBack: () => boolean; onDelete: () => void;
 }) {
   const hint = carried(node);
   const parent = node.parentId == null ? null : d.nodes.find((n) => n.id === node.parentId) ?? null;
   const scroller = useRef<HTMLDivElement>(null);
-  const last = node.turns[node.turns.length - 1];
-  // stay at the end as a reply streams in
+  const field = useRef<FieldHandle>(null);
+  const [carry, setCarry] = useState<Carry>(noCarry);
+  const [asked, setAsked] = useState<Question>(NOTHING);
+  const [menu, setMenu] = useState(false);
+  const carryDo = (e: CarryEvent) => setCarry((c) => stepCarry(c, e));
+  const { onScroll } = useFollow(scroller, pending, node.turns.length);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && pending) el.scrollTop = el.scrollHeight;
-  }, [pending?.run.text, pending?.run.activities.length, node.turns.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  const failed = last.meta.interrupted === 'failed';
+    if (el && atEndFirst) el.scrollTop = el.scrollHeight;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const full = d.nodes.length >= MAX_NODES;
+  const next = nextQuestion(node, d.nodes, carry, asked);
+  const tooLong = next.to === 'turn' && refused?.code === 'context_too_long' ? '这个节点已经太长，从更早的一轮开节点继续' : '';
+  const blocked = next.to === 'none' ? next.reason : tooLong;
+  const submit = () => {
+    if (busy || next.to === 'none' || tooLong) return;
+    field.current?.clear();
+    carryDo({ type: 'sent' });
+    setMenu(false);
+    onSend(next);
+  };
+  const last = node.turns[node.turns.length - 1];
+  // the turn a new node would fork from, marked in the dialogue and shown
+  // as a tag: the turn marked, else (a kind picked) where it will fork
+  const forkAt = carry.fork ?? (carry.kind ? asked.attachments.find((a) => a.turn != null)?.turn ?? last.id : null);
+  const turnNo: TurnNo = turnNoIn(d.nodes);
   return (
     <div className="dlg-node">
       {parent ? (
@@ -289,25 +375,40 @@ function NodeView({ d, node, pending, refused, busy, onOpen, onFork, onAsk, onRe
           <button type="button" className="dlg-node-delete" onClick={onDelete}><Trash2 />删除节点</button>
         </div>
       ) : null}
-      <div className="dlg-scroll" ref={scroller}>
+      <div className="dlg-scroll" ref={scroller} onScroll={onScroll}>
         <div className="dlg-col">
           {hint ? <p className="dlg-carried">{hint}</p> : null}
           {parent ? <ForkHead d={d} node={node} /> : null}
           {node.turns.map((t, i) => (
-            pending?.retry === t.id ? <Asking key={t.id} question={pending.question} run={pending.run} kind={node.kind} /> : (
+            pending?.retry === t.id ? <Asking key={t.id} question={pending.question} run={pending.run} kind={node.kind} turnNo={turnNo} /> : (
               <TurnView key={t.id} d={d} node={node} turn={t} first={node.kind === 'main' && i === 0} last={i === node.turns.length - 1}
-                busy={busy} onOpen={onOpen} onFork={onFork} onRetry={onRetry} />
+                busy={busy} full={full} forking={forkAt === t.id} turnNo={turnNo} onOpen={onOpen} onRetry={onRetry}
+                onFork={() => { carryDo({ type: 'fork', turn: t.id }); setMenu(true); }} />
             )
           ))}
-          {pending && pending.retry == null ? <Asking question={pending.question} run={pending.run} kind={node.kind} /> : null}
+          {pending && pending.retry == null ? <Asking question={pending.question} run={pending.run} kind={node.kind} turnNo={turnNo} /> : null}
           {refused?.message ? <Refusal refused={refused} /> : null}
         </div>
+        <TakeSelection scroller={scroller} label="引用" icon={<TextQuote />} onTake={(t) => field.current?.insert({ text: t.text, turn: t.turn, start: t.start, end: t.end })} />
       </div>
-      <Composer busy={busy} disabled={failed && !pending ? '重试这一轮后才能接着问' : refused?.code === 'context_too_long' ? '这个节点已经太长，从更早的一轮开节点继续' : ''}
-        onAsk={(text) => onAsk({ text, attachments: [] })} />
+      <Composer field={field} busy={busy} blocked={blocked} ready={next.to !== 'none' && !tooLong} turnNo={turnNo}
+        placeholder={carry.kind ? `问点什么，开一个新的${KINDS[carry.kind].label}…` : '接着问…（选中回复里的文字可以引用）'}
+        menu={menu} onMenu={setMenu} full={full} kind={carry.kind}
+        menuHead={`开一个新节点 · ${forkAt != null && forkAt !== last.id ? `从第 ${turnNo(forkAt)} 轮岔出` : '从最后一轮岔出'}`}
+        tags={carry.kind || carry.fork != null ? (
+          <>
+            {carry.kind ? <Tag className={`kind-${carry.kind}`} label={`去掉${KINDS[carry.kind].label}`} onX={() => carryDo({ type: 'unkind' })}><Dot kind={carry.kind} />{KINDS[carry.kind].label}</Tag> : null}
+            {forkAt != null ? (
+              <Tag className="fork" label="去掉岔出点" onX={carry.fork != null ? () => carryDo({ type: 'unfork' }) : undefined}><GitBranch />从第 {turnNo(forkAt)} 轮岔出</Tag>
+            ) : null}
+          </>
+        ) : null}
+        onKind={(k) => { carryDo({ type: 'kind', kind: k }); setMenu(false); field.current?.focus(); }} onChange={setAsked} onSend={submit} />
     </div>
   );
 }
+
+const NOTHING: Question = { text: '', attachments: [] };
 
 // ForkHead says where a node forked and what it reads: the turn it forked
 // from, then a line: everything above it is inherited, nothing after.
@@ -335,50 +436,33 @@ const plain = (md: string) => md.replace(/<[^>]+>/g, ' ').replace(/[#*`>|_-]+/g,
 // TurnView is a question and its reply. The main node's first turn is the
 // question the analysis stands for (the server's, ADR 0011) and the
 // analysis in full, as the analysis popover shows it. Under the reply:
-// open a node (a passage selected in the reply goes with it), copy, try
-// again when it failed, and a chip for each node opened on it.
-function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry }: {
-  d: ExplorationDetail; node: DialogueNode; turn: Turn; first: boolean; last: boolean; busy: boolean;
-  onOpen: (id: number) => void; onFork: (f: Draft) => void; onRetry: (t: Turn) => void;
+// copy, the icon to fork a node from the turn (greyed out once the
+// dialogue is full), try again when it failed, and a chip for each node
+// opened on it. forking: the turn is marked as where a new node forks from.
+function TurnView({ d, node, turn: t, first, last, busy, full, forking, turnNo, onOpen, onFork, onRetry }: {
+  d: ExplorationDetail; node: DialogueNode; turn: Turn; first: boolean; last: boolean; busy: boolean; full: boolean; forking: boolean;
+  turnNo: TurnNo; onOpen: (id: number) => void; onFork: () => void; onRetry: (t: Turn) => void;
 }) {
-  const [menu, setMenu] = useState<false | 'down' | 'up'>(false);
-  const [fragment, setFragment] = useState('');
-  const reply = useRef<HTMLDivElement>(null);
   const forks = forksAt(d.nodes, t.id);
   // what the reply may cite: the sources of its chain (ADR 0013)
   const table = useMemo(() => citationTable(d.nodes, t.id), [d.nodes, t.id]);
   const stop = t.meta.interrupted ? INTERRUPTED[t.meta.interrupted] : null;
-  const full = d.nodes.length >= MAX_NODES;
-  // a passage selected inside this reply goes with a node opened on it
-  const noteSelection = () => {
-    const sel = window.getSelection();
-    const text = sel?.toString().trim() ?? '';
-    setFragment(text && sel?.anchorNode && reply.current?.contains(sel.anchorNode) ? text.slice(0, 2000) : '');
-  };
-  useEffect(() => {
-    if (!menu) return undefined;
-    const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.dlg-fork')) setMenu(false); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [menu]);
   const retriable = !!t.meta.interrupted && last && !forks.length && !first;
   return (
-    <div className="dlg-turn" data-turn={t.id}>
+    <div className={cn('dlg-turn exp-page-turn', forking && 'forking')} data-turn={t.id}>
+      <Asked question={first ? { text: d.firstQuestion, attachments: [] } : t.question} kind={node.kind} turnNo={turnNo} />
+      {forking ? <div className="exp-page-here"><GitBranch aria-hidden />从此处岔出</div> : null}
       {first ? (
-        <>
-          <Asked question={{ text: d.firstQuestion, attachments: [] }} kind={node.kind} />
-          <div className="dlg-reply dlg-analysis" ref={reply} onMouseUp={noteSelection}>
-            <h3 className="analysis-title">{d.title}</h3>
-            <p className="analysis-concept">{d.concept}</p>
-            <div className="analysis-label">概念解释</div>
-            <div className="analysis-explanation"><LazyMarkdown text={d.explanation} components={documentParts} /></div>
-          </div>
-        </>
+        <div className="dlg-reply dlg-analysis">
+          <h3 className="analysis-title">{d.title}</h3>
+          <p className="analysis-concept">{d.concept}</p>
+          <div className="analysis-label">概念解释</div>
+          <div className="analysis-explanation"><LazyMarkdown text={d.explanation} components={documentParts} /></div>
+        </div>
       ) : (
         <>
-          <Asked question={t.question} kind={node.kind} />
           {t.reply ? (
-            <div className="dlg-reply prose-wrap" ref={reply} onMouseUp={noteSelection}>
+            <div className="dlg-reply prose-wrap">
               <CitedMarkdown text={t.reply} table={table} components={documentParts} />
             </div>
           ) : null}
@@ -391,47 +475,34 @@ function TurnView({ d, node, turn: t, first, last, busy, onOpen, onFork, onRetry
           ) : null}
         </>
       )}
-      {t.meta.interrupted === 'failed' && !t.reply ? null : (
-        <div className="dlg-acts">
-          <span className="dlg-fork">
-            <button type="button" className={cn('dlg-act', menu && 'on')} disabled={busy} aria-expanded={!!menu}
-              onMouseDown={noteSelection}
-              onClick={(e) => {
-                // the menu opens upward when there is no room for it below
-                const below = window.innerHeight - e.currentTarget.getBoundingClientRect().bottom;
-                setMenu((v) => (v ? false : below < 320 ? 'up' : 'down'));
-              }}><Plus />开节点</button>
-            {menu ? (
-              <div className={cn('dlg-menu dlg-fork-menu', menu === 'up' && 'up')} role="menu">
-                {NEW_KINDS.map((k) => (
-                  <button type="button" key={k} role="menuitem" disabled={full} onClick={() => { setMenu(false); onFork({ kind: k, turn: t.id, fragment: fragment || undefined }); }}>
-                    <Dot kind={k} /><span><b>{KINDS[k].label}</b><small>{KINDS[k].hint}</small></span>
-                  </button>
-                ))}
-                <div className={cn('dlg-fork-note', full && 'full')}>
-                  {full ? `已有 ${MAX_NODES} 个节点，删除一些后才能再开` : fragment ? `带上选中的「${fragment.slice(0, 16)}${fragment.length > 16 ? '…' : ''}」` : '可以先在回复里选中一段，作为重点'}
-                </div>
-              </div>
-            ) : null}
-          </span>
-          {!first ? <button type="button" className="dlg-act" onClick={() => { void navigator.clipboard?.writeText(t.reply); toast.success('已复制'); }}><Copy />复制</button> : null}
+      {first || t.reply ? (
+        <div className="exp-page-acts dlg-turn-acts">
+          {first ? null : <button type="button" aria-label="复制" title="复制" onClick={() => { void navigator.clipboard?.writeText(t.reply); toast.success('已复制'); }}><Copy /></button>}
+          <button type="button" className={cn(forking && 'on')} aria-label="从这一轮岔出" title={full ? FULL_TEXT : '从这一轮岔出'} disabled={full || busy} onClick={onFork}><GitBranch /></button>
+        </div>
+      ) : null}
+      {forks.length ? (
+        <div className="exp-page-forks">
           {forks.map((n) => (
             <button type="button" key={n.id} className={cn('dlg-chip', `kind-${n.kind}`)} onClick={() => onOpen(n.id)} title={`${KINDS[n.kind].label}：${n.name}`}>
               <Dot kind={n.kind} /><span>{n.name}</span><small>{n.turns.length} 轮</small>
             </button>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
-function Asked({ question: q, kind }: { question: Question; kind: NodeKind }) {
+// Asked is a question as asked: the selections it carried unquoted above
+// it, the passages it quoted as tags among its words.
+function Asked({ question: q, kind, turnNo }: { question: Question; kind: NodeKind; turnNo: TurnNo }) {
+  const { above } = readQuestion(q);
   return (
     <div className="dlg-asked">
       <div className="dlg-asked-bubble">
-        {q.attachments.map((a, i) => <div key={i} className={cn('dlg-fragment', `kind-${kind}`)}><small>选中片段</small>「{a.text}」</div>)}
-        {q.text ? <span>{q.text}</span> : null}
+        {above.map((a, i) => <div key={i} className={cn('dlg-fragment', `kind-${kind}`)}><small>选中片段</small>「{a.text}」</div>)}
+        {q.text ? <span><QuotedWords question={q} turnNo={turnNo} /></span> : null}
       </div>
     </div>
   );
@@ -442,10 +513,10 @@ const NO_SOURCES = new Map<number, Cited>();
 // Asking is a turn being answered: the question, the lookups (a list
 // while nothing is written, one line after), and the reply as it streams.
 // asked, when given, shows the question in place of the usual bubble.
-export function Asking({ question, run, kind, asked }: { question: Question; run: Run; kind: NodeKind; asked?: ReactNode }) {
+export function Asking({ question, run, kind, asked, turnNo = () => null }: { question: Question; run: Run; kind: NodeKind; asked?: ReactNode; turnNo?: TurnNo }) {
   return (
     <div className="dlg-turn asking" aria-live="polite" aria-busy="true">
-      {asked ?? <Asked question={question} kind={kind} />}
+      {asked ?? <Asked question={question} kind={kind} turnNo={turnNo} />}
       {run.text ? <Lookups activities={run.activities} /> : run.activities.length ? <Ticker activities={run.activities} /> : null}
       {run.thinking && !run.text ? <p className="analysis-wait thinking"><span className="analysis-dot" aria-hidden />正在思考…</p> : null}
       {!run.text && !run.thinking && !run.activities.length ? <p className="analysis-wait">正在回答…</p> : null}
@@ -482,78 +553,103 @@ export function Refusal({ refused }: { refused: Refused }) {
   return <div className="dlg-stop" role="alert"><div><b>{title}</b><span>{refused.message}</span></div></div>;
 }
 
-// Composer is the box to ask the next question, with the credit line.
-function Composer({ busy, disabled, onAsk }: { busy: boolean; disabled: string; onAsk: (text: string) => void }) {
-  const [text, setText] = useState('');
-  const send = () => {
-    const q = text.trim();
-    if (!q || busy || disabled) return;
-    setText('');
-    onAsk(q);
-  };
+// Taken is a passage selected in a reply: its text, its turn, the range on
+// the page, and where it sits in the reply's text.
+export type Taken = { turn: number; text: string; range: Range; start: number; end: number };
+
+// TakeSelection offers a button (label) under a selection made in a reply
+// of the node, to take it into the next question: carried with it on a
+// narrow screen, quoted in its words on a wide one.
+export function TakeSelection({ scroller, label, icon, onTake }: {
+  scroller: RefObject<HTMLDivElement | null>; label: string; icon: ReactNode; onTake: (t: Taken) => void;
+}) {
+  const [pick, setPick] = useState<(Taken & { top: number; left: number }) | null>(null);
+  useEffect(() => {
+    const on = () => {
+      const box = scroller.current;
+      const sel = getSelection();
+      const raw = sel?.toString() ?? '';
+      const text = raw.trim().slice(0, 2000);
+      const at = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+      const reply = at ? (at.commonAncestorContainer instanceof Element ? at.commonAncestorContainer : at.commonAncestorContainer.parentElement)?.closest('.dlg-reply') : null;
+      const turn = reply?.closest<HTMLElement>('[data-turn]');
+      if (!box || !text || !at || !reply || !turn || !box.contains(turn)) { setPick(null); return; }
+      // where it starts in the reply's text
+      const before = document.createRange();
+      before.selectNodeContents(reply);
+      before.setEnd(at.startContainer, at.startOffset);
+      const start = before.toString().length + raw.length - raw.trimStart().length;
+      const r = at.getBoundingClientRect();
+      const b = box.getBoundingClientRect();
+      setPick({ turn: Number(turn.dataset.turn), text, range: at.cloneRange(), start, end: start + text.length,
+        top: r.bottom - b.top + box.scrollTop + 8, left: Math.min(Math.max(r.left - b.left + r.width / 2 - 44, 8), b.width - 96) });
+    };
+    document.addEventListener('selectionchange', on);
+    return () => document.removeEventListener('selectionchange', on);
+  }, [scroller]);
+  if (!pick) return null;
   return (
-    <div className="dlg-composer">
-      <div className={cn('dlg-box', (disabled || busy) && 'off')}>
-        <textarea value={text} rows={2} placeholder={disabled || '接着问…'} disabled={!!disabled} aria-label="接着问"
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
-        <button type="button" className={cn('dlg-send', busy && 'stop')} aria-label={busy ? '回答中' : '发送'} disabled={busy || !!disabled || !text.trim()} onClick={send}>
-          {busy ? <Square /> : <ArrowUp />}
+    <button type="button" className="exp-page-take" style={{ top: pick.top, left: pick.left }}
+      // the press keeps the selection until the tap lands
+      onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}
+      onClick={() => { const { top: _t, left: _l, ...t } = pick; getSelection()?.removeAllRanges(); setPick(null); onTake(t); }}>
+      {icon}{label}
+    </button>
+  );
+}
+
+// Tag is a tag in the box, with ✕ to take it off unless onX is absent
+// (a tag that follows from the others)
+export function Tag({ className, label, onX, children }: { className: string; label: string; onX?: () => void; children: ReactNode }) {
+  return <span className={cn('exp-page-tag', className, !onX && 'fixed')}>{children}{onX ? <button type="button" aria-label={label} onClick={onX}><X /></button> : null}</span>;
+}
+
+// KindMenu offers the kinds of node to open with the next question, over
+// the box; head says where it forks from, kind is the one picked.
+export function KindMenu({ head, full, kind, onKind }: { head: string; full: boolean; kind: NewKind | null; onKind: (k: NewKind) => void }) {
+  return (
+    <div className="exp-page-menu" role="menu" aria-label="节点类型">
+      <div className="exp-page-menu-head">{head}</div>
+      {NEW_KINDS.map((k) => (
+        <button type="button" key={k} role="menuitem" disabled={full} className={cn(kind === k && 'on')} onClick={() => onKind(k)}>
+          <Dot kind={k} /><span><b>{KINDS[k].label}</b><small>{KINDS[k].hint}</small></span>
         </button>
-      </div>
-      <CreditLine />
+      ))}
+      {full ? <div className="exp-page-menu-full">{FULL_TEXT}</div> : null}
     </div>
   );
 }
 
-// DraftView is a node about to be opened: what it will read, then its
-// first question, the kind's default to start from, the selected passage
-// removable.
-function DraftView({ d, draft, pending, refused, onCancel, onStart }: {
-  d: ExplorationDetail; draft: Draft; pending: Pending | null; refused: Refused | null; onCancel: () => void; onStart: (q: Question) => void;
+// Composer is the box to ask the next question, a card over the foot of
+// the drawer, with the credit line under it: the tags of what it carries
+// (the kind of node, the turn marked) on a line of their own at its top,
+// the field with the quotes among the words, and under them ＋ for the
+// kinds of node (menu), why it cannot be sent (blocked), and send.
+function Composer({ field, busy, blocked, ready, placeholder, turnNo, menu, onMenu, menuHead, full, kind, onKind, tags, onChange, onSend }: {
+  field: RefObject<FieldHandle | null>; busy: boolean; blocked: string; ready: boolean; placeholder: string; turnNo: TurnNo;
+  menu: boolean; onMenu: (on: boolean) => void; menuHead: string; full: boolean; kind: NewKind | null;
+  onKind: (k: NewKind) => void; tags: ReactNode; onChange: (q: Question) => void; onSend: () => void;
 }) {
-  const [text, setText] = useState(DEFAULT_QUESTION[draft.kind]);
-  const [fragment, setFragment] = useState(draft.fragment);
-  const at = turnAt(d.nodes, draft.turn);
-  const seen = seenBy(d.nodes, draft.turn);
-  const from = at ? (at.node.kind === 'main' ? '主节点' : `「${at.node.name}」`) : '';
-  const question: Question = { text: text.trim(), attachments: fragment ? [{ kind: 'selection', text: fragment }] : [] };
+  const box = useRef<HTMLDivElement>(null);
+  // the kinds go on a press anywhere else
+  useEffect(() => {
+    if (!menu) return undefined;
+    const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) onMenu(false); };
+    document.addEventListener('pointerdown', away);
+    return () => document.removeEventListener('pointerdown', away);
+  }, [menu, onMenu]);
   return (
-    <div className="dlg-node">
-      <div className="dlg-node-bar"><button type="button" className="dlg-back" onClick={onCancel}><ChevronLeft />取消</button></div>
-      <div className="dlg-scroll">
-        <div className="dlg-col">
-          {pending ? (
-            <>
-              <div className="dlg-forkhead-title"><Dot kind={draft.kind} /><b>新{KINDS[draft.kind].label}</b><span>从{from}第 {(at?.index ?? 0) + 1} 轮岔出</span></div>
-              <Asking question={pending.question} run={pending.run} kind={draft.kind} />
-            </>
-          ) : (
-            <div className="dlg-draft">
-              <div className="dlg-forkhead-title"><Dot kind={draft.kind} /><b>新{KINDS[draft.kind].label}</b><span>从{from}第 {(at?.index ?? 0) + 1} 轮岔出</span></div>
-              <div className="dlg-seen">
-                <small>这个节点看得到的对话</small>
-                <ol>{seen.map((t, i) => <li key={t.id}>{i === 0 ? `分析：${d.title}` : t.question.text || `「${t.question.attachments[0]?.text ?? ''}」`}</li>)}</ol>
-                <small>{from}在第 {(at?.index ?? 0) + 1} 轮之后的内容、其他节点都不会带进来。</small>
-              </div>
-              <div className={cn('dlg-first', `kind-${draft.kind}`)}>
-                {fragment ? (
-                  <div className={cn('dlg-fragment', `kind-${draft.kind}`)}>
-                    <small>选中片段</small>「{fragment}」
-                    <button type="button" aria-label="去掉选中片段" onClick={() => setFragment(undefined)}><X /></button>
-                  </div>
-                ) : null}
-                <textarea value={text} rows={3} aria-label="第一个问题" onChange={(e) => setText(e.target.value)} />
-                <div className="dlg-first-foot">
-                  <span>{text === DEFAULT_QUESTION[draft.kind] ? '默认提问，可以直接改' : '已修改，会作为这个节点的第一条提问'}</span>
-                  <button type="button" className="dlg-btn" onClick={onCancel}>取消</button>
-                  <button type="button" className={cn('dlg-btn primary', `kind-${draft.kind}`)} disabled={!question.text && !fragment} onClick={() => onStart(question)}>开始</button>
-                </div>
-              </div>
-              <p className="dlg-hint">节点类型开了以后不能改。</p>
-            </div>
-          )}
-          {refused?.message ? <Refusal refused={refused} /> : null}
+    <div className="dlg-composer">
+      <div className={cn('dlg-box dlg-card', busy && 'off')} ref={box}>
+        {menu ? <KindMenu head={menuHead} full={full} kind={kind} onKind={onKind} /> : null}
+        {tags ? <div className="dlg-card-tags">{tags}</div> : null}
+        <QuoteField handle={field} placeholder={placeholder} label="接着问" turnNo={turnNo} onChange={onChange} onEnter={() => { if (ready && !busy) onSend(); }} />
+        <div className="dlg-card-foot">
+          <button type="button" className={cn('exp-page-plus', menu && 'on')} aria-label="开节点" title="开一个新节点" aria-expanded={menu} onClick={() => onMenu(!menu)}><Plus /></button>
+          <span className="dlg-card-note">{blocked}</span>
+          <button type="button" className={cn('dlg-send', busy && 'stop')} aria-label={busy ? '回答中' : '发送'} disabled={busy || !ready} onClick={onSend}>
+            {busy ? <Square /> : <ArrowUp />}
+          </button>
         </div>
       </div>
       <CreditLine />

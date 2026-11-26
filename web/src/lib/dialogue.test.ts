@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { carried, courseLinkItems, withoutNode, forksAt, mapLayout, MAX_NODES, nextQuestion, noCarry, pathTo, prune, restack, seenBy, settle, spine, stepCarry, stepRun, type Carry, type Layer } from './dialogue';
+import { atEnd, rekey, openingName, carried, courseLinkItems, withoutNode, forksAt, mapLayout, MAX_NODES, nextQuestion, noCarry, pathTo, prune, restack, seenBy, settle, spine, stepCarry, stepRun, type Carry, type Layer } from './dialogue';
+import { MAX_QUOTES, toQuestion } from './quotes';
 import type { DialogueNode, NodeKind } from './explorations';
 
 let ids = 0;
@@ -209,11 +210,67 @@ describe('what the next question carries', () => {
     expect(stepCarry(c, { type: 'sent' })).toEqual(none);
     expect(stepCarry(c, { type: 'unkind' })).toEqual({ ...none, selection: sel(20, '一段话') });
   });
+
+  // a wide screen's box: the quotes sit in the words (see quotes.ts)
+  const quoted = toQuestion(['比较', { text: '进程', turn: 20, start: 4, end: 6 }, '和', { text: '线程', turn: 21, start: 0, end: 2 }]);
+
+  it('asks on with the quotes in the words as they were put', () => {
+    expect(nextQuestion(A, tree, none, quoted)).toEqual({ to: 'turn', after: 21, question: quoted });
+  });
+
+  it('opens a node from the first quote\'s turn unless a turn is marked', () => {
+    const kind = stepCarry(none, { type: 'kind', kind: 'branch' });
+    expect(nextQuestion(A, tree, kind, quoted)).toMatchObject({ to: 'node', fork: 20, question: quoted });
+    expect(nextQuestion(A, tree, stepCarry(kind, { type: 'fork', turn: 21 }), quoted)).toMatchObject({ fork: 21 });
+  });
+
+  it('sends quotes alone, with no words', () => {
+    const alone = toQuestion([{ text: '进程', turn: 20, start: 4, end: 6 }]);
+    expect(nextQuestion(A, tree, none, alone)).toMatchObject({ to: 'turn', question: alone });
+    expect(nextQuestion(A, tree, none, toQuestion(['  ']))).toEqual({ to: 'none', reason: '' });
+  });
+
+  it(`sends no more than ${MAX_QUOTES} quotes, and says why`, () => {
+    const many = toQuestion(Array.from({ length: MAX_QUOTES + 1 }, (_, i) => ({ text: `q${i}`, turn: 20, start: i, end: i + 1 })));
+    expect(nextQuestion(A, tree, none, many)).toEqual({ to: 'none', reason: `一个问题最多引用 ${MAX_QUOTES} 段` });
+  });
 });
 
 describe('withoutNode', () => {
   it('drops the node and every node under it, keeping the rest', () => {
     expect(withoutNode(tree, 2).map((n) => n.id)).toEqual([1, 4]);
     expect(withoutNode(tree, 3).map((n) => n.id)).toEqual([1, 2, 4]);
+  });
+});
+
+describe('rekey', () => {
+  it('turns the node being opened into the node kept, in place and as it was', () => {
+    const l: Layer[] = [{ key: '1', phase: 'in' }, { key: 'opening', phase: 'enter' }];
+    expect(rekey(l, 'opening', '5')).toEqual([{ key: '1', phase: 'in' }, { key: '5', phase: 'enter' }]);
+    // the stack wanted next keeps it rather than sliding it in again
+    expect(restack(rekey(l, 'opening', '5'), ['1', '5'])).toEqual([{ key: '1', phase: 'in' }, { key: '5', phase: 'enter' }]);
+  });
+
+  it('leaves the layers alone when none has the key', () => {
+    const l: Layer[] = [{ key: '1', phase: 'in' }];
+    expect(rekey(l, 'opening', '5')).toEqual(l);
+  });
+});
+
+describe('atEnd', () => {
+  it('is at the end within a few pixels of the bottom', () => {
+    expect(atEnd({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 })).toBe(true);
+    expect(atEnd({ scrollTop: 560, scrollHeight: 1000, clientHeight: 400 })).toBe(true);
+    expect(atEnd({ scrollTop: 559, scrollHeight: 1000, clientHeight: 400 })).toBe(false);
+  });
+
+  it('is not once the reader has scrolled up', () => {
+    expect(atEnd({ scrollTop: 400, scrollHeight: 1000, clientHeight: 400 })).toBe(false);
+  });
+});
+
+describe('openingName', () => {
+  it('names a node being opened after its kind until it is kept', () => {
+    expect(openingName('branch')).toBe('新分支节点');
   });
 });

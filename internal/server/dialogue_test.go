@@ -361,3 +361,54 @@ func TestATurnGoesOnlyAfterTheLastOfItsNode(t *testing.T) {
 	_, r := postEvents(t, bob, fmt.Sprintf("/api/explorations/%d/turns", exp), map[string]any{"after": first, "question": question("又从第一轮问")})
 	expectError(t, r, http.StatusConflict, "not_last_turn")
 }
+
+// quoted is a question quoting passages of a reply in its words, each
+// marked where it sits (U+FFFC), as a wide screen's box asks it.
+func quoted(text string, quotes ...string) map[string]any {
+	att := []any{}
+	for i, q := range quotes {
+		att = append(att, map[string]any{"kind": "selection", "text": q, "turn": 1, "start": i * 10, "end": i*10 + 4})
+	}
+	return map[string]any{"text": text, "attachments": att}
+}
+
+func TestAQuestionQuotesPassagesWhereTheyWerePut(t *testing.T) {
+	t.Parallel()
+	m := newScriptedModel(texts(goodAnswer), texts("回复。"))
+	a := aiApp(t, m)
+	bob := a.user("bob")
+	_, _, exp := pinnedExploration(t, bob)
+
+	events, r := postEvents(t, bob, fmt.Sprintf("/api/explorations/%d/turns", exp), map[string]any{
+		"after": firstTurn(t, bob, exp), "question": quoted("比较￼和￼的区别", "planner", "executor"),
+	})
+	expectStatus(t, r, http.StatusOK)
+	kept, _ := lastEvent(t, events).data["result"].(map[string]any)
+	calls := m.calls()
+	msgs := contents(calls[len(calls)-1])
+	if got := msgs[len(msgs)-1]; got != "user:比较「planner」和「executor」的区别" {
+		t.Fatalf("the quotes read where they were put: %q", got)
+	}
+	att := kept["question"].(map[string]any)["attachments"].([]any)
+	if len(att) != 2 || att[1].(map[string]any)["text"] != "executor" || att[1].(map[string]any)["start"] != float64(10) ||
+		att[0].(map[string]any)["start"] != float64(0) {
+		t.Fatalf("the quotes are kept with where they came from: %v", att)
+	}
+}
+
+func TestAQuestionQuotesNoMoreThanEightPassages(t *testing.T) {
+	t.Parallel()
+	a := aiApp(t, newScriptedModel(texts(goodAnswer)))
+	bob := a.user("bob")
+	_, _, exp := pinnedExploration(t, bob)
+	path := fmt.Sprintf("/api/explorations/%d/turns", exp)
+	nine := make([]string, 9)
+	for i := range nine {
+		nine[i] = fmt.Sprintf("q%d", i)
+	}
+	_, r := postEvents(t, bob, path, map[string]any{"after": firstTurn(t, bob, exp), "question": quoted(strings.Repeat("￼", 9), nine...)})
+	expectError(t, r, http.StatusBadRequest, "bad_request")
+	// a mark with no quote for it
+	_, r = postEvents(t, bob, path, map[string]any{"after": firstTurn(t, bob, exp), "question": quoted("￼和￼", "planner")})
+	expectError(t, r, http.StatusBadRequest, "bad_request")
+}

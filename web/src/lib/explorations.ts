@@ -52,7 +52,10 @@ export const pinAnalysis = (courseId: number, lessonId: number, analysisId: stri
 
 export type NodeKind = 'main' | 'child' | 'branch' | 'divergent';
 
-export interface Attachment { kind: 'selection'; text: string }
+// a selection (选段); one quoted in the words of a question on a wide
+// screen also says where it came from: the turn, and where in its reply
+// as the reader saw it (characters of the reply as shown), for its tag
+export interface Attachment { kind: 'selection'; text: string; turn?: number; start?: number; end?: number }
 export interface Question { text: string; attachments: Attachment[] }
 
 // why a reply stops short; absent when it is whole

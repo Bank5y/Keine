@@ -37,6 +37,10 @@ const (
 	maxFragment = 2000
 )
 
+// maxSelections is how many selections one question may carry, quoted in
+// its words.
+const maxSelections = 8
+
 // Node returns the node of id in d.
 func (d ExplorationDetail) Node(id int64) (Node, bool) {
 	for _, n := range d.Nodes {
@@ -125,11 +129,11 @@ type NewTurn struct {
 }
 
 func (q Question) valid() bool {
-	if utf8.RuneCountInString(q.Text) > maxQuestion || len(q.Attachments) > 1 {
+	if utf8.RuneCountInString(q.Text) > maxQuestion || len(q.Attachments) > maxSelections || strings.Count(q.Text, QuoteMark) > len(q.Attachments) {
 		return false
 	}
 	for _, a := range q.Attachments {
-		if a.Kind != AttachSelection || strings.TrimSpace(a.Text) == "" || utf8.RuneCountInString(a.Text) > maxFragment {
+		if a.Kind != AttachSelection || strings.TrimSpace(a.Text) == "" || utf8.RuneCountInString(a.Text) > maxFragment || (a.Start == nil) != (a.End == nil) || (a.Start != nil && (*a.Start < 0 || *a.End < *a.Start)) {
 			return false
 		}
 	}

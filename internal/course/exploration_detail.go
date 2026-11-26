@@ -88,11 +88,22 @@ type Question struct {
 	Attachments []Attachment `json:"attachments"`
 }
 
-// Attachment is a typed part of a question (ADR 0009).
+// Attachment is a typed part of a question (ADR 0009). A selection quoted
+// in the question's words (on a wide screen) also says where it came from:
+// the turn and where in its reply, for its tag; nothing reads them else.
 type Attachment struct {
 	Kind AttachmentKind `json:"kind"`
 	Text string         `json:"text"`
+	Turn int64          `json:"turn,omitempty"`
+	// where in its reply, as the reader saw it; nil when not quoted
+	Start *int `json:"start,omitempty"`
+	End   *int `json:"end,omitempty"`
 }
+
+// QuoteMark is where a quoted selection sits in a question's text, the
+// selections marked taking the marks in order after any not marked; the
+// mark assistant.QuoteMark reads.
+const QuoteMark = "\uFFFC"
 
 // AttachmentKind is what an attachment is.
 type AttachmentKind string
