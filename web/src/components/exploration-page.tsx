@@ -1,20 +1,22 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { ArrowUp, ChevronLeft, Copy, FileText, GitBranch, Plus, RotateCcw, Square, Telescope, TextQuote, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { documentParts } from '@/components/analysis-popover';
 import { CitedMarkdown } from '@/components/cited-markdown';
 import { Confirm } from '@/components/confirm';
-import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, nameOf, Refusal, useRuns, withTurn } from '@/components/exploration-dialogue';
+import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, KindMenu, nameOf, Refusal, Tag, TakeSelection, useRuns, withTurn } from '@/components/exploration-dialogue';
+import { QuotedWords, type TurnNo } from '@/components/quote-field';
 import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError } from '@/lib/api';
 import { citationTable } from '@/lib/citations';
 import {
-  askTurn, carried, forksAt, FULL_TEXT, INTERRUPTED, KINDS, MAX_NODES, NEW_KINDS, nextQuestion, noCarry, openNode, pathTo, retryTurn, stepCarry, withoutNode,
+  askTurn, carried, forksAt, FULL_TEXT, INTERRUPTED, KINDS, MAX_NODES, nextQuestion, noCarry, openNode, pathTo, retryTurn, stepCarry, turnNoIn, withoutNode,
   type Carry, type CarryEvent, type NewKind,
 } from '@/lib/dialogue';
 import { swipeAxis, swipeStarts, type SheetEvent, type SwipeOn } from '@/lib/exploration-sheet';
 import { deleteNode, dropExploration, getExploration, type DialogueNode, type ExplorationDetail, type Question, type Turn } from '@/lib/explorations';
+import { readQuestion } from '@/lib/quotes';
 import { generateReport, refusalTitle } from '@/lib/reports';
 import { navigate } from '@/lib/router';
 import { useKeyboardInset } from '@/lib/use-keyboard-inset';
@@ -261,6 +263,8 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
   // the turn a new node would fork from, marked in the dialogue
   const forkAt = carry.fork ?? (carry.kind ? carry.selection?.turn ?? null : null);
   const turnNo = (id: number) => node.turns.findIndex((t) => t.id === id) + 1;
+  // a quote's tag names its turn in its node
+  const quoteTurn: TurnNo = turnNoIn(d.nodes);
   const hint = carried(node);
   return (
     <div className={cn('exp-page-dlg', swiping && 'swiping')} {...handlers}>
@@ -301,15 +305,15 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
         {node.kind === 'main' ? <blockquote className="exp-page-quote">{d.quote}</blockquote> : <ForkHead d={d} node={node} />}
         {hint ? <p className="dlg-carried">{hint}</p> : null}
         {node.turns.map((t, i) => (
-          mine?.retry === t.id ? <Asking key={t.id} question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} />} /> : (
+          mine?.retry === t.id ? <Asking key={t.id} question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} turnNo={quoteTurn} />} /> : (
             <TurnView key={t.id} d={d} turn={t} first={node.kind === 'main' && i === 0} last={i === node.turns.length - 1}
-              busy={!!pending} full={full} forking={forkAt === t.id} selected={carry.selection?.turn === t.id}
+              busy={!!pending} full={full} forking={forkAt === t.id} selected={carry.selection?.turn === t.id} turnNo={quoteTurn}
               onRetry={retry} onOpen={open} onFork={() => { carryDo({ type: 'fork', turn: t.id }); setMenu(true); }} />
           )
         ))}
-        {mine && mine.retry == null ? <Asking question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} />} /> : null}
+        {mine && mine.retry == null ? <Asking question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} turnNo={quoteTurn} />} /> : null}
         {stopped?.message ? <Refusal refused={stopped} /> : null}
-        <TakeSelection scroller={scroller} onTake={(turn, sel, range) => { carryDo({ type: 'select', selection: { turn, text: sel } }); setCarriedRange(range); }} />
+        <TakeSelection scroller={scroller} label="带上" icon={<Plus />} onTake={(t) => { carryDo({ type: 'select', selection: { turn: t.turn, text: t.text } }); setCarriedRange(t.range); }} />
       </div>
       <Composer text={text} onText={setText} busy={!!pending} blocked={blocked} ready={next.to !== 'none' && !tooLong}
         placeholder={carry.kind ? `问点什么，开一个新的${KINDS[carry.kind].label}…` : carry.selection ? '就这段接着问…' : '接着问…'}
@@ -421,12 +425,14 @@ function TreeRow({ n, current, onPath, open, onOpen, onPick, onDelete }: {
 }
 
 // AskedBubble is a question as asked, the selection it carried (if any)
-// above it in grey.
-function AskedBubble({ question: q }: { question: Question }) {
+// above it in grey; passages quoted in its words (on a wide screen) are
+// tags among them.
+function AskedBubble({ question: q, turnNo }: { question: Question; turnNo: TurnNo }) {
+  const { above } = readQuestion(q);
   return (
     <div className="exp-page-asked">
-      {q.attachments.map((a, i) => <div key={i} className="exp-page-asked-sel"><TextQuote aria-hidden /><span>{a.text}</span></div>)}
-      {q.text ? <div className="dlg-asked-bubble">{q.text}</div> : null}
+      {above.map((a, i) => <div key={i} className="exp-page-asked-sel"><TextQuote aria-hidden /><span>{a.text}</span></div>)}
+      {q.text ? <div className="dlg-asked-bubble"><QuotedWords question={q} turnNo={turnNo} /></div> : null}
     </div>
   );
 }
@@ -437,9 +443,9 @@ function AskedBubble({ question: q }: { question: Question }) {
 // out); a chip for each node forked from it. The main node's first turn is
 // the question the analysis stands for and the exploration document.
 // forking: the turn is marked as where a new node forks from.
-function TurnView({ d, turn: t, first, last, busy, full, forking, selected, onRetry, onOpen, onFork }: {
+function TurnView({ d, turn: t, first, last, busy, full, forking, selected, turnNo, onRetry, onOpen, onFork }: {
   d: ExplorationDetail; turn: Turn; first: boolean; last: boolean; busy: boolean; full: boolean;
-  forking: boolean; selected: boolean; onRetry: (t: Turn) => void; onOpen: (id: number) => void; onFork: () => void;
+  forking: boolean; selected: boolean; turnNo: TurnNo; onRetry: (t: Turn) => void; onOpen: (id: number) => void; onFork: () => void;
 }) {
   // what the reply may cite: the sources of its chain (ADR 0013)
   const table = useMemo(() => citationTable(d.nodes, t.id), [d.nodes, t.id]);
@@ -449,7 +455,7 @@ function TurnView({ d, turn: t, first, last, busy, full, forking, selected, onRe
   const replied = first || !!t.reply;
   return (
     <div className={cn('dlg-turn exp-page-turn', forking && 'forking')} data-turn={t.id}>
-      <AskedBubble question={first ? { text: d.firstQuestion, attachments: [] } : t.question} />
+      <AskedBubble question={first ? { text: d.firstQuestion, attachments: [] } : t.question} turnNo={turnNo} />
       {forking ? <div className="exp-page-here"><GitBranch aria-hidden />从此处岔出{selected ? ' · 已带上一段' : ''}</div> : null}
       {first ? (
         <div className="dlg-reply dlg-analysis">
@@ -489,42 +495,6 @@ function TurnView({ d, turn: t, first, last, busy, full, forking, selected, onRe
   );
 }
 
-// TakeSelection offers ＋ 带上 under a selection made in a reply of the
-// node (a long press, on a phone), to carry it with the next question.
-function TakeSelection({ scroller, onTake }: { scroller: RefObject<HTMLDivElement | null>; onTake: (turn: number, text: string, range: Range) => void }) {
-  const [pick, setPick] = useState<{ turn: number; text: string; range: Range; top: number; left: number } | null>(null);
-  useEffect(() => {
-    const on = () => {
-      const box = scroller.current;
-      const sel = getSelection();
-      const text = sel?.toString().trim() ?? '';
-      const at = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
-      const reply = at ? (at.commonAncestorContainer instanceof Element ? at.commonAncestorContainer : at.commonAncestorContainer.parentElement)?.closest('.dlg-reply') : null;
-      const turn = reply?.closest<HTMLElement>('[data-turn]');
-      if (!box || !text || !at || !turn || !box.contains(turn)) { setPick(null); return; }
-      const r = at.getBoundingClientRect();
-      const b = box.getBoundingClientRect();
-      setPick({ turn: Number(turn.dataset.turn), text: text.slice(0, 2000), range: at.cloneRange(),
-        top: r.bottom - b.top + box.scrollTop + 8, left: Math.min(Math.max(r.left - b.left + r.width / 2 - 44, 8), b.width - 96) });
-    };
-    document.addEventListener('selectionchange', on);
-    return () => document.removeEventListener('selectionchange', on);
-  }, [scroller]);
-  if (!pick) return null;
-  return (
-    <button type="button" className="exp-page-take" style={{ top: pick.top, left: pick.left }}
-      // the press keeps the selection until the tap lands
-      onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}
-      onClick={() => { onTake(pick.turn, pick.text, pick.range); getSelection()?.removeAllRanges(); setPick(null); }}>
-      <Plus />带上
-    </button>
-  );
-}
-
-function Tag({ className, label, onX, children }: { className: string; label: string; onX: () => void; children: ReactNode }) {
-  return <span className={cn('exp-page-tag', className)}>{children}<button type="button" aria-label={label} onClick={onX}><X /></button></span>;
-}
-
 // Composer is the box at the foot, lifted over the on-screen keyboard,
 // with the credit line: ＋ on its left offers the kinds of node (menu),
 // the tags show what the question carries, and blocked says why it cannot
@@ -546,17 +516,7 @@ function Composer({ text, onText, busy, blocked, ready, placeholder, menu, onMen
   const send = () => { if (ready && !busy) onSend(); };
   return (
     <div className="exp-page-foot" ref={foot} style={keyboard ? { paddingBottom: keyboard } : undefined}>
-      {menu ? (
-        <div className="exp-page-menu" role="menu" aria-label="节点类型">
-          <div className="exp-page-menu-head">{menuHead}</div>
-          {NEW_KINDS.map((k) => (
-            <button type="button" key={k} role="menuitem" disabled={full} className={cn(kind === k && 'on')} onClick={() => onKind(k)}>
-              <Dot kind={k} /><span><b>{KINDS[k].label}</b><small>{KINDS[k].hint}</small></span>
-            </button>
-          ))}
-          {full ? <div className="exp-page-menu-full">{FULL_TEXT}</div> : null}
-        </div>
-      ) : null}
+      {menu ? <KindMenu head={menuHead} full={full} kind={kind} onKind={onKind} /> : null}
       <div className={cn('dlg-box exp-page-box', busy && 'off')}>
         <button type="button" className={cn('exp-page-plus', menu && 'on')} aria-label="开节点" aria-expanded={menu} onClick={() => onMenu(!menu)}><Plus /></button>
         <div className="exp-page-field">

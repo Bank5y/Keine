@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { carried, courseLinkItems, withoutNode, forksAt, mapLayout, MAX_NODES, nextQuestion, noCarry, pathTo, prune, restack, seenBy, settle, spine, stepCarry, stepRun, type Carry, type Layer } from './dialogue';
+import { MAX_QUOTES, toQuestion } from './quotes';
 import type { DialogueNode, NodeKind } from './explorations';
 
 let ids = 0;
@@ -208,6 +209,30 @@ describe('what the next question carries', () => {
     const c = stepCarry(stepCarry(stepCarry(none, { type: 'select', selection: sel(20, '一段话') }), { type: 'fork', turn: 21 }), { type: 'kind', kind: 'child' });
     expect(stepCarry(c, { type: 'sent' })).toEqual(none);
     expect(stepCarry(c, { type: 'unkind' })).toEqual({ ...none, selection: sel(20, '一段话') });
+  });
+
+  // a wide screen's box: the quotes sit in the words (see quotes.ts)
+  const quoted = toQuestion(['比较', { text: '进程', turn: 20, start: 4, end: 6 }, '和', { text: '线程', turn: 21, start: 0, end: 2 }]);
+
+  it('asks on with the quotes in the words as they were put', () => {
+    expect(nextQuestion(A, tree, none, quoted)).toEqual({ to: 'turn', after: 21, question: quoted });
+  });
+
+  it('opens a node from the first quote\'s turn unless a turn is marked', () => {
+    const kind = stepCarry(none, { type: 'kind', kind: 'branch' });
+    expect(nextQuestion(A, tree, kind, quoted)).toMatchObject({ to: 'node', fork: 20, question: quoted });
+    expect(nextQuestion(A, tree, stepCarry(kind, { type: 'fork', turn: 21 }), quoted)).toMatchObject({ fork: 21 });
+  });
+
+  it('sends quotes alone, with no words', () => {
+    const alone = toQuestion([{ text: '进程', turn: 20, start: 4, end: 6 }]);
+    expect(nextQuestion(A, tree, none, alone)).toMatchObject({ to: 'turn', question: alone });
+    expect(nextQuestion(A, tree, none, toQuestion(['  ']))).toEqual({ to: 'none', reason: '' });
+  });
+
+  it(`sends no more than ${MAX_QUOTES} quotes, and says why`, () => {
+    const many = toQuestion(Array.from({ length: MAX_QUOTES + 1 }, (_, i) => ({ text: `q${i}`, turn: 20, start: i, end: i + 1 })));
+    expect(nextQuestion(A, tree, none, many)).toEqual({ to: 'none', reason: `一个问题最多引用 ${MAX_QUOTES} 段` });
   });
 });
 

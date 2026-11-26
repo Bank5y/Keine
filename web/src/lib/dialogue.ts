@@ -5,6 +5,7 @@
 import { postStream, type StreamEvent } from '@/lib/analysis';
 import type { CourseLink, DialogueNode, NodeKind, Question, Turn } from '@/lib/explorations';
 import { track, type ToolActivity } from '@/lib/progress';
+import { MAX_QUOTES } from '@/lib/quotes';
 
 export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
   main: { label: '主节点', hint: '' },
@@ -13,17 +14,9 @@ export const KINDS: Record<NodeKind, { label: string; hint: string }> = {
   divergent: { label: '发散节点', hint: '走出课程，看同类的其他内容' },
 };
 
-// the first question a new node of each kind starts with; the reader may
-// change it, and what they send is the node's first question (ADR 0009)
 // the kinds a reader may open a node of, in the order they are offered
 export type NewKind = Exclude<NodeKind, 'main'>;
 export const NEW_KINDS: NewKind[] = ['child', 'branch', 'divergent'];
-
-export const DEFAULT_QUESTION: Record<NewKind, string> = {
-  child: '沿着这一点继续往下讲：它具体是怎么做到的，为什么要这样？',
-  branch: '和它相关的还有哪些概念？它们和它是什么关系？',
-  divergent: '课程之外，还有哪些同类的做法？和这里的做法相比有什么异同？',
-};
 
 export const MAX_NODES = 50;
 
@@ -54,6 +47,13 @@ export function withoutNode(nodes: DialogueNode[], id: number): DialogueNode[] {
   }
   return nodes.filter((n) => !gone.has(n.id));
 }
+
+// turnNoIn says where a turn sits in its node (1-based), null for one
+// not in the dialogue; a quote's tag names its turn by it.
+export const turnNoIn = (nodes: DialogueNode[]) => (turn: number): number | null => {
+  const at = turnAt(nodes, turn);
+  return at ? at.index + 1 : null;
+};
 
 // forksAt is the nodes opened on a turn, oldest first.
 export const forksAt = (nodes: DialogueNode[], turnId: number) => nodes.filter((n) => n.forkTurnId === turnId);
@@ -127,17 +127,21 @@ export type Next =
 export const FULL_TEXT = `已有 ${MAX_NODES} 个节点，删除一些后才能再开`;
 
 // nextQuestion is what the box sends from node, with what it carries and
-// the words typed. A new node forks from the turn marked, else the
-// selection's turn, else the node's last turn; a fork marked waits for a
-// kind. No node opens past MAX_NODES.
-export function nextQuestion(node: DialogueNode, nodes: DialogueNode[], c: Carry, text: string): Next {
-  const question: Question = { text: text.trim(), attachments: c.selection ? [{ kind: 'selection', text: c.selection.text }] : [] };
+// what was typed: words (a narrow screen's box), or a question with quotes
+// in its words (a wide screen's, see quotes.ts). A new node forks from the
+// turn marked, else the selection's turn, else the first quote's, else the
+// node's last turn; a fork marked waits for a kind. No node opens past
+// MAX_NODES, no question carries more than MAX_QUOTES quotes.
+export function nextQuestion(node: DialogueNode, nodes: DialogueNode[], c: Carry, typed: string | Question): Next {
+  const asked = typeof typed === 'string' ? { text: typed.trim(), attachments: [] } : typed;
+  const question: Question = { text: asked.text, attachments: [...(c.selection ? [{ kind: 'selection' as const, text: c.selection.text }] : []), ...asked.attachments] };
   const empty = !question.text && !question.attachments.length;
   const last = node.turns[node.turns.length - 1];
+  if (question.attachments.length > MAX_QUOTES) return { to: 'none', reason: `一个问题最多引用 ${MAX_QUOTES} 段` };
   if (c.kind) {
     if (nodes.length >= MAX_NODES) return { to: 'none', reason: FULL_TEXT };
     if (empty) return { to: 'none', reason: '' };
-    return { to: 'node', fork: c.fork ?? c.selection?.turn ?? last.id, kind: c.kind, question };
+    return { to: 'node', fork: c.fork ?? c.selection?.turn ?? asked.attachments.find((a) => a.turn != null)?.turn ?? last.id, kind: c.kind, question };
   }
   if (c.fork != null) return { to: 'none', reason: '先选节点类型' };
   if (last.meta.interrupted === 'failed') return { to: 'none', reason: '重试这一轮后才能接着问' };

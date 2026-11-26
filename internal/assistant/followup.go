@@ -146,6 +146,8 @@ func NodeNote(kind string) string { return nodeNotes[kind] }
 
 // Asked is a question of the dialogue: its text, the passages the reader
 // selected for it, and, on the turn a node forks with, the node's note.
+// Passages quoted in the text sit at its marks (QuoteMark), the last
+// passages taking the marks in order; the others head the question.
 type Asked struct {
 	Text      string
 	Fragments []string
@@ -158,14 +160,27 @@ func (q Asked) content() string {
 	if q.Note != "" {
 		parts = append(parts, q.Note)
 	}
-	for _, f := range q.Fragments {
+	words := strings.Split(q.Text, QuoteMark)
+	marked := min(len(words)-1, len(q.Fragments))
+	above := len(q.Fragments) - marked
+	for _, f := range q.Fragments[:above] {
 		parts = append(parts, "【选中片段】\n「"+f+"」")
 	}
-	if t := strings.TrimSpace(q.Text); t != "" {
+	var text strings.Builder
+	for i, w := range words {
+		if i > 0 && i <= marked {
+			text.WriteString("「" + q.Fragments[above+i-1] + "」")
+		}
+		text.WriteString(w)
+	}
+	if t := strings.TrimSpace(text.String()); t != "" {
 		parts = append(parts, t)
 	}
 	return strings.Join(parts, "\n\n")
 }
+
+// QuoteMark is where a passage quoted in a question's words sits.
+const QuoteMark = "\uFFFC"
 
 // Exchange is an earlier turn: what was asked and the reply.
 type Exchange struct {

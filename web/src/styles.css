@@ -1944,7 +1944,6 @@ a.rn:hover .t { color: var(--ink-accent); }
 .dlg-reply .prose { font-size: 16px; line-height: 1.75; color: var(--text); }
 .dlg-reply .prose > :first-child { margin-top: 0; }
 .dlg-reply .prose > :last-child { margin-bottom: 0; }
-.dlg-fork-menu.up { top: auto; bottom: calc(100% + 4px); }
 /* a drawn diagram is an image (#184): never wider than its column, a click opens it */
 .mermaid-open { display: inline-block; max-width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
 .mermaid-open img { display: block; max-width: 100%; height: auto; }
@@ -1959,17 +1958,10 @@ a.rn:hover .t { color: var(--ink-accent); }
 .lightbox-close:focus-visible { outline: none; }
 .lightbox-close:focus-visible::before { box-shadow: 0 0 0 2px #fff; }
 .lightbox-close svg { position: relative; width: 20px; height: 20px; }
-.dlg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
-.dlg-fork { position: relative; }
 .dlg-act { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: none; font-size: 12px; color: var(--text-3); cursor: pointer; }
 .dlg-act:hover:not(:disabled), .dlg-act.on { background: color-mix(in srgb, var(--explore) 12%, var(--surface)); color: var(--explore); }
 .dlg-act:disabled { opacity: .5; cursor: not-allowed; }
 .dlg-act svg { width: 14px; height: 14px; }
-.dlg-fork-menu { width: 280px; }
-.dlg-fork-menu b { display: block; font-size: 14px; font-weight: 500; }
-.dlg-fork-menu small { font-size: 12px; color: var(--text-3); }
-.dlg-fork-note { margin-top: 4px; padding: 6px 10px 2px; font-size: 12px; color: var(--text-3); }
-.dlg-fork-note.full { color: var(--danger); }
 .dlg-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; max-width: 260px; padding: 0 9px; border: 1px solid color-mix(in srgb, var(--kind) 35%, transparent); border-radius: 4px;
   background: color-mix(in srgb, var(--kind) 12%, var(--surface)); font-size: 12px; color: var(--text-2); cursor: pointer; }
 .dlg-chip span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -2006,23 +1998,35 @@ a.rn:hover .t { color: var(--ink-accent); }
 .dlg-send.stop { background: var(--text); }
 .dlg-send svg { width: 16px; height: 16px; }
 .dlg-send.stop svg { width: 12px; height: 12px; fill: currentColor; }
+/* the box on a wide screen: a card over the foot of the drawer,
+   lifted a little; the tags of what it carries on a line of their own at
+   its top, the field, and under it ＋, why it cannot be sent, and send */
+.dlg-card { position: relative; flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 10px 8px 14px; box-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 6px 18px -10px rgb(0 0 0 / .16); }
+.dlg-card-tags { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.dlg-card-foot { display: flex; align-items: center; gap: 8px; margin-left: -6px; }
+.dlg-card-note { flex: 1; min-width: 0; font-size: 12px; color: var(--text-3); }
+.dlg-card .exp-page-menu { left: 0; right: auto; width: 320px; }
+.dlg-card .exp-page-menu > button:hover:not(:disabled) { background: var(--surface-2); }
+.dlg-card .exp-page-plus:hover { background: var(--surface-2); }
+.dlg-field { position: relative; min-height: 44px; max-height: 200px; overflow-y: auto; outline: none; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.dlg-field.blank::before { content: attr(data-placeholder); position: absolute; top: 0; left: 0; color: var(--text-3); pointer-events: none; }
+/* a passage quoted in a question: a word or a phrase as it is, a longer
+   one named by its turn and where it sits in the reply */
+.dlg-quote { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; margin: 0 2px; padding: 0 6px; border-radius: 4px; vertical-align: 1px; line-height: 20px; font-size: 13px;
+  background: color-mix(in srgb, var(--explore) 10%, var(--surface)); color: var(--explore); white-space: nowrap; user-select: none; cursor: default; }
+.dlg-quote > span { overflow: hidden; text-overflow: ellipsis; }
+.dlg-quote.long { font-size: 12px; font-variant-numeric: tabular-nums; }
+.dlg-quote svg { flex: none; width: 12px; height: 12px; }
+.dlg-quote > button { display: grid; place-items: center; width: 14px; height: 14px; margin-right: -3px; padding: 0; border: 0; background: none; color: inherit; opacity: .55; cursor: pointer; }
+.dlg-quote > button:hover { opacity: 1; }
+.dlg-quote > button svg { width: 11px; height: 11px; }
+.dlg-node > .dlg-scroll { position: relative; }
+.dlg-turn-acts > button:hover:not(:disabled) { background: var(--surface-2); color: var(--text-2); }
 .dlg-composer .analysis-credit { margin-top: 6px; }
 .dlg-composer .dlg-credit { padding: 0; }
 .dlg-credit { padding-top: 0; }
 .dlg-notice { margin-top: 6px; }
 
-.dlg-draft { padding-top: 6px; }
-.dlg-seen { margin-bottom: 18px; padding: 12px 16px; border-radius: var(--radius-card); background: var(--block); }
-.dlg-seen small { display: block; font-size: 11px; color: var(--text-3); }
-.dlg-seen ol { margin: 6px 0 8px; padding-left: 20px; font-size: 13px; line-height: 1.8; color: var(--text-2); }
-.dlg-first { padding: 12px; border: 1px solid var(--kind); border-radius: var(--radius-card); background: var(--surface); }
-.dlg-first textarea { width: 100%; border: 0; outline: none; resize: none; background: transparent; font: inherit; font-size: 15px; line-height: 1.7; color: var(--text); }
-.dlg-first-foot { display: flex; align-items: center; gap: 8px; }
-.dlg-first-foot span { flex: 1; font-size: 12px; color: var(--text-3); }
-.dlg-btn { height: 32px; padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font-size: 13px; color: var(--text); cursor: pointer; }
-.dlg-btn.primary { border-color: transparent; background: var(--kind); color: #fff; font-weight: 500; }
-.dlg-btn:disabled { opacity: .5; cursor: not-allowed; }
-.dlg-hint { margin: 8px 0 0; font-size: 12px; color: var(--text-3); }
 
 .dlg-map { position: relative; flex: none; width: 36px; overflow: hidden; background: var(--sidebar); transition: width 340ms cubic-bezier(.2,.8,.2,1); }
 .dlg-map.open { width: 260px; }
@@ -2171,6 +2175,7 @@ a.rn:hover .t { color: var(--ink-accent); }
 .exp-page-tag.kind-child, .exp-page-tag.kind-branch, .exp-page-tag.kind-divergent { background: color-mix(in srgb, var(--kind) 14%, var(--surface)); color: var(--kind); }
 .exp-page-tag .dlg-dot { width: 7px; height: 7px; }
 .exp-page-tag.fork { background: var(--surface); box-shadow: inset 0 0 0 1px var(--explore-line); color: var(--explore); }
+.exp-page-tag.fixed { padding-right: 8px; }
 .exp-page-tag.selection { background: var(--surface-2); color: var(--text-2); font-weight: 400; }
 .exp-page-menu { position: absolute; left: 12px; right: 12px; bottom: calc(100% + 4px); z-index: 4; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-float); }
 .exp-page-menu-head { padding: 6px 10px 4px; font-size: 11px; letter-spacing: .06em; color: var(--text-3); }
