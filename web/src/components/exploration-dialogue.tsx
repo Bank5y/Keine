@@ -10,8 +10,8 @@ import { QuotedWords, QuoteField, type FieldHandle, type TurnNo } from '@/compon
 import { ApiError } from '@/lib/api';
 import { citationTable, type Cited } from '@/lib/citations';
 import {
-  askTurn, carried, courseLinkItems, forksAt, FULL_TEXT, INTERRUPTED, KINDS, mapLayout, MAX_NODES, nextQuestion, noCarry, openNode, pathTo, prune, restack, retryTurn,
-  seenBy, settle, spine, stepCarry, stepRun, turnAt, turnNoIn, withoutNode, NEW_KINDS, type Carry, type CarryEvent, type Ended, type Layer, type NewKind, type Next, type Run,
+  askTurn, atEnd, carried, courseLinkItems, forksAt, FULL_TEXT, INTERRUPTED, KINDS, mapLayout, MAX_NODES, nextQuestion, noCarry, openNode, pathTo, prune, restack, retryTurn,
+  OPENING, openingName, REPORT, rekey, seenBy, settle, spine, stepCarry, stepRun, turnAt, turnNoIn, withoutNode, NEW_KINDS, type Carry, type CarryEvent, type Ended, type Layer, type NewKind, type Next, type Opening, type Run,
 } from '@/lib/dialogue';
 import { deleteNode, type DialogueNode, type ExplorationDetail, type NodeKind, type Question, type Turn } from '@/lib/explorations';
 import { readQuestion } from '@/lib/quotes';
@@ -62,7 +62,9 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
 // dialogue as a stack of drawers. The current node's path is the stack:
 // a node's chip under the turn it forked from pushes its drawer in from
 // the right, ‹ or Esc pops it. Each node's box opens a node of the kind
-// picked with its ＋, from the turn marked, as a narrow screen's does. Covered layers keep a spine on the left,
+// picked with its ＋, from the turn marked, as a narrow screen's does: its
+// drawer comes in as the question goes, the reply streaming in there, and
+// is the node's once it is kept. Covered layers keep a spine on the left,
 // three at most, older ones sliding off; the header's path reaches every
 // one. A read-only map of the whole tree sits on the right.
 export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: {
@@ -75,10 +77,18 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
   const [deleting, setDeleting] = useState<DialogueNode | null>(null);
   // the report's drawer is open over the node (#160)
   const [reporting, setReporting] = useState(false);
+  // a node being opened: its drawer is on top while its first reply runs;
+  // the last one stays drawn as its drawer leaves (refused), and whether
+  // the reader stayed at the reply's end, for where the node opens
+  const [opening, setOpening] = useState<Opening | null>(null);
+  const lastOpening = useRef<Opening | null>(null);
+  if (opening) lastOpening.current = opening;
+  const openingFollow = useRef(true);
+  const [kept, setKept] = useState<{ id: number; atEnd: boolean } | null>(null);
 
   // the node shown may be gone (deleted with its parent)
   const node = d.nodes.find((n) => n.id === current) ?? main;
-  const want = [...pathTo(d.nodes, node.id).map((n) => String(n.id)), ...(reporting ? ['report'] : [])];
+  const want = [...pathTo(d.nodes, node.id).map((n) => String(n.id)), ...(opening ? [OPENING] : []), ...(reporting ? [REPORT] : [])];
   const [layers, setLayers] = useState<Layer[]>(() => want.map((key) => ({ key, phase: 'in' })));
   const key = want.join('/');
   useEffect(() => {
@@ -89,9 +99,13 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
     return () => { cancelAnimationFrame(raf); window.clearTimeout(t); };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const open = (id: number) => { setReporting(false); setRefused(null); setCurrent(id); };
+  // no going elsewhere while a node is being opened: its drawer stays on
+  // top until its first reply is kept (or refused, back where it was asked)
+  const open = (id: number) => { if (opening) return; setReporting(false); setRefused(null); setCurrent(id); };
   const pop = () => {
     if (reporting) { setReporting(false); return true; }
+    // a node being opened stays until its first reply is kept
+    if (opening) return true;
     if (node.parentId != null) { open(node.parentId); return true; }
     return false;
   };
@@ -106,10 +120,20 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
       return;
     }
     if (next.to !== 'node') return;
-    const n = await go(String(at.id), next.question, (on, s) => openNode(d.id, next.fork, next.kind, next.question, on, s));
-    if (!n) return;
+    setReporting(false);
+    setOpening({ kind: next.kind, fork: next.fork });
+    const n = await go(OPENING, next.question, (on, s) => openNode(d.id, next.fork, next.kind, next.question, on, s));
+    setOpening(null);
+    if (!n) {
+      // nothing kept: back in the node it was asked from, saying why
+      setRefused((r) => (r ? { ...r, layer: String(at.id) } : r));
+      return;
+    }
+    const id = (n as DialogueNode).id;
+    setKept({ id, atEnd: openingFollow.current });
+    setLayers((l) => rekey(l, OPENING, String(id)));
     onDetail({ ...d, nodes: [...d.nodes, n as DialogueNode] });
-    setCurrent((n as DialogueNode).id);
+    setCurrent(id);
   };
 
   const retry = async (t: Turn) => {
@@ -138,7 +162,7 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
         <Telescope aria-hidden />
         <span className="dlg-head-title">展开探索</span>
         <span className="dlg-head-sub">· {d.title}</span>
-        <Crumbs nodes={d.nodes} current={node.id} onOpen={open} />
+        <Crumbs nodes={d.nodes} current={node.id} opening={opening?.kind ?? null} onOpen={open} />
         <span className="dlg-head-count">节点 {count}</span>
         <button type="button" className={cn('dlg-head-report', reporting && 'on')} disabled={!!pending} aria-pressed={reporting}
           title={pending ? '这一轮回答完以后才能生成' : '把整棵对话树整理成一份文档'}
@@ -150,8 +174,8 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
           {layers.map((l) => {
             const i = live.indexOf(l);
             const at = l.phase === 'leave' ? { left: Math.min(live.length - 1, SHOWN) * SPINE, covered: false, gone: false } : spine(i, live.length, SPINE, SHOWN);
-            const n = l.key === 'report' ? null : d.nodes.find((x) => String(x.id) === l.key) ?? null;
-            if (l.key !== 'report' && !n) return null;
+            const n = l.key === REPORT || l.key === OPENING ? null : d.nodes.find((x) => String(x.id) === l.key) ?? null;
+            if (l.key !== REPORT && l.key !== OPENING && !n) return null;
             const placed = { left: at.left, zIndex: l.phase === 'leave' ? 99 : i, ['--gone' as string]: `${-SPINE * Math.max(live.length - 1 - i - SHOWN, 0)}px` };
             return (
               <Fragment key={l.key}>
@@ -159,11 +183,13 @@ export function ExplorationDialogue({ detail: d, onDetail, onClose, escTaken }: 
                 <section className={cn('dlg-layer', i > 0 || l.phase === 'leave' ? 'drawer' : 'base', `phase-${l.phase}`, at.gone && 'gone')}
                   style={placed} inert={at.covered || l.phase === 'leave' || undefined}>
                   <div className={cn('dlg-layer-inner', at.covered && 'covered')}>
-                    {l.key === 'report' ? (
+                    {l.key === REPORT ? (
                       <ReportView exp={d.id} onBack={() => setReporting(false)} />
+                    ) : l.key === OPENING ? (
+                      lastOpening.current ? <OpeningView d={d} opening={lastOpening.current} pending={pending?.layer === OPENING ? pending : null} follow={openingFollow} /> : null
                     ) : n ? (
                       <NodeView d={d} node={n} pending={pending?.layer === l.key ? pending : null} refused={refused?.layer === l.key ? refused : null}
-                        busy={!!pending} onOpen={open} onSend={(next) => void send(n, next)} onRetry={retry}
+                        busy={!!pending} atEndFirst={kept?.id === n.id && kept.atEnd} onOpen={open} onSend={(next) => void send(n, next)} onRetry={retry}
                         onBack={pop} onDelete={() => setDeleting(n)} />
                     ) : null}
                   </div>
@@ -226,20 +252,20 @@ function Spine({ node, shown, gone, style, onClick }: { node: DialogueNode | nul
 
 // Crumbs is the whole path in the header, the layers gone off the left
 // too; a step with siblings lists them.
-function Crumbs({ nodes, current, onOpen }: { nodes: DialogueNode[]; current: number; onOpen: (id: number) => void }) {
+function Crumbs({ nodes, current, opening, onOpen }: { nodes: DialogueNode[]; current: number; opening: NewKind | null; onOpen: (id: number) => void }) {
   const p = pathTo(nodes, current);
   const [sib, setSib] = useState<number | null>(null);
-  if (p.length < 2) return <span className="dlg-crumbs" />;
+  if (p.length < 2 && !opening) return <span className="dlg-crumbs" />;
   return (
     <nav className="dlg-crumbs" aria-label="节点路径">
       {p.map((n, i) => {
         const sibs = n.parentId == null ? [] : nodes.filter((x) => x.parentId === n.parentId);
-        const last = i === p.length - 1;
+        const last = i === p.length - 1 && !opening;
         return (
           <span key={n.id} className="dlg-crumb">
             {i ? <span className="dlg-crumb-sep">›</span> : null}
             <button type="button" className={cn('dlg-crumb-btn', last && 'current', `kind-${n.kind}`)} onClick={() => onOpen(n.id)}>
-              <Dot kind={n.kind} />{nameOf(n)}
+              <Dot kind={n.kind} /><span>{nameOf(n)}</span>
             </button>
             {sibs.length > 1 ? <button type="button" className="dlg-crumb-more" aria-label="同级节点" onClick={() => setSib(sib === n.id ? null : n.id)}>▾</button> : null}
             {sib === n.id ? (
@@ -250,8 +276,52 @@ function Crumbs({ nodes, current, onOpen }: { nodes: DialogueNode[]; current: nu
           </span>
         );
       })}
+      {opening ? <span className="dlg-crumb"><span className="dlg-crumb-sep">›</span><span className={cn('dlg-crumb-btn current', `kind-${opening}`)}><Dot kind={opening} /><span>{openingName(opening)}</span></span></span> : null}
     </nav>
   );
+}
+
+// OpeningHead says what a node being opened is and where it forks.
+export function OpeningHead({ d, opening }: { d: ExplorationDetail; opening: Opening }) {
+  const at = turnAt(d.nodes, opening.fork);
+  const from = at ? (at.node.kind === 'main' ? '主节点' : `「${at.node.name}」`) : '';
+  return <div className="dlg-forkhead-title"><Dot kind={opening.kind} /><b>{openingName(opening.kind)}</b><span>从{from}第 {(at?.index ?? 0) + 1} 轮岔出</span></div>;
+}
+
+// OpeningView is the drawer of a node being opened: what it is, and its
+// first question being answered.
+function OpeningView({ d, opening, pending, follow }: { d: ExplorationDetail; opening: Opening; pending: Pending | null; follow: MutableRefObject<boolean> }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const { onScroll } = useFollow(scroller, pending, null, follow);
+  return (
+    <div className="dlg-node">
+      <div className="dlg-scroll" ref={scroller} onScroll={onScroll}>
+        <div className="dlg-col">
+          <div className="dlg-forkhead"><OpeningHead d={d} opening={opening} /></div>
+          {pending ? <Asking question={pending.question} run={pending.run} kind={opening.kind} turnNo={turnNoIn(d.nodes)} /> : null}
+        </div>
+      </div>
+      <CreditLine />
+    </div>
+  );
+}
+
+// useFollow keeps a scroller at its end as a reply streams in (and as
+// grown changes), while the reader stays there; one who scrolled up is
+// left where they are until they scroll back down. follow, when given,
+// is where whether they stay is kept. It returns the scroller's onScroll
+// and follow.
+export function useFollow(scroller: RefObject<HTMLDivElement | null>, pending: Pending | null, grown: unknown, kept?: MutableRefObject<boolean>) {
+  const own = useRef(true);
+  const follow = kept ?? own;
+  const running = !!pending;
+  // a new run starts at the end
+  useLayoutEffect(() => { if (running) follow.current = true; }, [running, follow]);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && pending && follow.current) el.scrollTop = el.scrollHeight;
+  }, [pending?.run.text, pending?.run.activities.length, pending?.run.thinking, pending?.run.linking, grown]); // eslint-disable-line react-hooks/exhaustive-deps
+  return { onScroll: () => { const el = scroller.current; if (el) follow.current = atEnd(el); }, follow };
 }
 
 // NodeView is one node's drawer: the way back, where it forked, its turns
@@ -259,8 +329,10 @@ function Crumbs({ nodes, current, onOpen }: { nodes: DialogueNode[]; current: nu
 // ask the next question. The box is the node's own, kept while the reader
 // is in a node above it: what is typed (the passages quoted from replies
 // among the words), the kind of node to open with it and the turn marked.
-function NodeView({ d, node, pending, refused, busy, onOpen, onSend, onRetry, onBack, onDelete }: {
+function NodeView({ d, node, pending, refused, busy, atEndFirst, onOpen, onSend, onRetry, onBack, onDelete }: {
   d: ExplorationDetail; node: DialogueNode; pending: Pending | null; refused: Refused | null; busy: boolean;
+  // a node just opened from a reply the reader followed to its end opens at its end
+  atEndFirst: boolean;
   onOpen: (id: number) => void; onSend: (next: Next) => void; onRetry: (t: Turn) => void;
   onBack: () => boolean; onDelete: () => void;
 }) {
@@ -272,11 +344,11 @@ function NodeView({ d, node, pending, refused, busy, onOpen, onSend, onRetry, on
   const [asked, setAsked] = useState<Question>(NOTHING);
   const [menu, setMenu] = useState(false);
   const carryDo = (e: CarryEvent) => setCarry((c) => stepCarry(c, e));
-  // stay at the end as a reply streams in
+  const { onScroll } = useFollow(scroller, pending, node.turns.length);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && pending) el.scrollTop = el.scrollHeight;
-  }, [pending?.run.text, pending?.run.activities.length, node.turns.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (el && atEndFirst) el.scrollTop = el.scrollHeight;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const full = d.nodes.length >= MAX_NODES;
   const next = nextQuestion(node, d.nodes, carry, asked);
@@ -303,7 +375,7 @@ function NodeView({ d, node, pending, refused, busy, onOpen, onSend, onRetry, on
           <button type="button" className="dlg-node-delete" onClick={onDelete}><Trash2 />删除节点</button>
         </div>
       ) : null}
-      <div className="dlg-scroll" ref={scroller}>
+      <div className="dlg-scroll" ref={scroller} onScroll={onScroll}>
         <div className="dlg-col">
           {hint ? <p className="dlg-carried">{hint}</p> : null}
           {parent ? <ForkHead d={d} node={node} /> : null}

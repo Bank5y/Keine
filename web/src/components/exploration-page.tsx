@@ -4,15 +4,15 @@ import { toast } from 'sonner';
 import { documentParts } from '@/components/analysis-popover';
 import { CitedMarkdown } from '@/components/cited-markdown';
 import { Confirm } from '@/components/confirm';
-import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, KindMenu, nameOf, Refusal, Tag, TakeSelection, useRuns, withTurn } from '@/components/exploration-dialogue';
+import { Asking, CourseLinks, CreditLine, deleteText, Dot, ForkHead, KindMenu, nameOf, OpeningHead, Refusal, Tag, TakeSelection, useFollow, useRuns, withTurn } from '@/components/exploration-dialogue';
 import { QuotedWords, type TurnNo } from '@/components/quote-field';
 import { ReportView } from '@/components/exploration-report';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { ApiError } from '@/lib/api';
 import { citationTable } from '@/lib/citations';
 import {
-  askTurn, carried, forksAt, FULL_TEXT, INTERRUPTED, KINDS, MAX_NODES, nextQuestion, noCarry, openNode, pathTo, retryTurn, stepCarry, turnNoIn, withoutNode,
-  type Carry, type CarryEvent, type NewKind,
+  askTurn, carried, forksAt, FULL_TEXT, INTERRUPTED, KINDS, MAX_NODES, nextQuestion, noCarry, OPENING, openingName, openNode, pathTo, retryTurn, stepCarry, turnNoIn, withoutNode,
+  type Carry, type CarryEvent, type NewKind, type Opening,
 } from '@/lib/dialogue';
 import { swipeAxis, swipeStarts, type SheetEvent, type SwipeOn } from '@/lib/exploration-sheet';
 import { deleteNode, dropExploration, getExploration, type DialogueNode, type ExplorationDetail, type Question, type Turn } from '@/lib/explorations';
@@ -162,7 +162,11 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
     setCarry((c) => stepCarry(c, e));
     if (e.type === 'unselect' || e.type === 'sent') setCarriedRange(null);
   };
-  const open = (to: number) => { setRefused(null); setCurrent(to); carryDo({ type: 'sent' }); setMenu(false); };
+  // a node being opened shows in the node's place while its first reply
+  // runs, and is the node once it is kept; no going elsewhere meanwhile
+  const [opening, setOpening] = useState<Opening | null>(null);
+  const justOpened = useRef<number | null>(null);
+  const open = (to: number) => { if (opening) return; setRefused(null); setCurrent(to); carryDo({ type: 'sent' }); setMenu(false); };
 
   const W = drawerWidth();
   const { handlers, shown, swiping } = useDrawerSwipe(tree, send, W);
@@ -224,7 +228,7 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
     if (got) onDetail(withTurn(d, node.id, got as Turn));
   };
 
-  const mine = pending?.layer === String(node.id) ? pending : null;
+  const mine = pending?.layer === (opening ? OPENING : String(node.id)) ? pending : null;
   const stopped = refused?.layer === String(node.id) ? refused : null;
   const full = d.nodes.length >= MAX_NODES;
   const next = nextQuestion(node, d.nodes, carry, text);
@@ -243,8 +247,15 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
       if (t) onDetail(withTurn(d, at, t as Turn));
       return;
     }
-    const n = await go(String(at), next.question, (on, s) => openNode(d.id, next.fork, next.kind, next.question, on, s));
-    if (!n) return;
+    setOpening({ kind: next.kind, fork: next.fork });
+    const n = await go(OPENING, next.question, (on, s) => openNode(d.id, next.fork, next.kind, next.question, on, s));
+    setOpening(null);
+    if (!n) {
+      // nothing kept: back in the node it was asked from, saying why
+      setRefused((r) => (r ? { ...r, layer: String(at) } : r));
+      return;
+    }
+    justOpened.current = (n as DialogueNode).id;
     onDetail({ ...d, nodes: [...d.nodes, n as DialogueNode] });
     setCurrent((n as DialogueNode).id);
   };
@@ -252,13 +263,18 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
   const scroller = useRef<HTMLDivElement>(null);
   // the path shows its end, the current node, however long it runs
   const crumbs = useRef<HTMLElement>(null);
-  useLayoutEffect(() => { if (crumbs.current) crumbs.current.scrollLeft = crumbs.current.scrollWidth; }, [node.id]);
-  // a node opens at its top; stay at the end as a reply streams in
-  useLayoutEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [node.id]);
+  const isOpening = !!opening;
+  useLayoutEffect(() => { if (crumbs.current) crumbs.current.scrollLeft = crumbs.current.scrollWidth; }, [node.id, isOpening]);
+  // a node opens at its top; a reply streaming in keeps the end in view
+  // while the reader stays there (useFollow)
+  // (a node just opened from a reply the reader followed to its end opens
+  // at its end)
+  const { onScroll, follow } = useFollow(scroller, mine, node.turns.length);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el && pending) el.scrollTop = el.scrollHeight;
-  }, [pending?.run.text, pending?.run.activities.length, node.turns.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (el) el.scrollTop = justOpened.current === node.id && follow.current ? el.scrollHeight : 0;
+    justOpened.current = null;
+  }, [node.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the turn a new node would fork from, marked in the dialogue
   const forkAt = carry.fork ?? (carry.kind ? carry.selection?.turn ?? null : null);
@@ -269,17 +285,22 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
   return (
     <div className={cn('exp-page-dlg', swiping && 'swiping')} {...handlers}>
       <header className="exp-page-head">
-        {path.length > 1
+        {path.length > 1 && !opening
           ? <button type="button" className="exp-page-icon" aria-label="回到上一层" onClick={() => open(path[path.length - 2].id)}><ChevronLeft /></button>
           : <Telescope className="exp-page-mark" aria-hidden />}
         <nav className="exp-page-crumbs" aria-label="节点路径" ref={crumbs}>
           {path.map((n, i) => (
-            <button type="button" key={n.id} className={cn('exp-page-crumb', `kind-${n.kind}`, i === path.length - 1 && 'current')}
-              aria-current={i === path.length - 1 ? 'location' : undefined} onClick={() => open(n.id)}>
+            <button type="button" key={n.id} className={cn('exp-page-crumb', `kind-${n.kind}`, i === path.length - 1 && !opening && 'current')}
+              aria-current={i === path.length - 1 && !opening ? 'location' : undefined} onClick={() => open(n.id)}>
               {i ? <span className="exp-page-sep" aria-hidden>›</span> : null}
               <Dot kind={n.kind} /><span>{n.kind === 'main' ? d.title : n.name}</span>
             </button>
           ))}
+          {opening ? (
+            <span className={cn('exp-page-crumb current', `kind-${opening.kind}`)} aria-current="location">
+              <span className="exp-page-sep" aria-hidden>›</span><Dot kind={opening.kind} /><span>{openingName(opening.kind)}</span>
+            </span>
+          ) : null}
         </nav>
         <button type="button" className={cn('exp-page-icon', reportRun.status === 'running' && 'busy')} aria-label="生成探索报告"
           title={pending ? '这一轮回答完以后才能生成' : '生成探索报告'} disabled={!!pending || reportRun.status === 'running'} onClick={() => void writeReport()}><FileText /></button>
@@ -301,18 +322,27 @@ function Dialogue({ d, tree, send, onDetail, onDeleted }: {
           <button type="button" className="exp-page-banner-x" aria-label="收起" onClick={() => setReportRun({ status: 'idle' })}><X /></button>
         </div>
       ) : null}
-      <div className="exp-page-scroll" ref={scroller}>
-        {node.kind === 'main' ? <blockquote className="exp-page-quote">{d.quote}</blockquote> : <ForkHead d={d} node={node} />}
-        {hint ? <p className="dlg-carried">{hint}</p> : null}
-        {node.turns.map((t, i) => (
-          mine?.retry === t.id ? <Asking key={t.id} question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} turnNo={quoteTurn} />} /> : (
-            <TurnView key={t.id} d={d} turn={t} first={node.kind === 'main' && i === 0} last={i === node.turns.length - 1}
-              busy={!!pending} full={full} forking={forkAt === t.id} selected={carry.selection?.turn === t.id} turnNo={quoteTurn}
-              onRetry={retry} onOpen={open} onFork={() => { carryDo({ type: 'fork', turn: t.id }); setMenu(true); }} />
-          )
-        ))}
-        {mine && mine.retry == null ? <Asking question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} turnNo={quoteTurn} />} /> : null}
-        {stopped?.message ? <Refusal refused={stopped} /> : null}
+      <div className="exp-page-scroll" ref={scroller} onScroll={onScroll}>
+        {opening ? (
+          <>
+            <div className="dlg-forkhead"><OpeningHead d={d} opening={opening} /></div>
+            {mine ? <Asking question={mine.question} run={mine.run} kind={opening.kind} asked={<AskedBubble question={mine.question} turnNo={quoteTurn} />} /> : null}
+          </>
+        ) : (
+          <>
+            {node.kind === 'main' ? <blockquote className="exp-page-quote">{d.quote}</blockquote> : <ForkHead d={d} node={node} />}
+            {hint ? <p className="dlg-carried">{hint}</p> : null}
+            {node.turns.map((t, i) => (
+              mine?.retry === t.id ? <Asking key={t.id} question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} turnNo={quoteTurn} />} /> : (
+                <TurnView key={t.id} d={d} turn={t} first={node.kind === 'main' && i === 0} last={i === node.turns.length - 1}
+                  busy={!!pending} full={full} forking={forkAt === t.id} selected={carry.selection?.turn === t.id} turnNo={quoteTurn}
+                  onRetry={retry} onOpen={open} onFork={() => { carryDo({ type: 'fork', turn: t.id }); setMenu(true); }} />
+              )
+            ))}
+            {mine && mine.retry == null ? <Asking question={mine.question} run={mine.run} kind={node.kind} asked={<AskedBubble question={mine.question} turnNo={quoteTurn} />} /> : null}
+            {stopped?.message ? <Refusal refused={stopped} /> : null}
+          </>
+        )}
         <TakeSelection scroller={scroller} label="带上" icon={<Plus />} onTake={(t) => { carryDo({ type: 'select', selection: { turn: t.turn, text: t.text } }); setCarriedRange(t.range); }} />
       </div>
       <Composer text={text} onText={setText} busy={!!pending} blocked={blocked} ready={next.to !== 'none' && !tooLong}

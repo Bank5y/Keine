@@ -1878,7 +1878,10 @@ a.rn:hover .t { color: var(--ink-accent); }
 .dlg-crumbs { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: center; gap: 2px; font-size: 12px; }
 .dlg-crumb { position: relative; display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .dlg-crumb-sep { color: var(--text-3); padding: 0 2px; }
-.dlg-crumb-btn { display: inline-flex; align-items: center; gap: 5px; max-width: 160px; padding: 2px 6px; border: 0; border-radius: 4px; background: none; color: var(--text-2); font-size: 12px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dlg-crumb-btn { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 160px; padding: 2px 6px; border: 0; border-radius: 4px; background: none; color: var(--text-2); font-size: 12px; cursor: pointer; white-space: nowrap; }
+/* a name too long for its step ends in … */
+.dlg-crumb-btn > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dlg-crumb-btn .dlg-dot { flex: none; }
 .dlg-crumb-btn.current { font-weight: 600; color: var(--text); background: color-mix(in srgb, var(--kind) 14%, var(--surface)); cursor: default; }
 .dlg-crumb-more { border: 0; background: none; color: var(--text-3); font-size: 9px; cursor: pointer; }
 .dlg-menu { position: absolute; z-index: 300; top: calc(100% + 4px); left: 0; min-width: 200px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-float); }

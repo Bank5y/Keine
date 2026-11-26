@@ -165,6 +165,22 @@ export function restack(cur: Layer[], want: string[]): Layer[] {
   return [...[...kept, ...added].sort((a, b) => order(a) - order(b)), ...gone];
 }
 
+// the layers that are no node: a node being opened (its first reply
+// running, kept as no node yet) and the report
+export const OPENING = 'opening';
+export const REPORT = 'report';
+
+// Opening is a node being opened: its kind and the turn it forks from.
+export type Opening = { kind: NewKind; fork: number };
+
+// openingName names a node being opened, until it is kept and named.
+export const openingName = (kind: NewKind) => `新${KINDS[kind].label}`;
+
+// rekey gives a layer another key where it is: the node being opened
+// becomes the node kept, so the stack keeps it rather than sliding it in
+// again.
+export const rekey = (l: Layer[], from: string, to: string) => l.map((x) => (x.key === from ? { ...x, key: to } : x));
+
 // settle lets entering layers in; prune drops the ones that left.
 export const settle = (l: Layer[]) => l.map((x) => (x.phase === 'enter' ? { ...x, phase: 'in' as const } : x));
 export const prune = (l: Layer[]) => l.filter((x) => x.phase !== 'leave');
@@ -177,6 +193,10 @@ export function spine(i: number, n: number, width: number, shown: number) {
   const fromTop = n - 1 - i;
   return { left: Math.max(covered - fromTop, 0) * width, covered: fromTop > 0, gone: fromTop > shown };
 }
+
+// atEnd tells whether a scroller shows its end (within 40px): a reply
+// streaming in keeps it there, and leaves a reader who scrolled up alone.
+export const atEnd = (el: { scrollTop: number; scrollHeight: number; clientHeight: number }) => el.scrollHeight - el.scrollTop - el.clientHeight <= 40;
 
 // ---- the node map ----
 
