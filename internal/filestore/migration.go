@@ -87,6 +87,12 @@ func (s *Service) Migrate(dir storage.Direction) (Migration, error) {
 	return *m, nil
 }
 
+func (s *Service) migrating() bool {
+	s.jobs.mu.Lock()
+	defer s.jobs.mu.Unlock()
+	return s.jobs.last != nil && s.jobs.last.State == "running"
+}
+
 // LastMigration is the last migration started, if any.
 func (s *Service) LastMigration() *Migration {
 	s.jobs.mu.Lock()

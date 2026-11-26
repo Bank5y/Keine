@@ -151,7 +151,8 @@ func (cfg Config) OpenStore() *storage.Routed {
 // some, and the secret key they use.
 func (cfg Config) StorageDefaults() (filestore.Settings, string) {
 	return filestore.Settings{
-		Enabled:      cfg.Storage == "s3",
+		// on by default, once the environment names a bucket
+		Enabled:      cfg.Storage == "s3" && cfg.S3.Endpoint != "" && cfg.S3.Bucket != "",
 		Endpoint:     cfg.S3.Endpoint,
 		Region:       cfg.S3.Region,
 		Bucket:       cfg.S3.Bucket,

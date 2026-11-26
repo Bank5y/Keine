@@ -249,9 +249,6 @@ func (s *Server) manifestPrompt(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(a.Body)
 }
 
-// setUserFileHeaders guards responses that carry files uploaded by users:
-// they are served from our origin, so they must never run as a page (an SVG
-// or HTML file could carry scripts).
 // redirectToObject sends the browser to fetch a file from object storage
 // or a CDN itself, after the access to it was checked here.
 func redirectToObject(w http.ResponseWriter, r *http.Request, link, cache string) {
@@ -259,6 +256,9 @@ func redirectToObject(w http.ResponseWriter, r *http.Request, link, cache string
 	http.Redirect(w, r, link, http.StatusFound)
 }
 
+// setUserFileHeaders guards responses that carry files uploaded by users:
+// they are served from our origin, so they must never run as a page (an SVG
+// or HTML file could carry scripts).
 func setUserFileHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; sandbox")

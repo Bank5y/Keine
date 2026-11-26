@@ -77,7 +77,9 @@ func Migrate(ctx context.Context, local, cloud Store, dir Direction, want func(k
 		if err := ctx.Err(); err != nil {
 			return p, err
 		}
-		copied, n, err := migrateOne(ctx, from, to, key)
+		// a push deletes the source, so it never trusts a same-sized
+		// object on the target to be the same file
+		copied, n, err := migrateOne(ctx, from, to, key, dir != Push)
 		if err == nil && dir == Push {
 			err = from.Delete(ctx, key)
 		}
@@ -103,14 +105,17 @@ func Migrate(ctx context.Context, local, cloud Store, dir Direction, want func(k
 	return p, nil
 }
 
-// migrateOne copies key unless to has it with the same size already.
-func migrateOne(ctx context.Context, from, to Store, key string) (bool, int64, error) {
+// migrateOne copies key, unless skipSame and to has it with the same size
+// already.
+func migrateOne(ctx context.Context, from, to Store, key string, skipSame bool) (bool, int64, error) {
 	size, err := sizeOf(ctx, from, key)
 	if err != nil {
 		return false, 0, err
 	}
-	if have, err := sizeOf(ctx, to, key); err == nil && have == size {
-		return false, 0, nil
+	if skipSame {
+		if have, err := sizeOf(ctx, to, key); err == nil && have == size {
+			return false, 0, nil
+		}
 	}
 	rc, err := from.Get(ctx, key)
 	if err != nil {

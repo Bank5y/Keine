@@ -115,6 +115,29 @@ func TestRoutedPutRemovesTheStaleCopyOnTheOtherSide(t *testing.T) {
 	}
 }
 
+func TestRoutedCopyRemovesTheStaleTargetOnTheOtherSide(t *testing.T) {
+	r, local, cloud := newRouted(t, storage.MediaVideo)
+	put(t, cloud, "c/1/v.mp4", "new")
+	put(t, local, "c/2/v.mp4", "old")
+	if err := r.Copy(context.Background(), "c/1/v.mp4", "c/2/v.mp4"); err != nil {
+		t.Fatal(err)
+	}
+	if has(t, local, "c/2/v.mp4") || read(t, r, "c/2/v.mp4") != "new" {
+		t.Error("the old target outlived the copy")
+	}
+}
+
+func TestRoutedWithACloudButNoMediaStillReadsIt(t *testing.T) {
+	local, cloud := storage.NewLocal(t.TempDir()), storage.NewLocal(t.TempDir())
+	r := storage.NewRouted(local)
+	r.SetRoute(storage.Route{Cloud: cloud})
+	put(t, cloud, "c/1/v.mp4", "in the bucket")
+	put(t, r, "c/1/w.mp4", "new")
+	if read(t, r, "c/1/v.mp4") != "in the bucket" || !has(t, local, "c/1/w.mp4") {
+		t.Error("an off cloud is not read, or still written")
+	}
+}
+
 func TestRoutedLinksOnlyCloudMedia(t *testing.T) {
 	r, _, cloud := newRouted(t, storage.MediaVideo)
 	r.SetRoute(storage.Route{Cloud: cloud, Media: storage.MediaVideo, Link: func(_ context.Context, key string) (string, error) {

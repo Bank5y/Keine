@@ -82,6 +82,13 @@ func TestS3Links(t *testing.T) {
 	if u, _ := cdn(ctx, "c/1/v.mp4"); u != "https://cdn.example/media/c/1/v.mp4" {
 		t.Errorf("cdn link %q", u)
 	}
+	if err := s.Copy(ctx, "c/1/v.mp4", "c/2/v.mp4"); err != nil {
+		t.Fatal(err)
+	}
+	// a CDN serves the stored type, so a copy keeps one
+	if info, err := storage.ContentTypeOf(ctx, s, "c/2/v.mp4"); err != nil || info != "video/mp4" {
+		t.Errorf("a copy's type is %q, %v", info, err)
+	}
 	if s.Linker(storage.DeliverProxy, 0, "") != nil {
 		t.Error("proxy delivery has a linker")
 	}

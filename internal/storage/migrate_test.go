@@ -51,6 +51,17 @@ func TestMigrate(t *testing.T) {
 		}
 	})
 
+	t.Run("push does not trust a same-sized object in the cloud", func(t *testing.T) {
+		local, cloud := setup(t)
+		put(t, cloud, "courses/1/v1/a.mp4", "VIDEO A") // stale, same size
+		if _, err := storage.Migrate(ctx, local, cloud, storage.Push, want, nil); err != nil {
+			t.Fatal(err)
+		}
+		if read(t, cloud, "courses/1/v1/a.mp4") != "video a" {
+			t.Error("push deleted the only current copy")
+		}
+	})
+
 	t.Run("pull copies the cloud back and keeps it", func(t *testing.T) {
 		local, cloud := setup(t)
 		p, err := storage.Migrate(ctx, local, cloud, storage.Pull, want, nil)

@@ -297,7 +297,9 @@ func TestStorageMigrations(t *testing.T) {
 	}
 
 	expectStatus(t, admin.do("POST", "/api/admin/storage/migration", map[string]any{"direction": "push"}), http.StatusAccepted)
-	if m := waitMigration(t, admin); m["state"] != "done" || m["skipped"] != float64(2) {
+	// a push copies again what a sync left: it deletes the source, so a
+	// same-sized object is not proof enough
+	if m := waitMigration(t, admin); m["state"] != "done" || m["copied"] != float64(2) {
 		t.Fatalf("push %v", m)
 	}
 	if inStore(a.local, video) || courseKey(t, a.local, id, "v.md") == "" {
@@ -320,4 +322,29 @@ func TestStorageMigrations(t *testing.T) {
 	off := a.bucketSettings(map[string]any{"enabled": false})
 	admin.mustOK(admin.do("PUT", "/api/admin/storage", off))
 	expectError(t, admin.do("POST", "/api/admin/storage/migration", map[string]any{"direction": "push"}), http.StatusBadRequest, "invalid")
+}
+
+func TestStorageTurnedOffStillReadsTheBucket(t *testing.T) {
+	t.Parallel()
+	a := newRoutedApp(t, nil)
+	admin := a.admin()
+	admin.mustOK(admin.do("PUT", "/api/admin/storage", a.bucketSettings(nil)))
+	alice := a.user("alice")
+	id := mediaCourse(t, alice)
+	video := courseKey(t, a.bucket(), id, "videos/1.mp4")
+	admin.mustOK(admin.do("PUT", "/api/admin/storage", a.bucketSettings(map[string]any{"enabled": false})))
+
+	if r := alice.do("GET", fmt.Sprintf("/api/courses/%d/files/videos/1.mp4", id), nil); string(r.body) != "0123456789" {
+		t.Errorf("a video in the bucket reads %d %q once storage is off", r.status, r.body)
+	}
+	// a new one goes local
+	id2 := mediaCourse(t, alice)
+	if courseKey(t, a.local, id2, "videos/1.mp4") == "" {
+		t.Error("a new video went to the bucket while storage is off")
+	}
+	// deleting the course still clears the bucket
+	alice.mustOK(alice.do("DELETE", fmt.Sprintf("/api/courses/%d", id), nil))
+	if inStore(a.bucket(), video) {
+		t.Error("the deleted course's video stayed in the bucket")
+	}
 }

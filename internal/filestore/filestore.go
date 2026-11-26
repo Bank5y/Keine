@@ -193,8 +193,14 @@ func (s *Service) apply(st Settings, cloud *storage.S3, connErr error) {
 	if connErr != nil {
 		s.status.Error = connErr.Error()
 	}
-	if cloud == nil || !st.Enabled {
+	if cloud == nil {
 		s.files.SetRoute(storage.Route{})
+		return
+	}
+	if !st.Enabled {
+		// connected but off: new files go local (no Media covers them),
+		// while what is in the bucket is still read, copied and deleted
+		s.files.SetRoute(storage.Route{Cloud: cloud})
 		return
 	}
 	s.status.Active = true
@@ -288,6 +294,10 @@ func last4(v string) string {
 // Save stores the settings once their bucket answers (or with none named)
 // and switches the store over to them.
 func (s *Service) Save(ctx context.Context, u Update) (Settings, error) {
+	// a running migration keeps writing to the bucket it started with
+	if s.migrating() {
+		return Settings{}, ErrBusy
+	}
 	st, err := s.merged(ctx, u)
 	if err != nil {
 		return st, err

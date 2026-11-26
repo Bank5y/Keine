@@ -124,8 +124,12 @@ func evaluate(ctx context.Context, o options) (eval.Report, string, error) {
 	// the deployment's media may be in its bucket
 	files := cfg.OpenStore()
 	storageDefaults, storageSecret := cfg.StorageDefaults()
-	if err := filestore.New(pool, box, files, storageDefaults, storageSecret).Start(ctx, 1, 0); err != nil {
+	fs := filestore.New(pool, box, files, storageDefaults, storageSecret)
+	if err := fs.Start(ctx, 15, 2*time.Second); err != nil {
 		return eval.Report{}, "", err
+	}
+	if e := fs.Status().Error; e != "" {
+		return eval.Report{}, "", fmt.Errorf("object storage: %s", e)
 	}
 	models := assistant.NewModels(pool, box, adapters.For, search.For)
 	turn, err := modelTurn(ctx, o.model, models, assistant.TurnAnalysis)

@@ -128,7 +128,12 @@ func (r *Routed) Copy(ctx context.Context, src, dst string) error {
 	first, other := r.sides(src)
 	err := first.Copy(ctx, src, dst)
 	if errors.Is(err, ErrNotFound) && other != nil {
-		err = other.Copy(ctx, src, dst)
+		first, other = other, first
+		err = first.Copy(ctx, src, dst)
+	}
+	// as Put does, drop a copy of dst left on the other side
+	if err == nil && other != nil {
+		_ = other.Delete(ctx, dst)
 	}
 	return err
 }

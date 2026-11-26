@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 
@@ -132,11 +133,12 @@ type linker interface {
 
 func (s *Service) linkOrOpen(ctx context.Context, key string) (io.ReadCloser, string, error) {
 	if l, ok := s.files.(linker); ok {
+		// a bucket that does not answer the check is no reason to fail:
+		// the file is still served from here
 		u, err := l.Link(ctx, key)
 		if err != nil {
-			return nil, "", err
-		}
-		if u != "" {
+			slog.Warn("no direct link to a file, serving it", "key", key, "err", err)
+		} else if u != "" {
 			return nil, u, nil
 		}
 	}

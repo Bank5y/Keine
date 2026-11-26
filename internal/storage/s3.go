@@ -276,7 +276,9 @@ func (s *S3) Copy(ctx context.Context, src, dst string) error {
 		return err
 	}
 	_, err := s.client.ComposeObject(ctx,
-		minio.CopyDestOptions{Bucket: s.bucket, Object: s.prefix + dst, PartSize: s.copyPartSize},
+		// a copy made part by part would lose the type a CDN serves it with
+		minio.CopyDestOptions{Bucket: s.bucket, Object: s.prefix + dst, PartSize: s.copyPartSize,
+			ReplaceMetadata: true, UserMetadata: map[string]string{"Content-Type": contentType(dst)}},
 		minio.CopySrcOptions{Bucket: s.bucket, Object: s.prefix + src})
 	return mapS3Error(err)
 }
