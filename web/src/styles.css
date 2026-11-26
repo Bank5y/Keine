@@ -640,6 +640,12 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .storage-rows .grid { row-gap: 16px; }
 .storage-settings .hint { display: block; color: var(--text-3); font-size: 12px; line-height: 1.55; }
 .storage-settings .hint.warn { color: var(--warn); }
+/* a fieldset only to switch its fields off together */
+.storage-fields { display: flex; flex-direction: column; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; transition: opacity .15s; }
+.storage-fields:disabled { opacity: .45; }
+.storage-fields:disabled .switch:disabled { opacity: 1; }
+.storage-fields:disabled .storage-toggle, .storage-fields:disabled .storage-choice, .storage-fields:disabled .switch { cursor: not-allowed; }
+.storage-fields:disabled .storage-choice:hover { border-color: var(--rule); }
 .storage-toggle { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
 .storage-toggle .switch { margin-top: 2px; }
 .storage-toggle b { display: block; font-size: 13px; font-weight: 500; color: var(--text); }

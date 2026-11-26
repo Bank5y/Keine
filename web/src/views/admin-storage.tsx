@@ -59,6 +59,9 @@ export function AdminStorage() {
   }
 
   const status = st.status;
+  // switched off, only the switch itself and saving stay editable; the rest
+  // keeps its values for when it is switched on again
+  const off = !f.enabled;
   return (
     <div className="sections storage-settings">
       <Section no="01" title="对象存储" desc="S3 兼容的对象存储, 如 AWS S3、Cloudflare R2、阿里云 OSS、MinIO、RustFS。默认部署自带一个 RustFS。">
@@ -68,7 +71,8 @@ export function AdminStorage() {
           </span>
           {status.error ? <span className="text-xs text-ink-3">{status.error}</span> : null}
         </div>
-        <Toggle checked={f.enabled} onChange={(v) => set('enabled', v)} label="启用对象存储">关闭后新文件存在本地; 已在桶里的文件仍从桶里读取。</Toggle>
+        <Toggle checked={f.enabled} onChange={(v) => set('enabled', v)} label="启用对象存储">关闭后新文件存在本地; 已在桶里的文件仍从桶里读取。下面的设置在打开后才能修改。</Toggle>
+        <fieldset className="storage-fields" disabled={off}>
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <div className="field"><label htmlFor="se">Endpoint</label><Input id="se" className="font-mono" placeholder="https://s3.amazonaws.com" value={f.endpoint} onChange={text('endpoint')} /></div>
           <div className="field"><label htmlFor="sr">Region</label><Input id="sr" className="font-mono" placeholder="us-east-1" value={f.region} onChange={text('region')} /></div>
@@ -86,14 +90,18 @@ export function AdminStorage() {
         <Toggle checked={f.pathStyle} onChange={(v) => set('pathStyle', v)} label="Path-style 寻址">按 endpoint/bucket 访问; MinIO、RustFS 等自建服务一般需要打开。</Toggle>
         <Toggle checked={f.insecure} onChange={(v) => set('insecure', v)} label="不用 TLS">Endpoint 没写 http:// 或 https:// 时走明文 HTTP。</Toggle>
         <Toggle checked={f.createBucket} onChange={(v) => set('createBucket', v)} label="自动创建 Bucket">Bucket 不存在时创建它。</Toggle>
+        </fieldset>
         {probe ? <ProbeSteps res={probe} /> : null}
       </Section>
 
       <Section no="02" title="上传范围" desc="哪些课程文件放到对象存储。文字稿和课程清单总是留在本地, 读起来快。">
-        <Choices value={f.media} options={MEDIA} onChange={(v) => set('media', v)} name="上传范围" />
+        <fieldset className="storage-fields" disabled={off}>
+          <Choices value={f.media} options={MEDIA} onChange={(v) => set('media', v)} name="上传范围" />
+        </fieldset>
       </Section>
 
       <Section no="03" title="访问方式" desc="读者打开视频或图片时怎么拿到文件。权限总由 Keine 先检查, 再给出地址。">
+        <fieldset className="storage-fields" disabled={off}>
         <Choices value={f.delivery} options={DELIVERY} onChange={(v) => set('delivery', v)} name="访问方式" />
         {f.delivery === 'presign' ? (
           <div className="field"><label htmlFor="sx">Presign 有效期 (分钟)</label>
@@ -107,12 +115,13 @@ export function AdminStorage() {
             <span className="hint">文件地址为「CDN 地址/前缀+对象名」。CDN 的源站要指向这个桶, 并能读取它 (公开读或回源鉴权)。</span>
           </div>
         ) : null}
+        </fieldset>
       </Section>
 
       <div className="storage-foot">
         {err ? <ErrorBox message={err} /> : null}
         <div className="form-foot">
-          <Button onClick={test} disabled={!!busy || !f.endpoint.trim() || !f.bucket.trim()}>{busy === 'test' ? '测试中…' : '测试连接 (读/写)'}</Button>
+          <Button onClick={test} disabled={!!busy || off || !f.endpoint.trim() || !f.bucket.trim()}>{busy === 'test' ? '测试中…' : '测试连接 (读/写)'}</Button>
           <Button variant="default" onClick={save} disabled={!!busy}>{busy === 'save' ? '保存中…' : '保存'}</Button>
         </div>
         <span className="hint">保存前会先连接对象存储, 连不上就不保存。测试连接用表单里还没保存的设置。</span>
