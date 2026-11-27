@@ -58,7 +58,7 @@ type Turn struct {
 	MustInclude    []string        `yaml:"must_include" json:"mustInclude,omitempty"`
 	MustNotInclude []string        `yaml:"must_not_include" json:"mustNotInclude,omitempty"`
 	// MustNotLink are concepts the turn a node forks with must not link
-	// to: a name that only looks like one in the answer. There is no
+	// the section of: a name that only looks like one in the answer. There is no
 	// must_link: what the reply names is up to the model.
 	MustNotLink []string `yaml:"must_not_link" json:"mustNotLink,omitempty"`
 }

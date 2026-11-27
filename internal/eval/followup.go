@@ -2,6 +2,7 @@ package eval
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -33,17 +34,37 @@ type Linking struct {
 	Chosen     []LinkEntry               `json:"chosen"`
 }
 
-// LinkEntry is an entry of the concept index: the concept, its lesson and
-// section, and, once chosen, the model's sentence on it.
+// LinkEntry is a candidate section of the linking step: its label, its
+// lesson and section, and, once chosen, the model's sentence on it.
 type LinkEntry struct {
-	Concept string `json:"concept"`
+	Label   string `json:"label"`
 	Lesson  string `json:"lesson"`
 	Section string `json:"section,omitempty"`
 	Note    string `json:"note,omitempty"`
+	// Sources are the recall paths that found a candidate.
+	Sources []course.HitSource `json:"sources,omitempty"`
 }
 
-func linkEntry(concept string, lesson course.EntryLesson, section *course.EntrySection, note string) LinkEntry {
-	e := LinkEntry{Concept: concept, Lesson: lesson.Title, Note: note}
+// UnmarshalJSON reads an entry of a report written before links were to
+// sections, whose label was its concept (-against).
+func (e *LinkEntry) UnmarshalJSON(b []byte) error {
+	type plain LinkEntry
+	var v struct {
+		plain
+		Concept string `json:"concept"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*e = LinkEntry(v.plain)
+	if e.Label == "" {
+		e.Label = v.Concept
+	}
+	return nil
+}
+
+func linkEntry(label string, lesson course.EntryLesson, section *course.EntrySection, note string) LinkEntry {
+	e := LinkEntry{Label: label, Lesson: lesson.Title, Note: note}
 	if section != nil {
 		e.Section = section.Title
 	}
@@ -75,9 +96,11 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 		tr := TurnResult{Fork: t.Fork, Ask: t.Ask, Sources: []assistant.WebSource{}}
 		var links *lessonctx.Links
 		var linker assistant.Linker
+		var x course.ConceptIndex
 		if t.Fork != "" {
 			q.Note = assistant.NodeNote(string(t.Fork))
-			x, err := r.Courses.ConceptIndexOf(ctx, c.Course, c.Version)
+			var err error
+			x, err = r.Courses.ConceptIndexOf(ctx, c.Course, c.Version)
 			if err != nil {
 				return err
 			}
@@ -105,11 +128,13 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 		var chosen []course.CourseLink
 		if links != nil {
 			for _, e := range links.Offered {
-				tr.Linking.Candidates = append(tr.Linking.Candidates, linkEntry(e.Name, e.Lesson, e.Section, ""))
+				le := linkEntry(e.Label, e.Lesson, e.Section, "")
+				le.Sources = e.Sources
+				tr.Linking.Candidates = append(tr.Linking.Candidates, le)
 			}
 			chosen = links.Chosen(out.Links)
 			for _, l := range chosen {
-				tr.Linking.Chosen = append(tr.Linking.Chosen, linkEntry(l.Concept, l.Lesson, l.Section, l.Note))
+				tr.Linking.Chosen = append(tr.Linking.Chosen, linkEntry(l.Label, l.Lesson, l.Section, l.Note))
 			}
 		}
 		res.Turns = append(res.Turns, tr)
@@ -133,12 +158,12 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 			offered = len(links.Offered)
 		}
 		if bad := unoffered(w.rec.linkedEntries(), offered); len(bad) > 0 {
-			fail(RuleLinkCourse, "link_course 引用了不在候选里的条目 "+strings.Join(bad, "、"))
+			fail(RuleLinkCourse, "link_course 引用了不在候选里的小节 "+strings.Join(bad, "、"))
 		}
 		for _, l := range chosen {
 			for _, no := range t.MustNotLink {
-				if course.NormalizeConcept(l.Concept) == course.NormalizeConcept(no) {
-					fail(RuleMustNotLink, "关联了「"+l.Concept+"」")
+				if linksConcept(x, l, no) {
+					fail(RuleMustNotLink, "关联了「"+no+"」所在的小节")
 				}
 			}
 		}
@@ -147,13 +172,32 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 	return nil
 }
 
-// unoffered are the entries named that are none of the n offered (c1…cn).
+// linksConcept is whether link l is labelled name, or is to a section
+// where the index x places the concept name.
+func linksConcept(x course.ConceptIndex, l course.CourseLink, name string) bool {
+	if course.NormalizeConcept(l.Label) == course.NormalizeConcept(name) {
+		return true
+	}
+	return slices.ContainsFunc(x.Find(name), func(e course.ConceptEntry) bool {
+		return e.Lesson.Key == l.Lesson.Key && sectionID(e.Section) == sectionID(l.Section)
+	})
+}
+
+// sectionID is a section's anchor, "" for the lesson's top.
+func sectionID(s *course.EntrySection) string {
+	if s == nil {
+		return ""
+	}
+	return s.ID
+}
+
+// unoffered are the sections named that are none of the n offered (s1…sn).
 func unoffered(named []string, n int) []string {
 	var out []string
 	for _, e := range named {
 		ok := false
 		for i := range n {
-			if strings.TrimSpace(e) == assistant.EntryRef(i) {
+			if strings.TrimSpace(e) == assistant.CandidateRef(i) {
 				ok = true
 			}
 		}

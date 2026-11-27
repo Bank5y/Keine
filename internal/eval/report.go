@@ -107,10 +107,10 @@ func brokenBy(fs []Failure, n int) []string {
 	return slices.Compact(broken)
 }
 
-func concepts(es []LinkEntry) []string {
+func labels(es []LinkEntry) []string {
 	out := []string{}
 	for _, e := range es {
-		out = append(out, e.Concept)
+		out = append(out, e.Label)
 	}
 	return out
 }
@@ -196,7 +196,7 @@ func (r Report) Baseline() Baseline {
 			for i, t := range res.Turns {
 				bt := BaselineTurn{Fork: t.Fork, Error: t.Error, Broken: brokenBy(res.Failures, i+1), Stats: t.Stats}
 				if t.Linking != nil {
-					bt.Linking = &BaselineLinking{Index: t.Linking.Index, Candidates: concepts(t.Linking.Candidates), Chosen: concepts(t.Linking.Chosen)}
+					bt.Linking = &BaselineLinking{Index: t.Linking.Index, Candidates: labels(t.Linking.Candidates), Chosen: labels(t.Linking.Chosen)}
 				}
 				run.Turns = append(run.Turns, bt)
 			}
@@ -293,7 +293,7 @@ func linkingLine(l Linking) string {
 	}
 	var cs []string
 	for _, e := range l.Candidates {
-		cs = append(cs, e.Concept+"（"+e.place()+"）")
+		cs = append(cs, e.Label+"（"+e.place()+"）")
 	}
 	line := "候选 " + strings.Join(cs, "、") + "；"
 	if len(l.Chosen) == 0 {
@@ -301,7 +301,7 @@ func linkingLine(l Linking) string {
 	}
 	var chosen []string
 	for _, e := range l.Chosen {
-		chosen = append(chosen, "✓ "+e.Concept+"："+e.Note)
+		chosen = append(chosen, "✓ "+e.Label+"："+e.Note)
 	}
 	return line + strings.Join(chosen, "；")
 }
@@ -528,8 +528,8 @@ body.revealed .detail { display: block; }
         {{with .Linking}}
         <div class="links">
           课程里的相关内容{{if ne .Index "built"}}：概念索引未建立{{else if not .Chosen}}：没有选{{end}}
-          {{if .Chosen}}<ul>{{range .Chosen}}<li>{{.Concept}}（{{.Lesson}}{{if .Section}} › {{.Section}}{{end}}）：{{.Note}}</li>{{end}}</ul>{{end}}
-          {{if .Candidates}}<div class="offered">候选：{{range $i, $c := .Candidates}}{{if $i}}、{{end}}{{$c.Concept}}{{end}}</div>{{end}}
+          {{if .Chosen}}<ul>{{range .Chosen}}<li>{{.Label}}（{{.Lesson}}{{if .Section}} › {{.Section}}{{end}}）：{{.Note}}</li>{{end}}</ul>{{end}}
+          {{if .Candidates}}<div class="offered">候选：{{range $i, $c := .Candidates}}{{if $i}}、{{end}}{{$c.Label}}{{end}}</div>{{end}}
         </div>
         {{end}}
         <div class="detail">

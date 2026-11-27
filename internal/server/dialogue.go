@@ -312,7 +312,7 @@ func (s *Server) linksFor(viewer auth.User, d course.ExplorationDetail) *courseL
 	return &courseLinks{s: s, viewer: viewer, d: d}
 }
 
-// linker finds, in an answer, the concepts of the course's other lessons:
+// linker recalls, for an answer, sections of the course's other lessons:
 // none when the version has no index built.
 func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Linker {
 	x, err := l.s.courses.ConceptIndexOf(ctx, l.d.CourseID, c.FilesDir)
@@ -327,7 +327,7 @@ func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Lin
 	return l.found.Find
 }
 
-// chosen is the course links the model picked of the entries offered.
+// chosen is the course links the model picked of the sections offered.
 func (l *courseLinks) chosen(picked []assistant.CourseLink) []course.CourseLink {
 	if l.found == nil {
 		return nil
