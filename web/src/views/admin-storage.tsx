@@ -192,7 +192,7 @@ function Migrations({ state, onChange }: { state: StorageState; onChange: (m: Mi
       api<StorageState>('GET', '/api/admin/storage').then((s) => onChange(s.migration)).catch(() => {});
     }, 1000);
     return () => clearInterval(t);
-  }, [running]);
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps -- restart polling only when a run starts or ends
 
   async function start(d: Direction) {
     try {
