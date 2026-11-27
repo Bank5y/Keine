@@ -110,12 +110,14 @@ export interface HitLesson { id: number; key: string; title: string }
 export interface HitSection { id: string; title: string }
 
 // PathHit is a section one recall path found, with the path's own score.
-export interface PathHit { lesson: HitLesson; section: HitSection | null; label: string; score: number }
+export interface PathHit { lesson: HitLesson; section: HitSection | null; label: string; score: number; weight?: number }
 export interface PathRanking { source: HitSource; hits: PathHit[] }
 
 // Candidate is a fused candidate, as the linking step is offered it.
 export interface Candidate { lesson: HitLesson; section: HitSection | null; label: string; sources: HitSource[]; score: number }
-export interface RecallTrace { paths: PathRanking[]; candidates: Candidate[] }
+// RevisionEffect is how an admin's revision changed a recall (#226).
+export interface RevisionEffect { id: number; kind: string; label: string; effect: string }
+export interface RecallTrace { paths: PathRanking[]; candidates: Candidate[]; revisions: RevisionEffect[] }
 
 const SOURCES: Record<HitSource, { name: string; note: string }> = {
   concept: { name: '概念', note: '按回答里首次提到的先后' },
@@ -163,18 +165,86 @@ export interface IndexConcept {
   occurrences: Occurrence[];
 }
 
-export type ConceptFilter = 'all' | 'specific' | 'generic';
+export type ConceptFilter = 'all' | 'specific' | 'generic' | 'revised' | 'disabled' | 'stale';
 
-const fold = (s: string) => s.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+// fold is how concept names compare (NormalizeConcept on the server):
+// width folded, lower case, white space out.
+export const fold = (s: string) => s.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
 
-// filterConcepts is the concepts whose name or an alias holds the query
-// (width, case and spaces aside), generic or not as the filter says.
-export function filterConcepts(concepts: IndexConcept[], query: string, filter: ConceptFilter): IndexConcept[] {
-  const q = fold(query);
-  return concepts.filter((c) =>
-    (filter === 'all' || (filter === 'generic') === c.generic) &&
-    (!q || [c.name, ...c.aliases].some((n) => fold(n).includes(q))));
+// Revision is an admin's revision of the index (#226): of a concept (by
+// its name as extracted), a concept added, or a lesson or section excluded.
+export interface Revision {
+  id: number;
+  kind: 'concept' | 'new' | 'exclude';
+  concept?: string;
+  name?: string;
+  aliases?: string[];
+  summary?: string;
+  weight: number;
+  disabled: boolean;
+  generic?: boolean;
+  lesson: HitLesson | null;
+  section: HitSection | null;
+  stale: boolean;
 }
+
+export interface LessonSections { lesson: HitLesson; sections: HitSection[] }
+
+// The four weights a revision gives a concept.
+export const WEIGHTS: [number, string][] = [[0.5, '降低 ×0.5'], [1, '默认 ×1'], [2, '提高 ×2'], [4, '优先 ×4']];
+
+// ConceptRow is a concept as the 概念 tab lists it: extracted (concept),
+// revised (revision), or added (revision alone), its names and flags as
+// revised.
+export interface ConceptRow {
+  key: string;
+  concept?: IndexConcept;
+  revision?: Revision;
+  name: string;
+  aliases: string[];
+  summary: string;
+  generic: boolean;
+  weight: number;
+  disabled: boolean;
+  stale: boolean;
+}
+
+// conceptRows lays the revisions over the concepts, the concepts added
+// after them.
+export function conceptRows(concepts: IndexConcept[], revisions: Revision[]): ConceptRow[] {
+  const byKey = new Map(revisions.filter((r) => r.kind === 'concept').map((r) => [r.concept ?? '', r]));
+  const rows: ConceptRow[] = concepts.map((c) => {
+    const r = byKey.get(fold(c.name));
+    return {
+      key: `c${c.id}`, concept: c, revision: r,
+      name: r?.name ?? c.name, aliases: r?.aliases ?? c.aliases, summary: r?.summary ?? c.summary,
+      generic: r?.generic ?? c.generic, weight: r?.weight ?? 1, disabled: !!r?.disabled, stale: !!r?.stale,
+    };
+  });
+  for (const r of revisions) {
+    if (r.kind !== 'new') continue;
+    rows.push({ key: `r${r.id}`, revision: r, name: r.name ?? '', aliases: r.aliases ?? [], summary: r.summary ?? '', generic: false, weight: r.weight, disabled: false, stale: r.stale });
+  }
+  return rows;
+}
+
+// filterConcepts is the rows whose name or an alias holds the query
+// (width, case and spaces aside), kept as the filter says.
+export function filterConcepts(rows: ConceptRow[], query: string, filter: ConceptFilter): ConceptRow[] {
+  const q = fold(query);
+  const keep: Record<ConceptFilter, (r: ConceptRow) => boolean> = {
+    all: () => true,
+    specific: (r) => !r.generic,
+    generic: (r) => r.generic,
+    revised: (r) => !!r.revision,
+    disabled: (r) => r.disabled,
+    stale: (r) => r.stale,
+  };
+  return rows.filter((r) => keep[filter](r) && (!q || [r.name, ...r.aliases].some((n) => fold(n).includes(q))));
+}
+
+// splitAliases reads the aliases field: comma, 、 or semicolon separated.
+export const splitAliases = (s: string) => s.split(/[,，、;；]/).map((a) => a.trim()).filter(Boolean);
 
 // roleName is what a lesson does with a concept.
 export const roleName = (r: Occurrence['role']) => (r === 'use' ? '用到' : '定义');

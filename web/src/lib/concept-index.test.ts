@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterConcepts, summaryStage, type IndexConcept, hitPlace, indexAction, indexError, indexState, lessonNote, lessonState, pathScore, sourceName, stillBuilding, type IndexLesson } from '@/lib/concept-index';
+import { conceptRows, filterConcepts, splitAliases, summaryStage, type IndexConcept, type Revision, hitPlace, indexAction, indexError, indexState, lessonNote, lessonState, pathScore, sourceName, stillBuilding, type IndexLesson } from '@/lib/concept-index';
 
 describe('indexState', () => {
   it('names each status', () => {
@@ -106,21 +106,44 @@ describe('summaryStage', () => {
   });
 });
 
-describe('filterConcepts', () => {
+describe('conceptRows and filterConcepts', () => {
   const at = { lesson: { id: 1, key: 'l01', title: '01' }, section: null, role: 'define' as const, summary: '' };
-  const c = (name: string, aliases: string[], generic: boolean): IndexConcept => ({ id: 1, name, aliases, summary: '', generic, lessons: 1, primary: at, occurrences: [at] });
-  const all = [c('任期', ['term'], false), c('领导者', ['Leader'], true), c('日志复制', ['log replication'], false)];
-  const names = (cs: IndexConcept[]) => cs.map((x) => x.name);
+  const c = (id: number, name: string, aliases: string[], generic: boolean): IndexConcept => ({ id, name, aliases, summary: '', generic, lessons: 1, primary: at, occurrences: [at] });
+  const all = [c(1, '任期', ['term'], false), c(2, '领导者', ['Leader'], true), c(3, '日志复制', ['log replication'], false)];
+  const rev = (r: Partial<Revision>): Revision => ({ id: 9, kind: 'concept', weight: 1, disabled: false, lesson: null, section: null, stale: false, ...r });
+  const names = (rows: ReturnType<typeof conceptRows>) => rows.map((x) => x.name);
 
   it('finds a concept by name or alias, case, width and spaces aside', () => {
-    expect(names(filterConcepts(all, 'ＴＥＲＭ', 'all'))).toEqual(['任期']);
-    expect(names(filterConcepts(all, 'logreplication', 'all'))).toEqual(['日志复制']);
-    expect(names(filterConcepts(all, '领导', 'all'))).toEqual(['领导者']);
+    const rows = conceptRows(all, []);
+    expect(names(filterConcepts(rows, 'ＴＥＲＭ', 'all'))).toEqual(['任期']);
+    expect(names(filterConcepts(rows, 'logreplication', 'all'))).toEqual(['日志复制']);
+    expect(names(filterConcepts(rows, '领导', 'all'))).toEqual(['领导者']);
   });
 
   it('keeps the generic ones or the others', () => {
-    expect(names(filterConcepts(all, '', 'generic'))).toEqual(['领导者']);
-    expect(names(filterConcepts(all, '', 'specific'))).toEqual(['任期', '日志复制']);
-    expect(filterConcepts(all, '', 'all')).toHaveLength(3);
+    const rows = conceptRows(all, []);
+    expect(names(filterConcepts(rows, '', 'generic'))).toEqual(['领导者']);
+    expect(names(filterConcepts(rows, '', 'specific'))).toEqual(['任期', '日志复制']);
+  });
+
+  it('lays a revision over the concept extracted under its name', () => {
+    const rows = conceptRows(all, [rev({ concept: '领导者', name: '主节点', generic: false, weight: 2, disabled: true, stale: true })]);
+    const r = rows[1];
+    expect([r.name, r.generic, r.weight, r.disabled, r.stale]).toEqual(['主节点', false, 2, true, true]);
+    expect(names(filterConcepts(rows, '', 'revised'))).toEqual(['主节点']);
+    expect(names(filterConcepts(rows, '', 'disabled'))).toEqual(['主节点']);
+    expect(names(filterConcepts(rows, '', 'stale'))).toEqual(['主节点']);
+  });
+
+  it('lists the concepts added after the extracted ones', () => {
+    const rows = conceptRows(all, [rev({ id: 5, kind: 'new', name: '脑裂', aliases: ['split brain'] })]);
+    expect(names(rows)).toEqual(['任期', '领导者', '日志复制', '脑裂']);
+    expect(rows[3].concept).toBeUndefined();
+  });
+});
+
+describe('splitAliases', () => {
+  it('splits on commas and the like', () => {
+    expect(splitAliases('log replication, 复制日志、AppendEntries；x ,')).toEqual(['log replication', '复制日志', 'AppendEntries', 'x']);
   });
 });

@@ -2294,10 +2294,10 @@ a.rn:hover .t { color: var(--ink-accent); }
 .concepts-bar .count { margin-left: auto; font-family: var(--serif); font-size: 15px; color: var(--text-2); }
 .concepts-bar .count b { margin-right: 4px; font-family: var(--mono); font-weight: 500; color: var(--ink-accent); }
 .concept-list { padding: 0; }
-.concept-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 80px 120px; gap: 18px; align-items: center; width: 100%; padding: 10px 12px; text-align: left; }
-.concept-row.head { padding: 9px 12px; border-bottom: 1px solid var(--text); font-size: 12px; color: var(--text-3); }
+.concept-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 80px 200px; gap: 18px; align-items: center; width: 100%; padding: 10px 12px; text-align: left; cursor: pointer; }
+.concept-row.head { padding: 9px 12px; border-bottom: 1px solid var(--text); font-size: 12px; color: var(--text-3); cursor: default; }
 .concept-item + .concept-item { border-top: 1px solid var(--line); }
-button.concept-row:hover .name { color: var(--ink-accent); }
+.concept-row:not(.head):hover .name { color: var(--ink-accent); }
 .concept-row .name { display: block; font-family: var(--serif); font-weight: 600; font-size: 15px; }
 .concept-row small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 .concept-row .where { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2311,3 +2311,25 @@ button.concept-row:hover .name { color: var(--ink-accent); }
 .occurrences .role.define { background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--ink-accent); }
 .occurrences .primary { font-size: 11px; color: var(--success); }
 .occurrences .sum { color: var(--text-3); }
+/* revisions (#226) */
+.concept-row .tag.rev { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
+.concept-row .tag.off { background: var(--surface-2); color: var(--text-3); }
+.tag.stale { padding: 1px 8px; border-radius: 3px; background: var(--warn-soft); font-size: 11px; color: var(--text); }
+.concept-item.off .name { color: var(--text-3); text-decoration: line-through; }
+.concept-open { padding: 0 12px 12px 24px; }
+.concept-sum { margin: 0 0 8px; font-size: 13px; color: var(--text-2); }
+.concept-open .occurrences { margin: 0 0 8px; }
+.concept-acts { display: flex; justify-content: flex-end; }
+.concept-form .hint.inline, .modal .hint.inline { margin-left: 10px; font-weight: 400; }
+.field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field.checks { display: flex; flex-direction: column; gap: 10px; }
+.exclusions { list-style: none; margin: 12px 0 20px; padding: 0; border-top: 2px solid var(--text); border-bottom: 2px solid var(--text); }
+.exclusions li { display: grid; grid-template-columns: 1fr 120px 80px auto; gap: 12px; align-items: center; padding: 8px 0; font-size: 13px; }
+.exclusions li + li { border-top: 1px solid var(--line); }
+.exclusions .name { font-family: var(--serif); font-weight: 600; font-size: 14px; }
+.exclusions .what { color: var(--text-2); }
+.exclude-add { display: grid; grid-template-columns: 1fr 160px auto; gap: 10px; }
+.recall-revisions { margin-top: 16px; padding: 12px 16px; border-radius: var(--radius); background: var(--surface-2); font-size: 13px; }
+.recall-revisions ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 20px; color: var(--text-2); }
+.recall-revisions .name { margin-right: 8px; font-weight: 600; color: var(--text); }
+.recall-path .weight { margin-left: 6px; font-family: var(--mono); font-size: 11px; color: var(--success); }

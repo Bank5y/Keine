@@ -121,6 +121,9 @@ type ConceptEntry struct {
 	// Role is "define" where the lesson explains the concept, "use" where
 	// it uses one explained elsewhere.
 	Role string `json:"role"`
+	// revision is what revised it for recall, and weight its weight there
+	revision *Revision
+	weight   float64
 }
 
 // EntryLesson is the lesson an entry is in.

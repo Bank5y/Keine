@@ -3,6 +3,7 @@ package course
 import (
 	"context"
 	"slices"
+	"strconv"
 )
 
 // MaxCandidates is how many sections an answer's linking step looks at
@@ -42,6 +43,9 @@ type PathHit struct {
 	// Label is the concept named, or "" when the path finds no concept.
 	Label string  `json:"label"`
 	Score float64 `json:"score"`
+	// Weight multiplies the hit's share of the fused score: a concept's
+	// revised weight (#226); 0 is 1.
+	Weight float64 `json:"weight,omitempty"`
 }
 
 // PathRanking is what one recall path found, best first.
@@ -56,6 +60,16 @@ type PathRanking struct {
 type RecallTrace struct {
 	Paths      []PathRanking      `json:"paths"`
 	Candidates []SectionCandidate `json:"candidates"`
+	// Revisions are the course's revisions that changed this recall.
+	Revisions []RevisionEffect `json:"revisions"`
+}
+
+// RevisionEffect is how a revision changed a recall (#226).
+type RevisionEffect struct {
+	ID     int64  `json:"id"`
+	Kind   string `json:"kind"`
+	Label  string `json:"label"`
+	Effect string `json:"effect"`
 }
 
 // Recaller finds the sections of a course that an answer relates to,
@@ -72,8 +86,9 @@ const maxPathHits = 50
 // CourseRecall recalls from a course version's concept index and its
 // passages (ADR 0015).
 type CourseRecall struct {
-	Concepts ConceptIndex
-	Passages Passages
+	Concepts  ConceptIndex
+	Passages  Passages
+	Revisions []Revision
 }
 
 // RecallOf is what recalls from a version of a course: its concept index
@@ -84,44 +99,135 @@ func (s *Service) RecallOf(ctx context.Context, courseID int64, filesDir string)
 		return CourseRecall{}, err
 	}
 	p, err := s.PassagesOf(ctx, courseID, filesDir)
-	return CourseRecall{Concepts: x, Passages: p}, err
+	if err != nil {
+		return CourseRecall{}, err
+	}
+	revs, err := s.revisions(ctx, courseID)
+	return CourseRecall{Concepts: x, Passages: p, Revisions: revs}, err
 }
 
 // Trace is the recall of an answer, path by path, leaving out the lesson
-// keyed selectionLesson.
+// keyed selectionLesson, with the course's revisions laid over it (#226).
 func (r CourseRecall) Trace(answer, selectionLesson string) RecallTrace {
+	var effects []RevisionEffect
+	effect := func(rev *Revision, label, what string) {
+		if !slices.ContainsFunc(effects, func(e RevisionEffect) bool { return e.ID == rev.ID }) {
+			effects = append(effects, RevisionEffect{ID: rev.ID, Kind: rev.Kind, Label: label, Effect: what})
+		}
+	}
+	recallable, disabled := r.Concepts.recallable(selectionLesson, r.Revisions)
 	concepts := PathRanking{Source: HitConcept, Hits: []PathHit{}}
-	for _, m := range r.Concepts.recallable(selectionLesson).Mentioned(answer, selectionLesson) {
-		concepts.Hits = append(concepts.Hits, PathHit{Lesson: m.Entry.Lesson, Section: m.Entry.Section, Label: m.Entry.Name, Score: float64(m.At)})
+	for _, m := range recallable.Mentioned(answer, selectionLesson) {
+		concepts.Hits = append(concepts.Hits, PathHit{Lesson: m.Entry.Lesson, Section: m.Entry.Section, Label: m.Entry.Name, Score: float64(m.At), Weight: m.Entry.weight})
+		if rev := m.Entry.revision; rev != nil {
+			what := "修订过的概念"
+			switch {
+			case rev.Kind == RevisionNew:
+				what = "手动新增的概念"
+			case m.Entry.weight != 0 && m.Entry.weight != 1:
+				what = "权重 ×" + strconv.FormatFloat(m.Entry.weight, 'f', -1, 64)
+			}
+			effect(rev, m.Entry.Name, what)
+		}
+	}
+	for _, m := range disabled.Mentioned(answer, selectionLesson) {
+		effect(m.Entry.revision, m.Entry.Name, "已禁用, 不参与召回")
 	}
 	passages := PathRanking{Source: HitPassage, Hits: r.Passages.rank(answer, selectionLesson)}
 	paths := []PathRanking{concepts, passages}
 	for i := range paths {
-		paths[i].Hits = paths[i].Hits[:min(len(paths[i].Hits), maxPathHits)]
+		kept := paths[i].Hits[:0]
+		for _, h := range paths[i].Hits {
+			if rev := excluding(r.Revisions, h); rev != nil {
+				label := h.Lesson.Title
+				if rev.Section != nil {
+					label += " › " + rev.Section.Title
+				}
+				effect(rev, label, "已排除")
+				continue
+			}
+			kept = append(kept, h)
+		}
+		paths[i].Hits = kept[:min(len(kept), maxPathHits)]
 	}
-	return RecallTrace{Paths: paths, Candidates: fuse(paths, selectionLesson)}
+	if effects == nil {
+		effects = []RevisionEffect{}
+	}
+	return RecallTrace{Paths: paths, Candidates: fuse(paths, selectionLesson), Revisions: effects}
 }
 
-// recallable is what the concept path matches answers against: the
-// index's concepts once merged, generic ones left out, each placed at its
-// primary section, or at its best other one when that is in the lesson
-// keyed except; the entries as extracted before any were merged.
-func (x ConceptIndex) recallable(except string) ConceptIndex {
-	if len(x.Concepts) == 0 {
-		return x
-	}
-	out := ConceptIndex{Status: x.Status}
-	for _, c := range x.Concepts {
-		if c.Generic {
+// excluding is the exclusion that leaves hit out: of its lesson, or of its
+// section.
+func excluding(revs []Revision, h PathHit) *Revision {
+	for i, r := range revs {
+		if r.Kind != RevisionExclude || r.Lesson == nil || r.Lesson.Key != h.Lesson.Key {
 			continue
 		}
+		if r.Section == nil || h.Section != nil && h.Section.ID == r.Section.ID {
+			return &revs[i]
+		}
+	}
+	return nil
+}
+
+// recallable is what the concept path matches answers against, and the
+// concepts revisions disabled: the index's concepts once merged, each
+// placed at its primary section, or at its best other one when that is in
+// the lesson keyed except, or the entries as extracted before any were
+// merged; with the revisions laid over them (a name, aliases, a weight;
+// generic ones and disabled ones left out) and the concepts added.
+func (x ConceptIndex) recallable(except string, revs []Revision) (ConceptIndex, ConceptIndex) {
+	byKey := map[string]*Revision{}
+	for i, r := range revs {
+		if r.Kind == RevisionConcept {
+			byKey[r.key] = &revs[i]
+		}
+	}
+	out, off := ConceptIndex{Status: x.Status}, ConceptIndex{Status: x.Status}
+	add := func(e ConceptEntry, generic bool) {
+		rev := byKey[NormalizeConcept(e.Name)]
+		if rev != nil {
+			e.revision = rev
+			if rev.Name != nil {
+				e.Name = *rev.Name
+			}
+			if rev.Aliases != nil {
+				e.Aliases = rev.Aliases
+			}
+			if rev.Summary != nil {
+				e.Summary = *rev.Summary
+			}
+			if rev.Generic != nil {
+				generic = *rev.Generic
+			}
+			e.weight = rev.Weight
+			if rev.Disabled {
+				off.Entries = append(off.Entries, e)
+				return
+			}
+		}
+		if !generic {
+			out.Entries = append(out.Entries, e)
+		}
+	}
+	if len(x.Concepts) == 0 {
+		for _, e := range x.Entries {
+			add(e, false)
+		}
+	}
+	for _, c := range x.Concepts {
 		at := c.Primary
 		if at.Lesson.Key == except {
 			at = primaryOf(c.Occurrences, c.Name, except)
 		}
-		out.Entries = append(out.Entries, ConceptEntry{Name: c.Name, Aliases: c.Aliases, Lesson: at.Lesson, Section: at.Section, Summary: c.Summary})
+		add(ConceptEntry{Name: c.Name, Aliases: c.Aliases, Lesson: at.Lesson, Section: at.Section, Summary: c.Summary}, c.Generic)
 	}
-	return out
+	for i, r := range revs {
+		if r.Kind == RevisionNew && r.Lesson != nil && r.Name != nil {
+			out.Entries = append(out.Entries, ConceptEntry{Name: *r.Name, Aliases: r.Aliases, Lesson: *r.Lesson, Section: r.Section, revision: &revs[i], weight: r.Weight})
+		}
+	}
+	return out, off
 }
 
 // Recall is the fused candidates of Trace.
@@ -158,7 +264,11 @@ func fuse(paths []PathRanking, exceptLesson string) []SectionCandidate {
 				found[k] = c
 				order = append(order, k)
 			}
-			c.Score += 1 / float64(rrfK+rank+1)
+			w := h.Weight
+			if w == 0 {
+				w = 1
+			}
+			c.Score += w / float64(rrfK+rank+1)
 			c.Sources = append(c.Sources, p.Source)
 			if c.Label == "" && h.Label != "" {
 				c.Label = h.Label
