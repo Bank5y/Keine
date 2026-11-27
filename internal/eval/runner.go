@@ -228,7 +228,7 @@ func errorCode(err error) string {
 }
 
 // recorder is the model of a run as keine-eval watches it: each call's
-// text, the tool calls made, and the entries a linking step named.
+// text, the tool calls made, and the sections a linking step named.
 type recorder struct {
 	assistant.Adapter
 	lesson string
@@ -263,12 +263,12 @@ func (r *recorder) toolCall(c *assistant.ToolCall) {
 		// the linking step is not one of the answer's tool calls
 		var args struct {
 			Links []struct {
-				Entry string `json:"entry"`
+				Section string `json:"section"`
 			} `json:"links"`
 		}
 		_ = json.Unmarshal([]byte(c.Arguments), &args)
 		for _, l := range args.Links {
-			r.linked = append(r.linked, l.Entry)
+			r.linked = append(r.linked, l.Section)
 		}
 		return
 	}
@@ -300,7 +300,7 @@ func (r *recorder) counts() (calls int, reread bool) {
 	return r.calls, r.reread
 }
 
-// linkedEntries are the entries the linking step named, as it named them.
+// linkedEntries are the sections the linking step named, as it named them.
 func (r *recorder) linkedEntries() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()

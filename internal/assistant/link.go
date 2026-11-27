@@ -12,18 +12,18 @@ import (
 // the kind of the activity the reader sees while it goes.
 const ToolLinkCourse = "link_course"
 
-// LinkCandidate is a concept of another lesson an answer named, as the
-// linking step shows it to the model: where it is in the course and the
-// text of its section.
+// LinkCandidate is a section of another lesson an answer may link to, as
+// the linking step shows it to the model: its label, where it is in the
+// course and its text.
 type LinkCandidate struct {
-	Concept string
-	Lesson  string
+	Label  string
+	Lesson string
 	// Section is "" for the top of the lesson
 	Section string
 	Text    string
 }
 
-// Linker finds the candidates in an answer (ADR 0011); none, and the run
+// Linker finds the candidate sections in an answer (ADR 0011); none, and the run
 // ends with the answer.
 type Linker func(ctx context.Context, answer string) ([]LinkCandidate, error)
 
@@ -47,19 +47,20 @@ type Reply struct {
 const maxCandidateText = 2000
 
 const linkIntro = "此次作答提到了这些课程内容。判断哪些和当前回答真正相关：只是字面上相同、实际讲的不是一回事的，不算相关。" +
-	"用 link_course 只列出真正相关的条目，每条附一句话，说明这条课程内容能怎样帮读者理解当前回答，不要写两者的异同；" +
+	"用 link_course 只列出真正相关的小节，每条附一句话，说明这条课程内容能怎样帮读者理解当前回答，不要写两者的异同；" +
 	"判断为不相关的不要列出，都不相关时传空列表。"
 
 var linkSpec = ToolSpec{
 	Name:        ToolLinkCourse,
-	Description: "列出和当前回答真正相关的课程内容：每一项是候选条目的标识和一句话说明；都不相关时 links 为空列表。",
+	Description: "列出和当前回答真正相关的课程内容：每一项是候选小节的标识和一句话说明；都不相关时 links 为空列表。",
 	Parameters: json.RawMessage(`{"type":"object","properties":{"links":{"type":"array","items":{"type":"object",` +
-		`"properties":{"entry":{"type":"string","description":"候选条目的标识，如 c1"},"note":{"type":"string","description":"一句话说明这条课程内容能怎样帮读者理解当前回答"}},` +
-		`"required":["entry","note"],"additionalProperties":false}}},"required":["links"],"additionalProperties":false}`),
+		`"properties":{"section":{"type":"string","description":"候选小节的标识，如 s1"},"note":{"type":"string","description":"一句话说明这条课程内容能怎样帮读者理解当前回答"}},` +
+		`"required":["section","note"],"additionalProperties":false}}},"required":["links"],"additionalProperties":false}`),
 }
 
-// EntryRef is how the linking step names the candidate at place i.
-func EntryRef(i int) string { return fmt.Sprintf("c%d", i+1) }
+// CandidateRef is how the linking step names the candidate section at
+// place i.
+func CandidateRef(i int) string { return fmt.Sprintf("s%d", i+1) }
 
 // linkMessage shows the candidates to the model.
 func linkMessage(cs []LinkCandidate) string {
@@ -74,13 +75,13 @@ func linkMessage(cs []LinkCandidate) string {
 		if r := []rune(text); len(r) > maxCandidateText {
 			text = string(r[:maxCandidateText]) + "…"
 		}
-		fmt.Fprintf(&b, "\n\n[%s] %s\n位置：%s\n正文：\n%s", EntryRef(i), c.Concept, where, text)
+		fmt.Fprintf(&b, "\n\n[%s] %s\n位置：%s\n正文：\n%s", CandidateRef(i), c.Label, where, text)
 	}
 	return b.String()
 }
 
 // picked reads the links of a link_course call: those that name a
-// candidate, each once; nil when the call is not one.
+// candidate section, each once; nil when the call is not one.
 func picked(calls []ToolCall, n int) []CourseLink {
 	var out []CourseLink
 	seen := map[int]bool{}
@@ -90,8 +91,8 @@ func picked(calls []ToolCall, n int) []CourseLink {
 		}
 		var args struct {
 			Links []struct {
-				Entry string `json:"entry"`
-				Note  string `json:"note"`
+				Section string `json:"section"`
+				Note    string `json:"note"`
 			} `json:"links"`
 		}
 		if err := json.Unmarshal([]byte(c.Arguments), &args); err != nil {
@@ -99,7 +100,7 @@ func picked(calls []ToolCall, n int) []CourseLink {
 		}
 		for _, l := range args.Links {
 			for i := range n {
-				if strings.TrimSpace(l.Entry) == EntryRef(i) && !seen[i] {
+				if strings.TrimSpace(l.Section) == CandidateRef(i) && !seen[i] {
 					seen[i] = true
 					out = append(out, CourseLink{Candidate: i, Note: strings.TrimSpace(l.Note)})
 				}

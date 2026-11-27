@@ -72,10 +72,11 @@ export interface Turn {
   courseLinks?: CourseLink[];
 }
 
-// CourseLink is a concept of another lesson a turn's answer linked: where
-// it is (the section null for the lesson's top) and how it relates.
+// CourseLink is a section of another lesson a turn's answer linked: its
+// label, where it is (the section null for the lesson's top) and how it
+// relates.
 export interface CourseLink {
-  concept: string;
+  label: string;
   note: string;
   lesson: { id: number; key: string; title: string };
   section: { id: string; title: string } | null;

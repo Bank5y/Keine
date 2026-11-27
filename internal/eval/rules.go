@@ -35,7 +35,7 @@ const (
 	// RuleNarration: a reply talks about the document or the course instead
 	// of answering («本文档», «基于本讲»).
 	RuleNarration = "no_meta_narration"
-	// RuleLinkCourse: the linking step named an entry it was not offered.
+	// RuleLinkCourse: the linking step named a section it was not offered.
 	RuleLinkCourse = "link_course_candidates"
 	// RuleMustNotLink: the turn linked a concept the case says it must not.
 	RuleMustNotLink = "must_not_link"

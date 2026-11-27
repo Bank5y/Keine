@@ -112,12 +112,12 @@ describe('stepRun', () => {
 describe('courseLinkItems', () => {
   const lesson = { id: 7, key: 'l05', title: '05｜动态数据传输' };
   it('links each to its lesson and section in the reader', () => {
-    expect(courseLinkItems(3, [{ concept: 'Nagle 算法', note: '小数据包合并发送就是这里讲的做法。', lesson, section: { id: 'nagle-算法', title: 'Nagle 算法' } }])).toEqual([
+    expect(courseLinkItems(3, [{ label: 'Nagle 算法', note: '小数据包合并发送就是这里讲的做法。', lesson, section: { id: 'nagle-算法', title: 'Nagle 算法' } }])).toEqual([
       { href: '/courses/3/lessons/7#nagle-%E7%AE%97%E6%B3%95', place: '05｜动态数据传输 › Nagle 算法', note: '小数据包合并发送就是这里讲的做法。' },
     ]);
   });
-  it('links to the top of the lesson when the concept is in no section', () => {
-    expect(courseLinkItems(3, [{ concept: '数据传输', note: '说明', lesson, section: null }])).toEqual([
+  it('links to the top of the lesson when the link is to no section', () => {
+    expect(courseLinkItems(3, [{ label: '数据传输', note: '说明', lesson, section: null }])).toEqual([
       { href: '/courses/3/lessons/7', place: '05｜动态数据传输', note: '说明' },
     ]);
   });

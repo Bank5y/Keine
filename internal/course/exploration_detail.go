@@ -147,14 +147,32 @@ type TurnMeta struct {
 	Interrupted Interruption      `json:"interrupted,omitempty"`
 }
 
-// CourseLink is a concept of another lesson that a turn's answer linked
-// (ADR 0011): the index entry's concept and place, and a sentence on how
-// it relates to the answer.
+// CourseLink is a section of another lesson that a turn's answer linked
+// (ADR 0011, ADR 0015): its candidate's label and place, and a sentence on
+// how it relates to the answer.
 type CourseLink struct {
-	Concept string        `json:"concept"`
+	Label   string        `json:"label"`
 	Note    string        `json:"note"`
 	Lesson  EntryLesson   `json:"lesson"`
 	Section *EntrySection `json:"section"`
+}
+
+// UnmarshalJSON reads a link kept before links were to sections, whose
+// label was its concept.
+func (l *CourseLink) UnmarshalJSON(b []byte) error {
+	type plain CourseLink
+	var v struct {
+		plain
+		Concept string `json:"concept"`
+	}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	*l = CourseLink(v.plain)
+	if l.Label == "" {
+		l.Label = v.Concept
+	}
+	return nil
 }
 
 // readMeta reads a turn's stored metadata: what the reader sees of it, its

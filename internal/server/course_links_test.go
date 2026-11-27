@@ -40,8 +40,15 @@ func linkedLessons(more ...map[string]any) []step {
 // model runs the extractions (when indexed) and the analysis.
 func linkedExploration(t *testing.T, a *app, indexed bool) (bob *client, courseID, exp int) {
 	t.Helper()
+	return linkedExplorationOf(t, a, linkedFiles(), indexed)
+}
+
+// linkedExplorationOf is linkedExploration with the course files given,
+// whose l01 is linkedFiles'.
+func linkedExplorationOf(t *testing.T, a *app, files map[string]string, indexed bool) (bob *client, courseID, exp int) {
+	t.Helper()
 	alice := a.user("alice")
-	courseID = uploadCourse(t, alice, linkedFiles())
+	courseID = uploadCourse(t, alice, files)
 	admin := a.admin()
 	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/publish", courseID), nil))
 	if indexed {
@@ -70,7 +77,9 @@ func linkCall(links ...map[string]any) step {
 	return toolStep([]assistant.ToolCall{call("link_course", map[string]any{"links": links})})
 }
 
-func link(entry, note string) map[string]any { return map[string]any{"entry": entry, "note": note} }
+func link(section, note string) map[string]any {
+	return map[string]any{"section": section, "note": note}
+}
 
 // toolNames are the tools a request offered.
 func toolNames(req assistant.Request) []string {
@@ -132,7 +141,7 @@ func TestTheLinksKeptAreTheCandidatesTheModelPickedWithTheirPlaces(t *testing.T)
 	t.Parallel()
 	const answer = "子节点的回答：先做意图识别，再用 function calling 执行。"
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(answer),
-		linkCall(link("c1", "这里的第一步就是那一讲的意图识别。"), link("c9", "编出来的条目"), link("c2", "执行靠工具调用。")))...)
+		linkCall(link("s1", "这里的第一步就是那一讲的意图识别。"), link("s9", "编出来的条目"), link("s2", "执行靠工具调用。")))...)
 	a := aiApp(t, m)
 	bob, courseID, exp := linkedExploration(t, a, true)
 
@@ -140,10 +149,10 @@ func TestTheLinksKeptAreTheCandidatesTheModelPickedWithTheirPlaces(t *testing.T)
 
 	ids := lessonIDs(t, bob, courseID)
 	want := []map[string]any{
-		{"concept": "意图识别", "note": "这里的第一步就是那一讲的意图识别。",
+		{"label": "意图识别", "note": "这里的第一步就是那一讲的意图识别。",
 			"lesson":  map[string]any{"id": float64(ids["l02"]), "key": "l02", "title": "02｜三层意图识别"},
 			"section": map[string]any{"id": "三层意图", "title": "三层意图"}},
-		{"concept": "工具调用", "note": "执行靠工具调用。",
+		{"label": "工具调用", "note": "执行靠工具调用。",
 			"lesson":  map[string]any{"id": float64(ids["l00"]), "key": "l00", "title": "开篇词"},
 			"section": map[string]any{"id": "工具调用", "title": "工具调用"}},
 	}
@@ -178,7 +187,7 @@ const mentioning = "回答：先做意图识别，再用 function calling 执行
 
 func TestOnlyTheForkTurnIsLinked(t *testing.T) {
 	t.Parallel()
-	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("c1", "相关。")), texts(mentioning), texts(mentioning))...)
+	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("s1", "相关。")), texts(mentioning), texts(mentioning))...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
 	n := openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
@@ -222,7 +231,7 @@ func TestWithoutAnIndexTheForkTurnEndsWithItsAnswer(t *testing.T) {
 
 func TestTheReaderSeesTheLinkingStepAsAnActivityAndNoneOfItsText(t *testing.T) {
 	t.Parallel()
-	linking := linkCall(link("c1", "相关。"))
+	linking := linkCall(link("s1", "相关。"))
 	linking.events = append([]assistant.Event{{Kind: assistant.EventText, Text: "我来判断一下。"}}, linking.events...)
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linking)...)
 	a := aiApp(t, m)
@@ -255,7 +264,7 @@ func TestTheReaderSeesTheLinkingStepAsAnActivityAndNoneOfItsText(t *testing.T) {
 func TestALinkingStepPastTheDeadlineKeepsTheAnswerWhole(t *testing.T) {
 	t.Parallel()
 	clock := &fakeClock{now: time.Now()}
-	linking := linkCall(link("c1", "相关。"))
+	linking := linkCall(link("s1", "相关。"))
 	linking.before = func() { clock.advance(3 * time.Minute) }
 	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linking)...)
 	a := aiAppWith(t, m, false, func(o *server.Options) { o.Now = clock.Now })
@@ -293,7 +302,7 @@ func TestRunningOutOfCreditsWhileLinkingKeepsTheAnswerWhole(t *testing.T) {
 
 func TestALaterTurnReadsTheForkTurnWithItsLinks(t *testing.T) {
 	t.Parallel()
-	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("c1", "第一步就是意图识别。")), texts("答二"))...)
+	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("s1", "第一步就是意图识别。")), texts("答二"))...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
 	n := openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
@@ -310,7 +319,7 @@ func TestALaterTurnReadsTheForkTurnWithItsLinks(t *testing.T) {
 
 func TestTheReportReadsTheForkTurnWithItsLinks(t *testing.T) {
 	t.Parallel()
-	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("c1", "第一步就是意图识别。")), texts(goodReport))...)
+	m := newScriptedModel(linkSteps(linkedLessons(), texts(mentioning), linkCall(link("s1", "第一步就是意图识别。")), texts(goodReport))...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
 	openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
@@ -330,7 +339,7 @@ func TestTheReportReadsTheForkTurnWithItsLinks(t *testing.T) {
 func TestAForkTurnTriedAgainIsLinked(t *testing.T) {
 	t.Parallel()
 	down := step{err: &assistant.Error{Category: assistant.ErrUnavailable, Detail: "down"}}
-	m := newScriptedModel(linkSteps(linkedLessons(), down, down, texts(mentioning), linkCall(link("c1", "相关。")))...)
+	m := newScriptedModel(linkSteps(linkedLessons(), down, down, texts(mentioning), linkCall(link("s1", "相关。")))...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
 	events, _ := postEvents(t, bob, fmt.Sprintf("/api/explorations/%d/nodes", exp), map[string]any{"kind": "child", "fork": firstTurn(t, bob, exp), "question": question("往深处讲讲")})
@@ -346,34 +355,52 @@ func TestAForkTurnTriedAgainIsLinked(t *testing.T) {
 
 func TestAtMostFiveCandidatesAreShown(t *testing.T) {
 	t.Parallel()
-	var more []map[string]any
-	var answer strings.Builder
-	answer.WriteString("回答：")
-	for _, n := range "甲乙丙丁戊己" {
-		name := "概念" + string(n)
-		more = append(more, concept(name, "为什么学 Agent", "一个概念。"))
-		answer.WriteString(name + "，")
-	}
-	m := newScriptedModel(linkSteps(linkedLessons(more...), texts(answer.String()), linkCall())...)
+	m := newScriptedModel(linkSteps(manyLessons(), texts("回答：概念甲，概念乙，概念丙，概念丁，概念戊，概念己。"), linkCall())...)
 	a := aiApp(t, m)
-	bob, _, exp := linkedExploration(t, a, true)
+	bob, _, exp := linkedExplorationOf(t, a, manyLessonFiles(), true)
 
 	openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
 
-	asked := lastQuestion(t, contents(m.calls()[5]))
-	if n := strings.Count(asked, "\n位置："); n != 5 {
-		t.Fatalf("five candidates, got %d: %s", n, asked)
-	}
-	if !strings.Contains(asked, "[c5] 概念戊") || strings.Contains(asked, "概念己") {
-		t.Fatalf("the first five the answer names: %s", asked)
+	asked := lastQuestion(t, contents(m.calls()[len(m.calls())-1]))
+	if got, want := strings.Join(candidateNames(asked), "|"), "概念甲|概念乙|概念丙|概念丁|概念戊"; got != want {
+		t.Fatalf("the first five lessons the answer names: %s, want %s", got, want)
 	}
 }
 
-// candidateNames are the concepts a linking message offers, in its order.
+// manyLessonFiles is linkedFiles with six more lessons after l02, l03 to
+// l08, each with a section for a concept 概念甲 to 概念己.
+func manyLessonFiles() map[string]string {
+	m := columnManifest()
+	chapters := m["chapters"].([]any)
+	var lessons []any
+	files := linkedFiles()
+	for i, n := range "甲乙丙丁戊己" {
+		key := fmt.Sprintf("l%02d", i+3)
+		file := key + ".md"
+		lessons = append(lessons, map[string]any{"id": key, "title": "第" + string(n) + "讲", "file": file})
+		files[file] = fmt.Sprintf("# %s\n\n## 概念%s\n\n概念%s 是一个概念。\n", key, string(n), string(n))
+	}
+	m["chapters"] = append(chapters, map[string]any{"id": "more", "title": "更多", "lessons": lessons})
+	files["course.json"] = manifestJSON(m)
+	return files
+}
+
+// manyLessons are the extractions of manyLessonFiles' lessons.
+func manyLessons() []step {
+	out := linkedLessons()
+	for _, n := range "甲乙丙丁戊己" {
+		name := "概念" + string(n)
+		out = append(out, concepts(concept(name, name, "一个概念。")))
+	}
+	return out
+}
+
+// candidateNames are the labels of the sections a linking message offers,
+// in its order.
 func candidateNames(asked string) []string {
 	var out []string
 	for _, line := range strings.Split(asked, "\n") {
-		if strings.HasPrefix(line, "[c") {
+		if strings.HasPrefix(line, "[s") {
 			if _, name, ok := strings.Cut(line, "] "); ok {
 				out = append(out, name)
 			}
@@ -383,10 +410,16 @@ func candidateNames(asked string) []string {
 }
 
 // forkCandidates has bob open a child node whose answer is answer, with
-// more entries in l00, and gives the concepts its linking step offered.
+// more entries in l00, and gives the labels its linking step offered.
 func forkCandidates(t *testing.T, answer string, more ...map[string]any) []string {
 	t.Helper()
-	m := newScriptedModel(linkSteps(linkedLessons(more...), texts(answer), linkCall())...)
+	return forkCandidatesOf(t, answer, linkedLessons(more...))
+}
+
+// forkCandidatesOf is forkCandidates with linkedFiles' extractions given.
+func forkCandidatesOf(t *testing.T, answer string, lessons []step) []string {
+	t.Helper()
+	m := newScriptedModel(linkSteps(lessons, texts(answer), linkCall())...)
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, true)
 
@@ -422,15 +455,14 @@ func TestANameOfLettersAndDigitsIsOnlyMatchedAsAWholeWord(t *testing.T) {
 
 func TestOfTwoEntriesNamedAtTheSamePlaceOnlyTheLongerNameIsACandidate(t *testing.T) {
 	t.Parallel()
-	more := []map[string]any{
-		concept("日志", "为什么学 Agent", "按时间记下的事件。"),
-		concept("日志复制", "为什么学 Agent", "领导者把日志发给跟随者。"),
-	}
-	got := forkCandidates(t, "回答：Raft 靠日志复制保持一致，先做意图识别。", more...)
-	if want := "日志复制|意图识别"; strings.Join(got, "|") != want {
+	// 日志复制 in l00, 日志 in l02 after its 意图识别
+	lessons := linkedLessons(concept("日志复制", "为什么学 Agent", "领导者把日志发给跟随者。"))
+	lessons[2] = concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"), concept("日志", "三层意图", "按时间记下的事件。"))
+	got := forkCandidatesOf(t, "回答：Raft 靠日志复制保持一致。", lessons)
+	if want := "日志复制"; strings.Join(got, "|") != want {
 		t.Fatalf("candidates %v, want %s", got, want)
 	}
-	got = forkCandidates(t, "回答：日志复制之前，日志要先写盘。", more...)
+	got = forkCandidatesOf(t, "回答：日志复制之前，日志要先写盘。", lessons)
 	if want := "日志复制|日志"; strings.Join(got, "|") != want {
 		t.Fatalf("a name also standing alone stays a candidate: %v, want %s", got, want)
 	}
@@ -440,6 +472,15 @@ func TestALongerNameOfTheExplorationsOwnLessonStillHidesAShorterOne(t *testing.T
 	t.Parallel()
 	got := forkCandidates(t, "回答：先做目标拆解，再做意图识别。", concept("拆解", "为什么学 Agent", "把大事分成小事。"))
 	if want := "意图识别"; strings.Join(got, "|") != want {
+		t.Fatalf("candidates %v, want %s", got, want)
+	}
+}
+
+func TestALessonIsOneCandidateHoweverManyOfItsConceptsTheAnswerNames(t *testing.T) {
+	t.Parallel()
+	more := []map[string]any{concept("规划步骤", "为什么学 Agent", "自己定下一步做什么。")}
+	got := forkCandidates(t, "回答：先规划步骤，再做意图识别，最后靠工具调用执行。", more...)
+	if want := "规划步骤|意图识别"; strings.Join(got, "|") != want {
 		t.Fatalf("candidates %v, want %s", got, want)
 	}
 }

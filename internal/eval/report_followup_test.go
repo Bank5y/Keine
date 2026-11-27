@@ -23,8 +23,8 @@ func dialogueReport(prompt, word string) Report {
 				{Ask: c.Turns[0].Ask, Reply: word + "握手回复", Stats: Stats{Steps: 2, ToolCalls: 1, DurationMs: 4000, FirstTextMs: 800, Usage: usage(2000, 400), Credits: 0.02}},
 				{Fork: course.NodeChild, Ask: c.Turns[1].Ask, Reply: word + "小包回复", Stats: Stats{DurationMs: 6000, FirstTextMs: 700, Usage: usage(3000, 500), Credits: 0.03},
 					Linking: &Linking{Index: course.ConceptIndexBuilt,
-						Candidates: []LinkEntry{{Concept: "Nagle 算法", Lesson: "05｜动态数据传输", Section: "小包"}, {Concept: "滑动窗口", Lesson: "04｜可靠传输"}},
-						Chosen:     []LinkEntry{{Concept: "Nagle 算法", Lesson: "05｜动态数据传输", Section: "小包", Note: word + "攒小包再发"}}}},
+						Candidates: []LinkEntry{{Label: "Nagle 算法", Lesson: "05｜动态数据传输", Section: "小包"}, {Label: "滑动窗口", Lesson: "04｜可靠传输"}},
+						Chosen:     []LinkEntry{{Label: "Nagle 算法", Lesson: "05｜动态数据传输", Section: "小包", Note: word + "攒小包再发"}}}},
 			}}
 		if attempt == 1 {
 			res.Failures = []Failure{{Turn: 2, Rule: RuleNarration, Detail: "出现了「本文档」"}}

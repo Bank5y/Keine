@@ -34,6 +34,7 @@ func buildIndex(t *testing.T, dbURL string, id int64, version string) {
 		{"INSERT INTO concept_index_lessons (index_id, lesson_key, text_hash) VALUES ($1, 'l01', 'h1'), ($1, 'l02', 'h2')", []any{index}},
 		{"INSERT INTO concept_entries (index_id, lesson_key, position, name, summary) VALUES ($1, 'l01', 0, '任期', '选举的编号')", []any{index}},
 		{"INSERT INTO concept_entries (index_id, lesson_key, position, name, aliases, section_id, section_title, summary) VALUES ($1, 'l02', 0, '日志复制', '{log replication}', $2, $3, '领导者把日志发给跟随者')", []any{index, section.ID, section.Title}},
+		{"INSERT INTO concept_entries (index_id, lesson_key, position, name, aliases, section_id, section_title, summary) VALUES ($1, 'l02', 1, '领导者', '{}', $2, $3, '发起复制的节点')", []any{index, section.ID, section.Title}},
 	} {
 		if _, err := pool.Exec(ctx, q.sql, q.args...); err != nil {
 			t.Fatal(err)
@@ -58,10 +59,10 @@ func TestAFollowupCaseAsksItsTurnsAfterTheAnalysisAndLinksTheTurnANodeForksWith(
 		text(good),
 		text("任期在每次选举时加一。"),
 		// the child node's first turn names a concept of its own lesson and
-		// one of l02, and a link it must not write
+		// one of l02, and links the section of 领导者, which it must not
 		text("任期决定了日志复制时谁的日志更新，见 [论文](https://raft.github.io)。"),
 		// the linking step names the candidate, and one it was not offered
-		linkCall(`{"links":[{"entry":"c1","note":"跟随者按任期核对日志"},{"entry":"c4","note":"不存在"}]}`),
+		linkCall(`{"links":[{"section":"s1","note":"跟随者按任期核对日志"},{"section":"s4","note":"不存在"}]}`),
 		text("本文档前面说过，任期只增不减。"),
 	}}
 	r := &eval.Runner{
@@ -73,7 +74,7 @@ func TestAFollowupCaseAsksItsTurnsAfterTheAnalysisAndLinksTheTurnANodeForksWith(
 	c := eval.Case{ID: "term-dialogue", Course: id, Version: version, Lesson: "l01", Quote: "任期", Prefix: "分成一个个",
 		Turns: []eval.Turn{
 			{Ask: "任期什么时候变？"},
-			{Fork: "child", Ask: "任期和日志有什么关系？", MustInclude: []string{"日志"}, MustNotLink: []string{"日志复制"}},
+			{Fork: "child", Ask: "任期和日志有什么关系？", MustInclude: []string{"日志"}, MustNotLink: []string{"领导者"}},
 			{Ask: "任期会变小吗？"},
 		}}
 	res, err := r.Run(context.Background(), c, 1)
@@ -103,10 +104,10 @@ func TestAFollowupCaseAsksItsTurnsAfterTheAnalysisAndLinksTheTurnANodeForksWith(
 	if lk == nil || lk.Index != course.ConceptIndexBuilt || len(lk.Candidates) != 1 || len(lk.Chosen) != 1 {
 		t.Fatalf("linking: %+v", lk)
 	}
-	if got := lk.Candidates[0]; got.Concept != "日志复制" || got.Lesson != "02｜日志复制" || got.Section != "复制" {
+	if got := lk.Candidates[0]; got.Label != "日志复制" || got.Lesson != "02｜日志复制" || got.Section != "复制" {
 		t.Fatalf("candidate: %+v", got)
 	}
-	if got := lk.Chosen[0]; got.Concept != "日志复制" || got.Note != "跟随者按任期核对日志" {
+	if got := lk.Chosen[0]; got.Label != "日志复制" || got.Note != "跟随者按任期核对日志" {
 		t.Fatalf("chosen: %+v", got)
 	}
 	// a later turn reads the fork's reply with what it linked
