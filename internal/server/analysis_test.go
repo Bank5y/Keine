@@ -34,12 +34,16 @@ type step struct {
 
 // scriptedModel is the model every site model resolves to: each call takes
 // the next step of the script and is kept for inspection. Connection tests
-// (the admin saving a model) always pass and are not kept.
+// (the admin saving a model) always pass and are not kept; nor do the
+// concept index's summaries (#225) take a step: they answer summary (by
+// default "摘要。" and the request's title line) and are kept apart.
 type scriptedModel struct {
 	mu        sync.Mutex
 	steps     []step
 	requests  []assistant.Request
 	cancelled chan struct{}
+	summary   func(req assistant.Request) (string, error)
+	summaries []assistant.Request
 }
 
 func newScriptedModel(steps ...step) *scriptedModel {
@@ -49,6 +53,9 @@ func newScriptedModel(steps ...step) *scriptedModel {
 func (m *scriptedModel) Stream(ctx context.Context, req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
 	if len(req.Tools) == 1 && req.Tools[0].Name == "connection_check" {
 		return assistant.Result{Finish: assistant.FinishStop}, nil
+	}
+	if len(req.Messages) > 0 && req.Messages[0].Content == assistant.SummaryPrompt.System {
+		return m.summarize(req, emit)
 	}
 	m.mu.Lock()
 	m.requests = append(m.requests, req)
@@ -88,6 +95,31 @@ func (m *scriptedModel) Stream(ctx context.Context, req assistant.Request, emit 
 		s.result.Finish = assistant.FinishStop
 	}
 	return s.result, nil
+}
+
+func (m *scriptedModel) summarize(req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
+	m.mu.Lock()
+	m.summaries = append(m.summaries, req)
+	write := m.summary
+	m.mu.Unlock()
+	text, err := "摘要。", error(nil)
+	if write != nil {
+		text, err = write(req)
+	}
+	if err != nil {
+		return assistant.Result{}, err
+	}
+	if err := emit(assistant.Event{Kind: assistant.EventText, Text: text}); err != nil {
+		return assistant.Result{}, err
+	}
+	return assistant.Result{Finish: assistant.FinishStop}, nil
+}
+
+// summaryCalls are the summary requests the model was sent.
+func (m *scriptedModel) summaryCalls() []assistant.Request {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]assistant.Request(nil), m.summaries...)
 }
 
 func (m *scriptedModel) calls() []assistant.Request {

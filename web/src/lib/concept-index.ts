@@ -66,6 +66,8 @@ export interface IndexLesson { key: string; title: string; chapter: string; stat
 // IndexDetail is one course's index as its 概况 tab shows it.
 export interface IndexDetail {
   status: IndexStatus;
+  // stage is where a build is: extracting its lessons, then summarizing.
+  stage: 'extract' | 'summarize';
   stale: boolean;
   promptVersion: string;
   modelName: string;
@@ -138,3 +140,45 @@ export function pathScore(s: HitSource, score: number): string {
 // the lesson's top or is headed like the lesson.
 export const hitPlace = (h: { lesson: HitLesson; section: HitSection | null }) =>
   h.section && h.section.title !== h.lesson.title ? `${h.lesson.title} › ${h.section.title}` : h.lesson.title;
+
+// summaryStage says how far the course summary (#225) got: it waits for
+// the lessons, runs once they are through, and is done when the build is.
+export function summaryStage(x: Pick<IndexDetail, 'status' | 'stage'>): { label: string; tone: '' | 'ok' | 'warn' } {
+  if (x.status !== 'building') return { label: '已完成', tone: 'ok' };
+  return x.stage === 'summarize' ? { label: '进行中', tone: 'warn' } : { label: '等逐讲抽取完成', tone: '' };
+}
+
+// The course-level summary of an index (#225): concepts merged across
+// lessons, and the summary tree.
+
+export interface Occurrence { lesson: HitLesson; section: HitSection | null; role: 'define' | 'use'; summary: string }
+export interface IndexConcept {
+  id: number;
+  name: string;
+  aliases: string[];
+  summary: string;
+  generic: boolean;
+  lessons: number;
+  primary: Occurrence;
+  occurrences: Occurrence[];
+}
+
+export type ConceptFilter = 'all' | 'specific' | 'generic';
+
+const fold = (s: string) => s.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+
+// filterConcepts is the concepts whose name or an alias holds the query
+// (width, case and spaces aside), generic or not as the filter says.
+export function filterConcepts(concepts: IndexConcept[], query: string, filter: ConceptFilter): IndexConcept[] {
+  const q = fold(query);
+  return concepts.filter((c) =>
+    (filter === 'all' || (filter === 'generic') === c.generic) &&
+    (!q || [c.name, ...c.aliases].some((n) => fold(n).includes(q))));
+}
+
+// roleName is what a lesson does with a concept.
+export const roleName = (r: Occurrence['role']) => (r === 'use' ? '用到' : '定义');
+
+export interface TreeLesson { key: string; title: string; status: LessonStatus; summary: string }
+export interface TreeChapter { key: string; title: string; summary: string; error?: string; tooLong: boolean; lessons: TreeLesson[] }
+export interface SummaryTree { summary: string; error?: string; chapters: TreeChapter[] }

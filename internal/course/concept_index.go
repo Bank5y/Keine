@@ -174,6 +174,12 @@ type ConceptIndex struct {
 	Stale         bool   `json:"stale"`
 	PromptVersion string `json:"promptVersion"`
 	ModelName     string `json:"modelName"`
+	// Stage is where a build is: extracting its lessons, or summarizing
+	// the course once they are through (#225).
+	Stage string `json:"stage"`
+	// Concepts are the entries merged (#225), which recall uses once there
+	// are some; none before the first build that merged them.
+	Concepts []IndexConcept `json:"-"`
 }
 
 // ConceptIndexOf is the index of a version of a course (its files folder,
@@ -183,9 +189,9 @@ func (s *Service) ConceptIndexOf(ctx context.Context, courseID int64, filesDir s
 	x := ConceptIndex{Status: ConceptIndexNone, Entries: []ConceptEntry{}, Lessons: []IndexLesson{}}
 	var indexID int64
 	err := s.db.QueryRow(ctx, `
-		SELECT id, status, prompt_version, model, model_name, started_at, finished_at
+		SELECT id, status, stage, prompt_version, model, model_name, started_at, finished_at
 		FROM concept_indexes WHERE course_id = $1 AND files_dir = $2`, courseID, filesDir).
-		Scan(&indexID, &x.Status, &x.Extractor.PromptVersion, &x.Extractor.Model, &x.Extractor.ModelName, &x.StartedAt, &x.FinishedAt)
+		Scan(&indexID, &x.Status, &x.Stage, &x.Extractor.PromptVersion, &x.Extractor.Model, &x.Extractor.ModelName, &x.StartedAt, &x.FinishedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return x, nil
 	}
@@ -240,6 +246,10 @@ func (s *Service) ConceptIndexOf(ctx context.Context, courseID int64, filesDir s
 		x.Entries = append(x.Entries, entry)
 		return nil
 	})
+	if err != nil {
+		return x, err
+	}
+	x.Concepts, err = s.ConceptsOf(ctx, courseID, filesDir)
 	return x, err
 }
 
@@ -391,7 +401,7 @@ func (s *Service) startConceptIndex(ctx context.Context, courseID int64, ex Extr
 			return err
 		}
 		b.ID = id
-		if _, err := tx.Exec(ctx, `UPDATE concept_indexes SET status = 'building', error = NULL, started_at = $2, finished_at = NULL,
+		if _, err := tx.Exec(ctx, `UPDATE concept_indexes SET status = 'building', stage = 'extract', error = NULL, started_at = $2, finished_at = NULL,
 			prompt_version = $3, model = $4, model_name = $5 WHERE id = $1`, id, s.now(), ex.PromptVersion, ex.Model, ex.ModelName); err != nil {
 			return err
 		}
@@ -513,7 +523,7 @@ func (s *Service) retryConceptLesson(ctx context.Context, courseID int64, key st
 		if _, err := tx.Exec(ctx, "DELETE FROM concept_entries WHERE index_id = $1 AND lesson_key = $2", id, key); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, "UPDATE concept_indexes SET status = 'building', error = NULL, finished_at = NULL WHERE id = $1", id)
+		_, err = tx.Exec(ctx, "UPDATE concept_indexes SET status = 'building', stage = 'extract', error = NULL, finished_at = NULL WHERE id = $1", id)
 		b.Lessons = []ConceptIndexLesson{lesson.ConceptIndexLesson}
 		return err
 	})

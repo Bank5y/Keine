@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hitPlace, indexAction, indexError, indexState, lessonNote, lessonState, pathScore, sourceName, stillBuilding, type IndexLesson } from '@/lib/concept-index';
+import { filterConcepts, summaryStage, type IndexConcept, hitPlace, indexAction, indexError, indexState, lessonNote, lessonState, pathScore, sourceName, stillBuilding, type IndexLesson } from '@/lib/concept-index';
 
 describe('indexState', () => {
   it('names each status', () => {
@@ -95,5 +95,32 @@ describe('lessonState and lessonNote', () => {
   });
   it('says nothing of a lesson not through yet', () => {
     expect(lessonNote({ ...lesson, status: 'running' })).toBe('');
+  });
+});
+
+describe('summaryStage', () => {
+  it('waits for the lessons, runs, then is done', () => {
+    expect(summaryStage({ status: 'building', stage: 'extract' }).label).toBe('等逐讲抽取完成');
+    expect(summaryStage({ status: 'building', stage: 'summarize' })).toEqual({ label: '进行中', tone: 'warn' });
+    expect(summaryStage({ status: 'partial', stage: 'summarize' })).toEqual({ label: '已完成', tone: 'ok' });
+  });
+});
+
+describe('filterConcepts', () => {
+  const at = { lesson: { id: 1, key: 'l01', title: '01' }, section: null, role: 'define' as const, summary: '' };
+  const c = (name: string, aliases: string[], generic: boolean): IndexConcept => ({ id: 1, name, aliases, summary: '', generic, lessons: 1, primary: at, occurrences: [at] });
+  const all = [c('任期', ['term'], false), c('领导者', ['Leader'], true), c('日志复制', ['log replication'], false)];
+  const names = (cs: IndexConcept[]) => cs.map((x) => x.name);
+
+  it('finds a concept by name or alias, case, width and spaces aside', () => {
+    expect(names(filterConcepts(all, 'ＴＥＲＭ', 'all'))).toEqual(['任期']);
+    expect(names(filterConcepts(all, 'logreplication', 'all'))).toEqual(['日志复制']);
+    expect(names(filterConcepts(all, '领导', 'all'))).toEqual(['领导者']);
+  });
+
+  it('keeps the generic ones or the others', () => {
+    expect(names(filterConcepts(all, '', 'generic'))).toEqual(['领导者']);
+    expect(names(filterConcepts(all, '', 'specific'))).toEqual(['任期', '日志复制']);
+    expect(filterConcepts(all, '', 'all')).toHaveLength(3);
   });
 });

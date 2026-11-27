@@ -91,7 +91,7 @@ func (s *Service) RecallOf(ctx context.Context, courseID int64, filesDir string)
 // keyed selectionLesson.
 func (r CourseRecall) Trace(answer, selectionLesson string) RecallTrace {
 	concepts := PathRanking{Source: HitConcept, Hits: []PathHit{}}
-	for _, m := range r.Concepts.Mentioned(answer, selectionLesson) {
+	for _, m := range r.Concepts.recallable(selectionLesson).Mentioned(answer, selectionLesson) {
 		concepts.Hits = append(concepts.Hits, PathHit{Lesson: m.Entry.Lesson, Section: m.Entry.Section, Label: m.Entry.Name, Score: float64(m.At)})
 	}
 	passages := PathRanking{Source: HitPassage, Hits: r.Passages.rank(answer, selectionLesson)}
@@ -100,6 +100,28 @@ func (r CourseRecall) Trace(answer, selectionLesson string) RecallTrace {
 		paths[i].Hits = paths[i].Hits[:min(len(paths[i].Hits), maxPathHits)]
 	}
 	return RecallTrace{Paths: paths, Candidates: fuse(paths, selectionLesson)}
+}
+
+// recallable is what the concept path matches answers against: the
+// index's concepts once merged, generic ones left out, each placed at its
+// primary section, or at its best other one when that is in the lesson
+// keyed except; the entries as extracted before any were merged.
+func (x ConceptIndex) recallable(except string) ConceptIndex {
+	if len(x.Concepts) == 0 {
+		return x
+	}
+	out := ConceptIndex{Status: x.Status}
+	for _, c := range x.Concepts {
+		if c.Generic {
+			continue
+		}
+		at := c.Primary
+		if at.Lesson.Key == except {
+			at = primaryOf(c.Occurrences, c.Name, except)
+		}
+		out.Entries = append(out.Entries, ConceptEntry{Name: c.Name, Aliases: c.Aliases, Lesson: at.Lesson, Section: at.Section, Summary: c.Summary})
+	}
+	return out
 }
 
 // Recall is the fused candidates of Trace.

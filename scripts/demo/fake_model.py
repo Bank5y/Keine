@@ -101,6 +101,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if "建立概念索引" in (req["messages"][0].get("content") or ""):
             self.concepts(req)
             return
+        if "摘要树" in (req["messages"][0].get("content") or ""):
+            self.summary(req)
+            return
         if "<rep_title>" in (req["messages"][0].get("content") or ""):
             time.sleep(0.4)
             for i in range(0, len(REPORT), 4):
@@ -160,6 +163,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = chunk({"content": json.dumps(reply, ensure_ascii=False)}) + chunk({}, "stop")
         usage = {"prompt_tokens": 900, "completion_tokens": 120}
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
+        self.wfile.write(body.encode())
+
+    def summary(self, req):
+        """A summary of the concept index's tree: names the parts it covers."""
+        asked = req["messages"][-1]["content"]
+        parts = [line[4:] for line in asked.splitlines() if line.startswith("### ")]
+        what = "这一章" if "一章：" in asked else "这门课程"
+        text = f"{what}依次讲了{'、'.join(parts[:4])}{'等' if len(parts) > 4 else ''}，从概念讲到做法，最后落到工程上的取舍。"
+        body = chunk({"content": text}) + chunk({}, "stop")
+        body += "data: " + json.dumps({"choices": [], "usage": {"prompt_tokens": 400, "completion_tokens": 60}}) + "\n\ndata: [DONE]\n\n"
         self.wfile.write(body.encode())
 
     def look_up(self, req):

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -170,6 +172,7 @@ func (s *Server) extractConcepts(ctx context.Context, turn assistant.Turn, b cou
 		break
 	}
 	wg.Wait()
+	s.summarizeIndex(ctx, turn, b)
 	if err := s.courses.FinishConceptIndex(context.WithoutCancel(ctx), b); err != nil {
 		slog.Error("concept index not finished", "course", b.CourseID, "err", err)
 	}
@@ -225,4 +228,132 @@ func placed(found []assistant.Concept, sections []anchor.Section) []course.Extra
 		out = append(out, e)
 	}
 	return out
+}
+
+// summarizeIndex is a build's course-level summary (#225), once its
+// lessons are through: the entries merged into concepts, then a summary of
+// each chapter from its lessons' summaries and one of the course from the
+// chapters'. A summary whose input is what it was written from before is
+// kept as it was; one that fails is recorded and the rest go on.
+func (s *Server) summarizeIndex(ctx context.Context, turn assistant.Turn, b course.ConceptIndexBuild) {
+	keep := context.WithoutCancel(ctx)
+	if err := s.courses.SummarizingConceptIndex(keep, b); err != nil {
+		slog.Error("concept index not summarized", "course", b.CourseID, "err", err)
+		return
+	}
+	if err := s.courses.MergeConcepts(keep, b); err != nil {
+		slog.Error("concepts not merged", "course", b.CourseID, "err", err)
+	}
+	tree, err := s.courses.SummaryPlan(keep, b)
+	if err != nil {
+		slog.Error("summary tree not read", "course", b.CourseID, "err", err)
+		return
+	}
+	var chapters []assistant.SummaryPart
+	for _, ch := range tree.Chapters {
+		var parts []assistant.SummaryPart
+		for _, l := range ch.Lessons {
+			if l.Status == course.LessonDone && l.Summary != "" {
+				parts = append(parts, assistant.SummaryPart{Title: l.Title, Summary: l.Summary})
+			}
+		}
+		if len(parts) == 0 {
+			continue
+		}
+		r := s.summarize(ctx, turn, assistant.SummaryInput{CourseTitle: b.CourseTitle, Chapter: ch.Title, Parts: parts}, ch.Summary, ch.Hash, ch.Error)
+		r.TooLong = len(ch.Lessons) > course.MaxChapterLessons
+		if err := s.courses.KeepChapterSummary(keep, b, ch.Key, r); err != nil {
+			slog.Error("chapter summary not kept", "course", b.CourseID, "chapter", ch.Key, "err", err)
+		}
+		if r.Summary != "" {
+			chapters = append(chapters, assistant.SummaryPart{Title: ch.Title, Summary: r.Summary})
+		}
+	}
+	if len(chapters) == 0 {
+		return
+	}
+	r := s.summarize(ctx, turn, assistant.SummaryInput{CourseTitle: b.CourseTitle, Parts: chapters}, tree.Summary, tree.Hash, tree.Error)
+	if err := s.courses.KeepCourseSummary(keep, b, r); err != nil {
+		slog.Error("course summary not kept", "course", b.CourseID, "err", err)
+	}
+}
+
+// summarize writes one summary of the tree, unless the one there (was,
+// written from wasHash, without error) was written from the same input by
+// the same prompt and model. A request over the model's input limit is not
+// sent. The site is charged.
+func (s *Server) summarize(ctx context.Context, turn assistant.Turn, in assistant.SummaryInput, was, wasHash, wasErr string) course.SummaryResult {
+	msgs := in.Messages()
+	h := sha256.New()
+	h.Write([]byte(assistant.SummaryPrompt.Version + "\x00" + turn.Model))
+	for _, m := range msgs {
+		h.Write([]byte("\x00" + m.Content))
+	}
+	hash := hex.EncodeToString(h.Sum(nil))
+	if hash == wasHash && wasErr == "" && was != "" {
+		return course.SummaryResult{Summary: was, Hash: hash}
+	}
+	if ctx.Err() != nil {
+		return course.SummaryResult{Error: "interrupted"}
+	}
+	if assistant.EstimateMessages(msgs) > assistant.LimitsOf(turn).Input {
+		return course.SummaryResult{Error: "context_too_long"}
+	}
+	run := assistant.Run{Turn: turn, Now: s.opts.Now, Deadline: s.opts.RunDeadline}
+	text, meta, err := assistant.Summarize(ctx, run, in)
+	s.recordRun(ctx, 0, assistant.TurnConceptIndex, turn, meta)
+	if err != nil {
+		code, _ := runFailure(ctx, "index summary", err)
+		return course.SummaryResult{Error: code}
+	}
+	return course.SummaryResult{Summary: text, Hash: hash}
+}
+
+// showIndexConcepts is the concepts of a library course's current index
+// (#225), merged, with where each appears.
+func (s *Server) showIndexConcepts(w http.ResponseWriter, r *http.Request) {
+	c, ok := s.libraryCourse(w, r)
+	if !ok {
+		return
+	}
+	concepts, err := s.courses.ConceptsOf(r.Context(), c.ID, c.FilesDir)
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"concepts": concepts})
+}
+
+// showIndexTree is the summary tree of a library course's current index
+// (#225): course, chapters, lessons.
+func (s *Server) showIndexTree(w http.ResponseWriter, r *http.Request) {
+	c, ok := s.libraryCourse(w, r)
+	if !ok {
+		return
+	}
+	t, err := s.courses.SummaryTreeOf(r.Context(), c.ID, c.FilesDir)
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, t)
+}
+
+// libraryCourse is the library course of the request's {id}; it answers
+// course_not_found itself for one that is not.
+func (s *Server) libraryCourse(w http.ResponseWriter, r *http.Request) (course.Detail, bool) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
+		return course.Detail{}, false
+	}
+	c, err := s.courses.Get(r.Context(), currentUser(r), id)
+	if errors.Is(err, course.ErrNotFound) || err == nil && c.Visibility != course.Public {
+		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
+		return c, false
+	}
+	if err != nil {
+		writeInternal(w, r, err)
+		return c, false
+	}
+	return c, true
 }

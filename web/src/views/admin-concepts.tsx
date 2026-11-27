@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Empty, ErrorBox } from '@/components/common';
 import { useAddressTab } from '@/components/tabs';
 import { api, ApiError } from '@/lib/api';
-import { hitPlace, indexAction, indexState, lessonNote, lessonState, pathScore, sourceName, sourceNote, stillBuilding, type IndexDetail, type IndexedCourse, type IndexLesson, type RecallTrace } from '@/lib/concept-index';
+import { filterConcepts, hitPlace, indexAction, indexError, indexState, lessonNote, lessonState, pathScore, roleName, sourceName, sourceNote, stillBuilding, summaryStage, type ConceptFilter, type IndexConcept, type IndexDetail, type IndexedCourse, type IndexLesson, type RecallTrace, type SummaryTree } from '@/lib/concept-index';
 import type { CourseDetail } from '@/lib/courses';
 import { Link, match } from '@/lib/router';
 import { cn } from '@/lib/utils';
@@ -87,9 +88,9 @@ function ConceptCourses() {
   );
 }
 
-const TABS = ['overview', 'recall'] as const;
+const TABS = ['overview', 'tree', 'concepts', 'recall'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_NAMES: Record<Tab, string> = { overview: '概况', recall: '召回测试' };
+const TAB_NAMES: Record<Tab, string> = { overview: '概况', tree: '结构', concepts: '概念', recall: '召回测试' };
 
 // ConceptCourse is one library course's index, its views as tabs. While
 // the index is being built the page follows it.
@@ -149,6 +150,8 @@ function ConceptCourse({ id }: { id: number }) {
         ) : null}
       </div>
       {index && tab === 'overview' ? <IndexOverview index={index} busy={busy} retry={retry} /> : null}
+      {index && tab === 'tree' ? <IndexTree id={id} title={course?.title ?? ''} version={index.finishedAt} /> : null}
+      {index && tab === 'concepts' ? <IndexConcepts id={id} version={index.finishedAt} /> : null}
       {course && tab === 'recall' ? <RecallTest course={course} /> : null}
     </>
   );
@@ -162,17 +165,26 @@ function IndexOverview({ index, busy, retry }: { index: IndexDetail; busy: boole
   }
   const p = index.progress;
   const through = p.done + p.failed;
+  const summary = summaryStage(index);
   return (
     <div className="index-overview">
       {index.stale ? <div className="index-stale">索引已过期: 建立时用的提示词版本或模型和现在的设置不一致。重建之前照常用于关联。</div> : null}
       <div className="index-stage">
-        <div className="stage-head">
-          <b>逐讲抽取</b>
-          <span className="num">{through} / {p.total}</span>
-          {p.failed ? <span className="st warn">{p.failed} 讲失败</span> : null}
-        </div>
-        <div className="stage-bar" role="progressbar" aria-label="逐讲抽取" aria-valuemin={0} aria-valuemax={p.total} aria-valuenow={through}>
-          <span style={{ width: `${p.total ? (through / p.total) * 100 : 0}%` }} />
+        <div className="stages">
+          <div>
+            <div className="stage-head">
+              <b>逐讲抽取</b>
+              <span className="num">{through} / {p.total}</span>
+              {p.failed ? <span className="st warn">{p.failed} 讲失败</span> : null}
+            </div>
+            <div className="stage-bar" role="progressbar" aria-label="逐讲抽取" aria-valuemin={0} aria-valuemax={p.total} aria-valuenow={through}>
+              <span style={{ width: `${p.total ? (through / p.total) * 100 : 0}%` }} />
+            </div>
+          </div>
+          <div>
+            <div className="stage-head"><b>课程汇总</b><span className={cn('st', summary.tone)}>{summary.label}</span></div>
+            <div className={cn('stage-bar', summary.tone === 'warn' && 'running')}><span style={{ width: summary.tone === 'ok' ? '100%' : summary.tone === 'warn' ? '50%' : '0%' }} /></div>
+          </div>
         </div>
         <p className="meta">
           提示词 {index.promptVersion}{index.modelName ? `  ·  模型 ${index.modelName}` : ''}
@@ -196,6 +208,104 @@ function IndexOverview({ index, busy, retry }: { index: IndexDetail; busy: boole
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// useIndexPart loads a part of the index (its concepts, its tree), again
+// whenever a build finishes.
+function useIndexPart<T>(url: string, version: string | null): [T | null, string] {
+  const [data, setData] = useState<T | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let live = true;
+    api<T>('GET', url).then((d) => { if (live) setData(d); }).catch((e) => { if (live) setErr(e.message); });
+    return () => { live = false; };
+  }, [url, version]);
+  return [data, err];
+}
+
+// IndexTree is the summary tree (#225): the course's summary, then each
+// chapter's with its lessons'.
+function IndexTree({ id, title, version }: { id: number; title: string; version: string | null }) {
+  const [tree, err] = useIndexPart<SummaryTree>(`/api/admin/courses/${id}/concept-index/tree`, version);
+  if (err) return <ErrorBox message={err} />;
+  if (!tree) return <p className="usage-note">正在加载…</p>;
+  if (!tree.chapters.length) return <Empty title="还没有摘要">建立概念索引后, 这里按「课程 → 章 → 讲」列出各级摘要。</Empty>;
+  return (
+    <div className="index-tree">
+      <p className="tab-intro">课程 → 章 → 讲的摘要。章摘要由这一章各讲的摘要写成, 课程摘要由各章摘要写成; 一章太长时只标出来, 不切分。</p>
+      <section className="tree-course">
+        <h3><small>课程</small>{title}</h3>
+        <p>{tree.summary || (tree.error ? `没有写成: ${indexError(tree.error)}` : '还没有摘要。')}</p>
+      </section>
+      {tree.chapters.map((ch, i) => (
+        <section className="tree-chapter" key={ch.key}>
+          <h3>
+            <small>第 {i + 1} 章</small>{ch.title}
+            {ch.tooLong ? <span className="tree-long" title="这一章的讲太多, 一份摘要概括不好; 不会自动切分">这一章太长</span> : null}
+          </h3>
+          <p className={cn(!ch.summary && 'none')}>{ch.summary || (ch.error ? `没有写成: ${indexError(ch.error)}` : '还没有摘要。')}</p>
+          <ol>
+            {ch.lessons.map((l) => (
+              <li key={l.key}><span className="name">{l.title}</span><span className={cn('sum', !l.summary && 'none')}>{l.summary || (l.status === 'failed' ? '抽取失败, 没有摘要。' : '没有摘要。')}</span></li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+const FILTERS: [ConceptFilter, string][] = [['all', '全部'], ['specific', '非泛词'], ['generic', '泛词']];
+
+// IndexConcepts lists the index's concepts merged across lessons (#225):
+// searchable, filtered by whether they are generic, each opening to where
+// it appears.
+function IndexConcepts({ id, version }: { id: number; version: string | null }) {
+  const [data, err] = useIndexPart<{ concepts: IndexConcept[] }>(`/api/admin/courses/${id}/concept-index/concepts`, version);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<ConceptFilter>('all');
+  const [open, setOpen] = useState<number | null>(null);
+  if (err) return <ErrorBox message={err} />;
+  if (!data) return <p className="usage-note">正在加载…</p>;
+  const shown = filterConcepts(data.concepts, query, filter);
+  return (
+    <div className="index-concepts">
+      <div className="concepts-bar">
+        <Input className="concepts-search h-9" type="search" placeholder="搜索概念名或别名" aria-label="搜索概念" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="seg" role="group" aria-label="是否泛词">
+          {FILTERS.map(([f, label]) => <button key={f} type="button" className={cn(filter === f && 'on')} aria-pressed={filter === f} onClick={() => setFilter(f)}>{label}</button>)}
+        </div>
+        <span className="count"><b>{shown.length}</b>个概念</span>
+      </div>
+      {!data.concepts.length ? <Empty title="还没有概念">建立概念索引后, 各讲抽到的概念在这里合并列出。</Empty> : (
+        <div className="ledger concept-list">
+          <div className="concept-row head"><span>概念</span><span>主讲解处</span><span>出现</span><span /></div>
+          {shown.map((c) => (
+            <div key={c.id} className={cn('concept-item', open === c.id && 'open')}>
+              <button type="button" className="concept-row" aria-expanded={open === c.id} onClick={() => setOpen(open === c.id ? null : c.id)}>
+                <span className="min-w-0"><span className="name">{c.name}</span>{c.aliases.length ? <small>{c.aliases.join('  ·  ')}</small> : null}</span>
+                <span className="where">{hitPlace(c.primary)}</span>
+                <span className="num">{c.lessons} 讲</span>
+                <span className="tags">{c.generic ? <span className="tag">泛词</span> : null}<span className="caret" aria-hidden>{open === c.id ? '▾' : '▸'}</span></span>
+              </button>
+              {open === c.id ? (
+                <ol className="occurrences">
+                  {c.occurrences.map((o, i) => (
+                    <li key={i}>
+                      <span className="where">{hitPlace(o)}</span>
+                      <span className={cn('role', o.role)}>{roleName(o.role)}</span>
+                      <span className="primary">{o.lesson.key === c.primary.lesson.key && o.section?.id === c.primary.section?.id ? '主讲解处' : ''}</span>
+                      <span className="sum">{o.summary}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
