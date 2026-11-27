@@ -2,14 +2,12 @@
 package config
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/Bank5y/keine/internal/filestore"
 	"github.com/Bank5y/keine/internal/secret"
 	"github.com/Bank5y/keine/internal/storage"
 )
@@ -35,7 +33,10 @@ type Config struct {
 	// public internet, over plain http too.
 	OwnModelNetworks []string
 
-	// Storage is "local" (files under DataDir) or "s3".
+	// Storage is "s3" (the default: media goes to the bucket the S3
+	// settings name, once they name one) or "local" (it starts off). It
+	// and S3 are only what a deployment starts with: an admin changes them
+	// in the console.
 	Storage string
 	DataDir string
 	S3      S3
@@ -54,7 +55,7 @@ func FromEnv() (Config, error) {
 		AdminPassword: os.Getenv("KEINE_ADMIN_PASSWORD"),
 		MasterKey:     os.Getenv("KEINE_MASTER_KEY"),
 		DataDir:       env("KEINE_DATA_DIR", "./data"),
-		Storage:       env("KEINE_STORAGE", "local"),
+		Storage:       env("KEINE_STORAGE", "s3"),
 		S3: S3{
 			Endpoint:  os.Getenv("KEINE_S3_ENDPOINT"),
 			Region:    os.Getenv("KEINE_S3_REGION"),
@@ -98,9 +99,6 @@ func FromEnv() (Config, error) {
 	switch c.Storage {
 	case "local":
 	case "s3":
-		if c.S3.Endpoint == "" || c.S3.Bucket == "" {
-			return c, fmt.Errorf("KEINE_STORAGE=s3 needs KEINE_S3_ENDPOINT and KEINE_S3_BUCKET")
-		}
 		for key, dst := range map[string]*bool{"KEINE_S3_INSECURE": &c.S3.Insecure, "KEINE_S3_PATH_STYLE": &c.S3.PathStyle, "KEINE_S3_CREATE_BUCKET": &c.S3.CreateBucket} {
 			if *dst, err = boolEnv(key, false); err != nil {
 				return c, err
@@ -143,38 +141,27 @@ func intEnv(key string, def int64) (int64, error) {
 	return n, nil
 }
 
-// OpenStore opens the course files where the deployment keeps them: on
-// local disk, or in an S3 bucket, waiting a while for one started
-// alongside.
-func (cfg Config) OpenStore(ctx context.Context) (storage.Store, error) {
-	if cfg.Storage != "s3" {
-		slog.Info("course files on local disk", "dir", cfg.DataDir)
-		return storage.NewLocal(cfg.DataDir), nil
-	}
-	slog.Info("course files in s3", "endpoint", cfg.S3.Endpoint, "bucket", cfg.S3.Bucket)
-	s3cfg := storage.S3Config{
+// OpenStore opens the course files: local disk under DataDir, with media
+// routed to object storage once a filestore.Service points it there.
+func (cfg Config) OpenStore() *storage.Routed {
+	return storage.NewRouted(storage.NewLocal(cfg.DataDir))
+}
+
+// StorageDefaults are the object storage settings until an admin saves
+// some, and the secret key they use.
+func (cfg Config) StorageDefaults() (filestore.Settings, string) {
+	return filestore.Settings{
+		// on by default, once the environment names a bucket
+		Enabled:      cfg.Storage == "s3" && cfg.S3.Endpoint != "" && cfg.S3.Bucket != "",
 		Endpoint:     cfg.S3.Endpoint,
 		Region:       cfg.S3.Region,
 		Bucket:       cfg.S3.Bucket,
 		AccessKey:    cfg.S3.AccessKey,
-		SecretKey:    cfg.S3.SecretKey,
 		Prefix:       cfg.S3.Prefix,
 		Insecure:     cfg.S3.Insecure,
 		PathStyle:    cfg.S3.PathStyle,
 		CreateBucket: cfg.S3.CreateBucket,
-	}
-	// an object store started alongside us may need a moment to answer
-	var err error
-	for attempt := 1; ; attempt++ {
-		var s *storage.S3
-		if s, err = storage.NewS3(ctx, s3cfg); err == nil || attempt == 15 {
-			return s, err
-		}
-		slog.Warn("object storage not ready, retrying", "err", err)
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(2 * time.Second):
-		}
-	}
+		Media:        storage.MediaVideo,
+		Delivery:     storage.DeliverProxy,
+	}, cfg.S3.SecretKey
 }

@@ -35,13 +35,12 @@ func run() error {
 	if webFS == nil {
 		slog.Warn("front end not built; serving the API only")
 	}
-	files, err := cfg.OpenStore(ctx)
-	if err != nil {
-		return err
-	}
+	storageDefaults, storageSecret := cfg.StorageDefaults()
 	s, err := server.New(ctx, server.Options{
 		DatabaseURL:      cfg.DatabaseURL,
-		Storage:          files,
+		Storage:          cfg.OpenStore(),
+		StorageDefaults:  storageDefaults,
+		StorageSecret:    storageSecret,
 		AdminUsername:    cfg.AdminUsername,
 		AdminPassword:    cfg.AdminPassword,
 		SecureCookies:    cfg.SecureCookies,

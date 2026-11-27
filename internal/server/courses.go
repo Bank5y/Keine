@@ -249,6 +249,13 @@ func (s *Server) manifestPrompt(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(a.Body)
 }
 
+// redirectToObject sends the browser to fetch a file from object storage
+// or a CDN itself, after the access to it was checked here.
+func redirectToObject(w http.ResponseWriter, r *http.Request, link, cache string) {
+	w.Header().Set("Cache-Control", cache)
+	http.Redirect(w, r, link, http.StatusFound)
+}
+
 // setUserFileHeaders guards responses that carry files uploaded by users:
 // they are served from our origin, so they must never run as a page (an SVG
 // or HTML file could carry scripts).
@@ -341,8 +348,14 @@ func (s *Server) courseFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("path")
-	rc, err := s.courses.File(r.Context(), currentUser(r), id, name)
+	rc, link, err := s.courses.FileLink(r.Context(), currentUser(r), id, name)
 	if !writeCourseError(w, r, err) {
+		return
+	}
+	if link != "" {
+		// shorter than any presigned link lasts, so a cached redirect
+		// never points at an expired one
+		redirectToObject(w, r, link, "private, max-age=300")
 		return
 	}
 	defer rc.Close()
