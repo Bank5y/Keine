@@ -71,12 +71,12 @@ func (s *Server) recallConceptIndex(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w, r, err)
 		return
 	}
-	x, err := s.courses.ConceptIndexOf(r.Context(), id, c.FilesDir)
+	rc, err := s.courses.RecallOf(r.Context(), id, c.FilesDir)
 	if err != nil {
 		writeInternal(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, x.Trace(req.Text, req.ExcludeLesson))
+	writeJSON(w, http.StatusOK, rc.Trace(req.Text, req.ExcludeLesson))
 }
 
 // buildConceptIndex starts building the index of a library course's

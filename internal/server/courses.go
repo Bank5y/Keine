@@ -121,6 +121,7 @@ func (s *Server) uploadCourse(w http.ResponseWriter, r *http.Request) {
 	if !writePackageError(w, r, err) {
 		return
 	}
+	s.newVersion()
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
@@ -135,6 +136,7 @@ func (s *Server) updateCoursePackage(w http.ResponseWriter, r *http.Request) {
 	if !writePackageError(w, r, err) {
 		return
 	}
+	s.newVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -107,6 +107,9 @@ func switchContent(ctx context.Context, tx pgx.Tx, courseID int64, m Manifest, d
 // dropFiles removes a folder of course files no longer in use; leftovers
 // only cost space, so a failure is logged.
 func (s *Service) dropFiles(ctx context.Context, courseID int64, dir string) {
+	if _, err := s.db.Exec(context.WithoutCancel(ctx), "DELETE FROM passage_sets WHERE course_id = $1 AND files_dir = $2", courseID, dir); err != nil {
+		slog.Warn("passages not removed", "course", courseID, "dir", dir, "err", err)
+	}
 	if err := s.files.DeletePrefix(context.WithoutCancel(ctx), filesPrefix(courseID, dir)); err != nil {
 		slog.Warn("course files not removed", "course", courseID, "dir", dir, "err", err)
 	}

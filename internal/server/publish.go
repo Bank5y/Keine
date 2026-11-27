@@ -27,7 +27,11 @@ func (s *Server) withdrawPublish(r *http.Request, id int64) error {
 }
 
 func (s *Server) adminPublish(r *http.Request, id int64) error {
-	return s.courses.Publish(r.Context(), currentUser(r), id)
+	err := s.courses.Publish(r.Context(), currentUser(r), id)
+	if err == nil {
+		s.newVersion()
+	}
+	return err
 }
 
 func (s *Server) adminUnpublish(r *http.Request, id int64) error {
@@ -67,6 +71,7 @@ func (s *Server) approveReview(w http.ResponseWriter, r *http.Request) {
 	if !ok || !writeCourseError(w, r, s.courses.Approve(r.Context(), currentUser(r), id)) {
 		return
 	}
+	s.newVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 

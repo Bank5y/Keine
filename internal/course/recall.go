@@ -65,20 +65,46 @@ type Recaller interface {
 	Recall(ctx context.Context, answer, selectionLesson string) ([]SectionCandidate, error)
 }
 
-// Trace is the index's recall of an answer, path by path, leaving out the
-// lesson keyed selectionLesson.
-func (x ConceptIndex) Trace(answer, selectionLesson string) RecallTrace {
+// maxPathHits is how many hits of each path a recall keeps for fusing
+// and for the recall test to show.
+const maxPathHits = 50
+
+// CourseRecall recalls from a course version's concept index and its
+// passages (ADR 0015).
+type CourseRecall struct {
+	Concepts ConceptIndex
+	Passages Passages
+}
+
+// RecallOf is what recalls from a version of a course: its concept index
+// (no entries until built) and its passages.
+func (s *Service) RecallOf(ctx context.Context, courseID int64, filesDir string) (CourseRecall, error) {
+	x, err := s.ConceptIndexOf(ctx, courseID, filesDir)
+	if err != nil {
+		return CourseRecall{}, err
+	}
+	p, err := s.PassagesOf(ctx, courseID, filesDir)
+	return CourseRecall{Concepts: x, Passages: p}, err
+}
+
+// Trace is the recall of an answer, path by path, leaving out the lesson
+// keyed selectionLesson.
+func (r CourseRecall) Trace(answer, selectionLesson string) RecallTrace {
 	concepts := PathRanking{Source: HitConcept, Hits: []PathHit{}}
-	for _, m := range x.Mentioned(answer, selectionLesson) {
+	for _, m := range r.Concepts.Mentioned(answer, selectionLesson) {
 		concepts.Hits = append(concepts.Hits, PathHit{Lesson: m.Entry.Lesson, Section: m.Entry.Section, Label: m.Entry.Name, Score: float64(m.At)})
 	}
-	paths := []PathRanking{concepts}
+	passages := PathRanking{Source: HitPassage, Hits: r.Passages.rank(answer, selectionLesson)}
+	paths := []PathRanking{concepts, passages}
+	for i := range paths {
+		paths[i].Hits = paths[i].Hits[:min(len(paths[i].Hits), maxPathHits)]
+	}
 	return RecallTrace{Paths: paths, Candidates: fuse(paths, selectionLesson)}
 }
 
 // Recall is the fused candidates of Trace.
-func (x ConceptIndex) Recall(_ context.Context, answer, selectionLesson string) ([]SectionCandidate, error) {
-	return x.Trace(answer, selectionLesson).Candidates, nil
+func (r CourseRecall) Recall(_ context.Context, answer, selectionLesson string) ([]SectionCandidate, error) {
+	return r.Trace(answer, selectionLesson).Candidates, nil
 }
 
 // fuse merges the paths' rankings by section with reciprocal rank fusion

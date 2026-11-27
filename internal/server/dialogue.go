@@ -312,18 +312,16 @@ func (s *Server) linksFor(viewer auth.User, d course.ExplorationDetail) *courseL
 	return &courseLinks{s: s, viewer: viewer, d: d}
 }
 
-// linker recalls, for an answer, sections of the course's other lessons:
-// none when the version has no index built.
+// linker recalls, for an answer, sections of the course's other lessons,
+// by the concept index of the version the reader reads and its passages
+// (ADR 0015).
 func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Linker {
-	x, err := l.s.courses.ConceptIndexOf(ctx, l.d.CourseID, c.FilesDir)
+	rc, err := l.s.courses.RecallOf(ctx, l.d.CourseID, c.FilesDir)
 	if err != nil {
-		slog.Error("concept index not read", "course", l.d.CourseID, "err", err)
+		slog.Error("course recall not read", "course", l.d.CourseID, "err", err)
 		return nil
 	}
-	if x.Status != course.ConceptIndexBuilt {
-		return nil
-	}
-	l.found = lessonctx.NewLinks(lessonctx.NewLibrary(l.s.courses, l.viewer, c), x, l.d.LessonKey)
+	l.found = lessonctx.NewLinks(lessonctx.NewLibrary(l.s.courses, l.viewer, c), rc, l.d.LessonKey)
 	return l.found.Find
 }
 

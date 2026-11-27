@@ -120,6 +120,9 @@ function ConceptCourse({ id }: { id: number }) {
   );
 }
 
+// how many hits of each path the recall test lists
+const SHOWN_HITS = 10;
+
 // RecallTest shows what the linking step would be offered for a text the
 // admin pastes, leaving out the lesson it is from (#222). It calls no
 // model, so it costs nothing.
@@ -180,7 +183,7 @@ function RecallTest({ course }: { course: CourseDetail }) {
                 <h4>{sourceName(p.source)}<small>{sourceNote(p.source)}</small></h4>
                 {p.hits.length ? (
                   <ol>
-                    {p.hits.map((h, i) => (
+                    {p.hits.slice(0, SHOWN_HITS).map((h, i) => (
                       <li key={i}>
                         <span className="rank">{i + 1}</span>
                         <span className="what">{h.label || h.section?.title || h.lesson.title}</span>
@@ -190,6 +193,7 @@ function RecallTest({ course }: { course: CourseDetail }) {
                     ))}
                   </ol>
                 ) : <p className="usage-note">这一路没有命中。</p>}
+                {p.hits.length > SHOWN_HITS ? <p className="usage-note">共 {p.hits.length} 条, 只显示前 {SHOWN_HITS} 条。</p> : null}
               </section>
             ))}
           </div>

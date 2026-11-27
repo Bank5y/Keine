@@ -105,6 +105,9 @@ type Server struct {
 	buildCtx   context.Context
 	stopBuilds context.CancelFunc
 	building   sync.WaitGroup
+	// cutting asks the passage cutter to cut the versions that have no
+	// passages yet; asks while it is busy fold into one more round
+	cutting chan struct{}
 }
 
 // New connects to the database, migrates it and makes sure the deployment's
@@ -166,6 +169,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		return nil, err
 	}
 	s.buildCtx, s.stopBuilds = context.WithCancel(context.Background())
+	s.cutPassagesInBackground()
 	s.routes()
 	s.sweepPeriodically()
 	return s, nil
@@ -183,6 +187,36 @@ func (s *Server) Close() {
 }
 
 // sweepPeriodically runs SweepDrafts every SweepInterval until Close.
+// cutPassagesInBackground starts the passage cutter (#223): it cuts the
+// passages of every course version that has none, once now (versions from
+// before passages were) and again each time newVersion asks.
+func (s *Server) cutPassagesInBackground() {
+	s.cutting = make(chan struct{}, 1)
+	s.cutting <- struct{}{}
+	s.building.Add(1)
+	go func() {
+		defer s.building.Done()
+		for {
+			select {
+			case <-s.buildCtx.Done():
+				return
+			case <-s.cutting:
+				if err := s.courses.CutMissingPassages(s.buildCtx); err != nil && s.buildCtx.Err() == nil {
+					slog.Warn("passages not cut", "err", err)
+				}
+			}
+		}
+	}()
+}
+
+// newVersion tells the passage cutter a course may have a new version.
+func (s *Server) newVersion() {
+	select {
+	case s.cutting <- struct{}{}:
+	default: // a round is asked for already
+	}
+}
+
 func (s *Server) sweepPeriodically() {
 	every := s.opts.SweepInterval
 	if every <= 0 {

@@ -3,6 +3,7 @@ package server_test
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -213,9 +214,31 @@ func TestOnlyTheForkTurnIsLinked(t *testing.T) {
 	}
 }
 
-func TestWithoutAnIndexTheForkTurnEndsWithItsAnswer(t *testing.T) {
+func TestWithoutAnIndexTheForkAnswerIsLinkedByItsPassages(t *testing.T) {
 	t.Parallel()
-	m := newScriptedModel(texts(goodAnswer), texts(mentioning))
+	const answer = "子节点的回答：意图识别要分领域、意图、槽位。"
+	m := newScriptedModel(texts(goodAnswer), texts(answer), linkCall(link("s1", "三层意图正是这里说的分法。")))
+	a := aiApp(t, m)
+	bob, _, exp := linkedExploration(t, a, false)
+
+	n := openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
+
+	calls := m.calls()
+	if len(calls) != 3 {
+		t.Fatalf("the analysis, the answer, then linking: %d calls", len(calls))
+	}
+	if got := candidateNames(lastQuestion(t, contents(calls[2]))); len(got) == 0 || got[0] != "三层意图" {
+		t.Fatalf("the section sharing the answer's words comes first, labelled by its heading: %v", got)
+	}
+	links := turnsOf(n)[0]["courseLinks"].([]any)
+	if len(links) != 1 || links[0].(map[string]any)["label"] != "三层意图" {
+		t.Fatalf("the section picked is linked: %v", links)
+	}
+}
+
+func TestAForkAnswerSharingNoWordsWithTheCourseEndsWithItsAnswer(t *testing.T) {
+	t.Parallel()
+	m := newScriptedModel(texts(goodAnswer), texts("Raft 选举超时要随机化。"))
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, false)
 
@@ -442,11 +465,12 @@ func TestANameOfLettersAndDigitsIsOnlyMatchedAsAWholeWord(t *testing.T) {
 		answer string
 		want   []string
 	}{
-		{"回答：G4C 讲的是任务规划，TCP Nagle 算法另说，先做意图识别。", []string{"Nagle", "意图识别"}},
+		{"回答：G4C 讲的是任务规划，TCP Nagle 算法另说，先做意图识别。", []string{"Nagle", "意图识别"}}, // sorted
 		{"回答：G4C 和用户画像的 4C 不是一回事，先做意图识别。", []string{"4C", "意图识别"}},
 	}
 	for _, c := range cases {
 		got := forkCandidates(t, c.answer, more...)
+		slices.Sort(got)
 		if strings.Join(got, "|") != strings.Join(c.want, "|") {
 			t.Fatalf("%q: candidates %v, want %v", c.answer, got, c.want)
 		}

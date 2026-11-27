@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"testing"
 )
 
@@ -75,7 +76,7 @@ func TestTheRecallTestFindsWhatTheLinkingStepIsOffered(t *testing.T) {
 	}
 	for _, x := range got["candidates"].([]any) {
 		c := x.(map[string]any)
-		if fmt.Sprint(c["sources"]) != "[concept]" {
+		if !slices.Contains(c["sources"].([]any), any("concept")) {
 			t.Fatalf("a candidate found by its concept: %v", c)
 		}
 		if c["score"].(float64) <= 0 {
@@ -149,7 +150,7 @@ func TestOnlyAnAdminCanRunTheRecallTest(t *testing.T) {
 	expectStatus(t, bob.do("POST", recallPath(id), map[string]any{"text": "意图识别", "excludeLesson": ""}), http.StatusForbidden)
 }
 
-func TestTheRecallTestOfACourseWithoutAnIndexFindsNothing(t *testing.T) {
+func TestWithoutAnIndexTheRecallTestFindsPassagesOnly(t *testing.T) {
 	t.Parallel()
 	a := aiApp(t, newScriptedModel())
 	alice := a.user("alice")
@@ -159,8 +160,20 @@ func TestTheRecallTestOfACourseWithoutAnIndexFindsNothing(t *testing.T) {
 
 	got := recallTest(t, admin, id, "意图识别和工具调用", "")
 
-	if c := fused(t, got); len(c) != 0 {
-		t.Fatalf("no index, no concept candidates: %v", c)
+	if hits := recallPathHits(t, got, "concept"); len(hits) != 0 {
+		t.Fatalf("no index, no concept hits: %v", hits)
+	}
+	c := got["candidates"].([]any)
+	if len(c) == 0 {
+		t.Fatal("the passages find candidates")
+	}
+	for _, x := range c {
+		if fmt.Sprint(x.(map[string]any)["sources"]) != "[passage]" {
+			t.Fatalf("a candidate found by its passage: %v", x)
+		}
+	}
+	if f := fused(t, got); !slices.Contains(f, "三层意图 @ 三层意图") || !slices.Contains(f, "工具调用 @ 工具调用") {
+		t.Fatalf("the sections sharing words, labelled by their headings: %v", f)
 	}
 }
 
@@ -184,4 +197,69 @@ func publishedIndexedLinked(t *testing.T, a *app) int {
 		t.Fatalf("the index is %q", s)
 	}
 	return id
+}
+
+func TestTheRecallTestRanksPassagesByBM25(t *testing.T) {
+	t.Parallel()
+	a := aiApp(t, newScriptedModel())
+	id := uploadCourse(t, a.user("alice"), linkedFiles())
+	admin := a.admin()
+	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/publish", id), nil))
+
+	got := recallTest(t, admin, id, "意图识别分几层？", "")
+
+	hits := recallPathHits(t, got, "passage")
+	if len(hits) == 0 || sectionTitle(hits[0]) != "三层意图" {
+		t.Fatalf("the passage sharing most words comes first: %v", hits)
+	}
+	for i, h := range hits {
+		if h["score"].(float64) <= 0 || i > 0 && h["score"].(float64) > hits[i-1]["score"].(float64) {
+			t.Fatalf("passages ranked by their scores, best first: %v", hits)
+		}
+	}
+}
+
+func TestASectionBothPathsFindOutranksOneFoundByOnePath(t *testing.T) {
+	t.Parallel()
+	// Planner is a concept of l00 its text never spells out
+	lessons := linkedLessons(concept("Planner", "为什么学 Agent", "规划步骤的组件。"))
+	a := aiApp(t, newScriptedModel(lessons...))
+	id := publishedIndexedLinked(t, a)
+
+	got := recallTest(t, a.admin(), id, "先说 Planner，再说意图识别。", "l01")
+
+	if c := recallPathHits(t, got, "concept"); len(c) < 2 || c[0]["label"] != "Planner" {
+		t.Fatalf("the concept path names Planner first: %v", c)
+	}
+	c := got["candidates"].([]any)
+	first, second := c[0].(map[string]any), c[1].(map[string]any)
+	if first["label"] != "意图识别" || fmt.Sprint(first["sources"]) != "[concept passage]" {
+		t.Fatalf("found by both paths, 意图识别 comes first: %v", c)
+	}
+	if second["label"] != "Planner" || fmt.Sprint(second["sources"]) != "[concept]" {
+		t.Fatalf("found by the concept path only, Planner comes second: %v", c)
+	}
+}
+
+func TestANewVersionIsRecalledByItsOwnPassages(t *testing.T) {
+	t.Parallel()
+	a := aiApp(t, newScriptedModel())
+	alice := a.user("alice")
+	id := uploadCourse(t, alice, linkedFiles())
+	admin := a.admin()
+	admin.mustOK(admin.do("POST", fmt.Sprintf("/api/admin/courses/%d/publish", id), nil))
+	if f := fused(t, recallTest(t, admin, id, "槽位", "")); fmt.Sprint(f) != "[三层意图 @ 三层意图]" {
+		t.Fatalf("the first version's passages: %v", f)
+	}
+
+	files := linkedFiles()
+	files["02_意图识别.md"] = "# 02\n\n## 实体抽取\n\n意图之后抽取实体。\n"
+	approveUpdate(t, a, alice, id, files)
+
+	if f := fused(t, recallTest(t, admin, id, "槽位", "")); len(f) != 0 {
+		t.Fatalf("the new version's text has no 槽位: %v", f)
+	}
+	if f := fused(t, recallTest(t, admin, id, "抽取实体", "")); fmt.Sprint(f) != "[实体抽取 @ 实体抽取]" {
+		t.Fatalf("the new version's passages: %v", f)
+	}
 }

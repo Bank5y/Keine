@@ -72,6 +72,7 @@ func (s *Server) commitDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.courses.CommitDraft(r.Context(), currentUser(r), id, body.Skip)
 	if writeDraftError(w, r, err) {
+		s.newVersion()
 		writeJSON(w, http.StatusOK, res)
 	}
 }

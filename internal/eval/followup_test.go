@@ -133,14 +133,14 @@ func TestAFollowupCaseAsksItsTurnsAfterTheAnalysisAndLinksTheTurnANodeForksWith(
 	}
 }
 
-func TestAForkOfACourseWithoutAnIndexIsNotLinked(t *testing.T) {
+func TestAForkSharingNoWordsWithACourseWithoutAnIndexIsNotLinked(t *testing.T) {
 	dbURL, files, id, version := privateCourse(t)
 	pool, err := db.Connect(context.Background(), dbURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	model := &script{steps: []assistant.Event{text(good), text("任期决定了日志复制时谁的日志更新。")}}
+	model := &script{steps: []assistant.Event{text(good), text("Paxos 另说。")}}
 	r := &eval.Runner{
 		Courses: course.NewService(pool, files), Mermaid: noDiagrams{},
 		Turn: func(context.Context) (assistant.Turn, error) {
