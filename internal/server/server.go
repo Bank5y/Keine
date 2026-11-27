@@ -343,6 +343,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/admin/courses/{id}/concept-index", s.adminOnly(s.showConceptIndex))
 	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index", s.adminOnly(s.buildConceptIndex))
 	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index/recall", s.adminOnly(s.recallConceptIndex))
+	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index/lessons/{key}", s.adminOnly(s.retryConceptLesson))
 	s.mux.HandleFunc("GET /api/library", s.signedIn(s.library))
 	s.mux.HandleFunc("POST /api/courses/{id}/subscribe", s.signedIn(s.courseAction(s.subscribe)))
 	s.mux.HandleFunc("DELETE /api/courses/{id}/subscribe", s.signedIn(s.courseAction(s.unsubscribe)))

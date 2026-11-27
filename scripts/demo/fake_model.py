@@ -133,9 +133,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
         self.wfile.write(body.encode())
 
+    failed_once = set()
+
     def concepts(self, req):
-        """A concept index extraction: one concept for each section of the lesson, named by its heading."""
+        """A concept index extraction: one concept for each section of the lesson, named by its heading.
+        The first extraction of 短期记忆 answers no JSON, so the demo shows a partial index and its retry."""
         lesson = req["messages"][-1]["content"]
+        if "短期记忆" in lesson.split("## 小节目录", 1)[0] and "l07" not in Handler.failed_once:
+            Handler.failed_once.add("l07")
+            body = chunk({"content": "这一讲没有概念可言。"}) + chunk({}, "stop") + "data: [DONE]\n\n"
+            self.wfile.write(body.encode())
+            return
         toc = lesson.split("## 小节目录", 1)[-1].split("## 全文", 1)[0]
         found = []
         for line in toc.splitlines():
@@ -145,8 +153,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     continue
                 # a lesson's own heading "07｜短期记忆与上下文窗口" names the concept 短期记忆与上下文窗口
                 name, _, alias = h.split("｜")[-1].partition("：")
-                found.append({"name": name, "aliases": [alias] if alias else [], "section": h, "summary": f"这一讲里「{h}」一节讲的内容。"})
-        body = chunk({"content": json.dumps(found, ensure_ascii=False)}) + chunk({}, "stop")
+                found.append({"name": name, "aliases": [alias] if alias else [], "section": h,
+                              "role": "define" if "｜" in h else "use", "summary": f"这一讲里「{h}」一节讲的内容。"})
+        title = lesson.split("## 这一讲", 1)[-1].split("## 小节目录", 1)[0].strip()
+        reply = {"summary": f"{title}：这一讲的要点。", "concepts": found}
+        body = chunk({"content": json.dumps(reply, ensure_ascii=False)}) + chunk({}, "stop")
         usage = {"prompt_tokens": 900, "completion_tokens": 120}
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
         self.wfile.write(body.encode())

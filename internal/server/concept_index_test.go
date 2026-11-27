@@ -35,12 +35,25 @@ func concept(name, section, summary string, aliases ...string) map[string]any {
 	return map[string]any{"name": name, "aliases": aliases, "section": section, "summary": summary}
 }
 
+// The titles of the column course's lessons.
+const (
+	l00 = "开篇词"
+	l01 = "01｜用户输入规范化"
+	l02 = "02｜三层意图识别"
+)
+
+// of keeps a step for the extraction of the lesson titled title.
+func of(title string, s step) step {
+	s.lesson = title
+	return s
+}
+
 // threeLessons are the replies for the three lessons of indexedFiles.
 func threeLessons() []step {
 	return []step{
-		concepts(concept("Agent", "为什么学 Agent", "能自己规划步骤的程序。", "智能体")),
-		concepts(concept("输入规范化", "规范化", "把用户的话整理成统一的形式。")),
-		concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent")),
+		of(l00, concepts(concept("Agent", "为什么学 Agent", "能自己规划步骤的程序。", "智能体"))),
+		of(l01, concepts(concept("输入规范化", "规范化", "把用户的话整理成统一的形式。"))),
+		of(l02, concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"))),
 	}
 }
 
@@ -151,7 +164,7 @@ func TestTheAdminBuildsTheIndexLessonByLesson(t *testing.T) {
 	if len(calls) != 3 {
 		t.Fatalf("one extraction a lesson, got %d calls", len(calls))
 	}
-	if last := calls[1].Messages[len(calls[1].Messages)-1].Content; !strings.Contains(last, "输入规范化把用户的话整理成统一的形式") || strings.Contains(last, "意图识别分三层") {
+	if last := extractionOf(t, calls, l01); !strings.Contains(last, "输入规范化把用户的话整理成统一的形式") || strings.Contains(last, "意图识别分三层") {
 		t.Fatalf("an extraction reads its own lesson only: %q", last)
 	}
 	if len(calls[0].Tools) != 0 {
@@ -170,39 +183,24 @@ func TestTheAdminBuildsTheIndexLessonByLesson(t *testing.T) {
 		agent["summary"] != "能自己规划步骤的程序。" || fmt.Sprint(agent["aliases"]) != "[智能体]" {
 		t.Fatalf("entry = %v", agent)
 	}
-	expectError(t, admin.do("POST", conceptIndexPath(id), nil), http.StatusConflict, "index_built")
 }
 
-func TestAFailedIndexCanBeTriedAgain(t *testing.T) {
-	t.Parallel()
-	steps := threeLessons()
-	m := newScriptedModel(steps[0], texts("这一讲没有概念可言。"), steps[1], steps[2])
-	a := aiApp(t, m)
-	alice := a.user("alice")
-	admin := a.admin()
-	id := publishedIndexed(t, a, alice)
-
-	admin.mustOK(admin.do("POST", conceptIndexPath(id), nil))
-	if s := awaitIndex(t, admin, id); s != "failed" {
-		t.Fatalf("with an extraction that is not JSON, the index is %q", s)
+// extractionOf is the request of the extraction of the lesson titled title.
+func extractionOf(t *testing.T, calls []assistant.Request, title string) string {
+	t.Helper()
+	for _, c := range calls {
+		if last := c.Messages[len(c.Messages)-1].Content; strings.Contains(last, "› "+title+"\n") {
+			return last
+		}
 	}
-
-	admin.mustOK(admin.do("POST", conceptIndexPath(id), nil))
-	if s := awaitIndex(t, admin, id); s != "built" {
-		t.Fatalf("after trying again, the index is %q", s)
-	}
-	if n := len(m.calls()); n != 4 {
-		t.Fatalf("the retry extracts only what failed and after: %d calls in all", n)
-	}
-	if e := indexEntries(t, admin, id); len(e) != 3 {
-		t.Fatalf("entries = %v", e)
-	}
+	t.Fatalf("no extraction of %s", title)
+	return ""
 }
 
 func TestANewVersionExtractsOnlyTheLessonsThatChanged(t *testing.T) {
 	t.Parallel()
 	m := newScriptedModel(append(threeLessons(),
-		concepts(concept("输入清洗", "清洗", "去掉无关字符。")))...)
+		of(l01, concepts(concept("输入清洗", "清洗", "去掉无关字符。"))))...)
 	a := aiApp(t, m)
 	alice := a.user("alice")
 	admin := a.admin()

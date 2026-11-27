@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,9 @@ import (
 // for the call to be cancelled. before runs as the call starts (to move a
 // clock).
 type step struct {
+	// lesson, when set, keeps the step for the extraction of the lesson of
+	// that title: extractions run side by side, in no set order (#224)
+	lesson string
 	events []assistant.Event
 	result assistant.Result
 	err    error
@@ -52,8 +56,17 @@ func (m *scriptedModel) Stream(ctx context.Context, req assistant.Request, emit 
 		m.mu.Unlock()
 		return assistant.Result{}, &assistant.Error{Category: assistant.ErrUnavailable, Detail: "script ran out"}
 	}
-	s := m.steps[0]
-	m.steps = m.steps[1:]
+	at := 0
+	if len(req.Messages) > 0 {
+		last := req.Messages[len(req.Messages)-1].Content
+		at = slices.IndexFunc(m.steps, func(s step) bool { return s.lesson == "" || strings.Contains(last, "› "+s.lesson+"\n") })
+		if at < 0 {
+			m.mu.Unlock()
+			return assistant.Result{}, &assistant.Error{Category: assistant.ErrUnavailable, Detail: "no step for the lesson"}
+		}
+	}
+	s := m.steps[at]
+	m.steps = slices.Delete(m.steps, at, at+1)
 	m.mu.Unlock()
 	if s.before != nil {
 		s.before()

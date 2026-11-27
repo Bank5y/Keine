@@ -1,7 +1,7 @@
 // The concept index of a course version (#158), as the admin page shows
 // it: built only when an admin asks, charged to the site.
 
-export type IndexStatus = 'none' | 'building' | 'built' | 'failed';
+export type IndexStatus = 'none' | 'building' | 'built' | 'partial' | 'failed';
 
 // IndexedCourse is a library course with its current version's index.
 export interface IndexedCourse {
@@ -11,6 +11,11 @@ export interface IndexedCourse {
   lessons: number;
   status: IndexStatus;
   entries: number;
+  // failed is how many lessons failed to be extracted.
+  failed: number;
+  // stale: extracted by another prompt version or model than the current
+  // ones; it links until rebuilt.
+  stale: boolean;
   error?: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -20,17 +25,22 @@ const STATES: Record<IndexStatus, { label: string; tone: '' | 'ok' | 'warn' | 'o
   none: { label: '未建立', tone: '' },
   building: { label: '建立中', tone: 'warn' },
   built: { label: '已建立', tone: 'ok' },
+  partial: { label: '部分完成', tone: 'warn' },
   failed: { label: '失败', tone: 'off' },
 };
 
-// indexState is a status's name and the tone of its dot.
-export const indexState = (s: IndexStatus) => STATES[s];
+// indexState is a status's name and the tone of its dot; a stale index
+// says so and warns.
+export function indexState(s: IndexStatus, stale = false): { label: string; tone: '' | 'ok' | 'warn' | 'off' } {
+  return stale ? { label: `${STATES[s].label} · 过期`, tone: 'warn' } : STATES[s];
+}
 
-// indexAction is what the admin can do about a version's index: build it,
-// or try again after it failed.
-export function indexAction(s: IndexStatus): string | null {
+// indexAction is what the admin can do about a version's index from the
+// list: build it, try again after it failed, rebuild it once stale.
+export function indexAction(s: IndexStatus, stale = false): string | null {
   if (s === 'none') return '建立索引';
   if (s === 'failed') return '重试';
+  if (stale) return '重建';
   return null;
 }
 
@@ -44,7 +54,47 @@ const ERRORS: Record<string, string> = {
   timeout: '模型超时',
   rate_limited: '模型限流',
   interrupted: '服务重启, 建立被中断',
+  internal: '保存抽取结果时出错',
 };
+
+// LessonStatus is where a lesson of a build stands.
+export type LessonStatus = 'pending' | 'running' | 'done' | 'failed';
+
+// IndexLesson is a lesson of an index's build (#224).
+export interface IndexLesson { key: string; title: string; chapter: string; status: LessonStatus; error?: string; reused: boolean; entries: number; summary: string }
+
+// IndexDetail is one course's index as its 概况 tab shows it.
+export interface IndexDetail {
+  status: IndexStatus;
+  stale: boolean;
+  promptVersion: string;
+  modelName: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  progress: { total: number; done: number; failed: number };
+  lessons: IndexLesson[];
+}
+
+const LESSON_STATES: Record<LessonStatus, { label: string; tone: '' | 'ok' | 'warn' | 'off' }> = {
+  pending: { label: '待处理', tone: '' },
+  running: { label: '进行中', tone: 'warn' },
+  done: { label: '成功', tone: 'ok' },
+  failed: { label: '失败', tone: 'off' },
+};
+
+// lessonState names where a lesson stands; one kept from an earlier
+// extraction is 复用.
+export function lessonState(l: Pick<IndexLesson, 'status' | 'reused'>) {
+  return l.status === 'done' && l.reused ? { label: '复用', tone: 'ok' as const } : LESSON_STATES[l.status];
+}
+
+// lessonNote is what the row says beside the status: why it failed, or
+// how many concepts it has and where they came from.
+export function lessonNote(l: IndexLesson): string {
+  if (l.status === 'failed') return indexError(l.error ?? '');
+  if (l.status !== 'done') return '';
+  return l.reused ? `沿用之前的抽取  ·  ${l.entries} 个概念` : `${l.entries} 个概念`;
+}
 
 // indexError says why a build failed, by its run error code.
 export const indexError = (code: string) => ERRORS[code] ?? '模型调用失败';

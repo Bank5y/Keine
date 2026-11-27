@@ -26,13 +26,13 @@ func linkedFiles() map[string]string {
 // linkedLessons are the extractions of linkedFiles' lessons, l00 with
 // extra entries when given.
 func linkedLessons(more ...map[string]any) []step {
-	l00 := append([]map[string]any{
+	l00s := append([]map[string]any{
 		concept("工具调用", "工具调用", "让模型执行动作。", "Function Calling"),
 	}, more...)
 	return []step{
-		concepts(l00...),
-		concepts(concept("目标拆解", "一个最小的例子", "把目标拆成步骤。")),
-		concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent")),
+		of(l00, concepts(l00s...)),
+		of(l01, concepts(concept("目标拆解", "一个最小的例子", "把目标拆成步骤。"))),
+		of(l02, concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"))),
 	}
 }
 
@@ -413,7 +413,7 @@ func manyLessons() []step {
 	out := linkedLessons()
 	for _, n := range "甲乙丙丁戊己" {
 		name := "概念" + string(n)
-		out = append(out, concepts(concept(name, name, "一个概念。")))
+		out = append(out, of("第"+string(n)+"讲", concepts(concept(name, name, "一个概念。"))))
 	}
 	return out
 }
@@ -481,7 +481,7 @@ func TestOfTwoEntriesNamedAtTheSamePlaceOnlyTheLongerNameIsACandidate(t *testing
 	t.Parallel()
 	// 日志复制 in l00, 日志 in l02 after its 意图识别
 	lessons := linkedLessons(concept("日志复制", "为什么学 Agent", "领导者把日志发给跟随者。"))
-	lessons[2] = concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"), concept("日志", "三层意图", "按时间记下的事件。"))
+	lessons[2] = of(l02, concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"), concept("日志", "三层意图", "按时间记下的事件。")))
 	got := forkCandidatesOf(t, "回答：Raft 靠日志复制保持一致。", lessons)
 	if want := "日志复制"; strings.Join(got, "|") != want {
 		t.Fatalf("candidates %v, want %s", got, want)
