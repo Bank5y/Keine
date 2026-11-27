@@ -217,3 +217,23 @@ func TestOnlyAnAdminRevisesTheIndex(t *testing.T) {
 	expectStatus(t, bob.do("GET", revisionsPath(id), nil), http.StatusForbidden)
 	expectError(t, a.admin().do("PUT", revisionsPath(id)+"/concept", map[string]any{"concept": "工具调用", "weight": 3}), http.StatusBadRequest, "bad_request")
 }
+
+func TestAConceptWhosePrimarySectionIsExcludedIsRecalledWhereElseItIs(t *testing.T) {
+	t.Parallel()
+	a := aiApp(t, newScriptedModel(
+		of(l00, concepts(as("define", concept("意图", "为什么学 Agent", "开篇讲的意图。")))),
+		of(l01, concepts()),
+		of(l02, concepts(as("use", concept("意图", "三层意图", "分三层的意图。")))),
+	))
+	id := publishedIndexed(t, a, a.user("alice"))
+	admin := a.admin()
+	admin.mustOK(admin.do("POST", conceptIndexPath(id), nil))
+	awaitIndex(t, admin, id)
+
+	admin.mustOK(admin.do("POST", revisionsPath(id)+"/exclude", map[string]any{"lessonKey": "l00"}))
+
+	hits := recallPathHits(t, recallTest(t, admin, id, "先说意图。", "l01"), "concept")
+	if len(hits) != 1 || hits[0]["lesson"].(map[string]any)["key"] != "l02" {
+		t.Fatalf("its primary section excluded, the concept is recalled at l02: %v", hits)
+	}
+}

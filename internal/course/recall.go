@@ -194,7 +194,7 @@ func excluding(revs []Revision, h PathHit) *Revision {
 // recallable is what the concept path matches answers against, and the
 // concepts revisions disabled: the index's concepts once merged, each
 // placed at its primary section, or at its best other one when that is in
-// the lesson keyed except, or the entries as extracted before any were
+// the lesson keyed except or excluded, or the entries as extracted before any were
 // merged; with the revisions laid over them (a name, aliases, a weight;
 // generic ones and disabled ones left out) and the concepts added.
 func (x ConceptIndex) recallable(except string, revs []Revision) (ConceptIndex, ConceptIndex) {
@@ -236,10 +236,14 @@ func (x ConceptIndex) recallable(except string, revs []Revision) (ConceptIndex, 
 			add(e, false)
 		}
 	}
+	// a concept is placed where neither the selection nor an exclusion is
+	skip := func(o ConceptOccurrence) bool {
+		return o.Lesson.Key == except || excluding(revs, PathHit{Lesson: o.Lesson, Section: o.Section}) != nil
+	}
 	for _, c := range x.Concepts {
 		at := c.Primary
-		if at.Lesson.Key == except {
-			at = primaryOf(c.Occurrences, c.Name, except)
+		if skip(at) {
+			at = primaryOf(c.Occurrences, c.Name, skip)
 		}
 		add(ConceptEntry{Name: c.Name, Aliases: c.Aliases, Lesson: at.Lesson, Section: at.Section, Summary: c.Summary}, c.Generic)
 	}

@@ -38,6 +38,9 @@ var (
 	ErrUnknownModel = errors.New("unknown local model")
 	// ErrBadSettings: a setting is missing or malformed.
 	ErrBadSettings = errors.New("bad embedding settings")
+	// ErrSettingsChanged: the settings changed while a new one was being
+	// tested; nothing is saved.
+	ErrSettingsChanged = errors.New("embedding settings changed meanwhile")
 )
 
 // TestFailed is a setting that could not embed a test sentence; the
@@ -118,17 +121,18 @@ type row struct {
 	mirror         string
 	generation     int64
 	dims           int
+	updatedAt      time.Time
 }
 
 func (s *Service) read(ctx context.Context, q interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }, lock bool) (row, error) {
 	var r row
-	sql := "SELECT provider, base_url, model, api_key, rate, local_model, mirror, generation, dims FROM embedding_settings WHERE id = 1"
+	sql := "SELECT provider, base_url, model, api_key, rate, local_model, mirror, generation, dims, updated_at FROM embedding_settings WHERE id = 1"
 	if lock {
 		sql += " FOR UPDATE"
 	}
-	err := q.QueryRow(ctx, sql).Scan(&r.provider, &r.baseURL, &r.model, &r.key, &r.rate, &r.localModel, &r.mirror, &r.generation, &r.dims)
+	err := q.QueryRow(ctx, sql).Scan(&r.provider, &r.baseURL, &r.model, &r.key, &r.rate, &r.localModel, &r.mirror, &r.generation, &r.dims, &r.updatedAt)
 	return r, err
 }
 
@@ -219,7 +223,7 @@ func (s *Service) SaveExternal(ctx context.Context, in ExternalInput) error {
 	if err != nil {
 		return &TestFailed{Cause: err}
 	}
-	return s.switchTo(ctx, func(cur row) row {
+	return s.switchTo(ctx, &was.updatedAt, func(cur row) row {
 		cur.provider, cur.baseURL, cur.model, cur.rate = External, in.BaseURL, in.Model, in.Rate
 		cur.key = s.box.Seal(key, keyPurpose)
 		cur.dims = len(v[0])
@@ -230,6 +234,10 @@ func (s *Service) SaveExternal(ctx context.Context, in ExternalInput) error {
 // UseLocal switches the site to a local model the admin downloaded, once
 // it embeds a test sentence.
 func (s *Service) UseLocal(ctx context.Context, model string) error {
+	was, err := s.read(ctx, s.db, false)
+	if err != nil {
+		return err
+	}
 	m, err := s.local(model)
 	if err != nil {
 		return err
@@ -238,7 +246,7 @@ func (s *Service) UseLocal(ctx context.Context, model string) error {
 	if err != nil {
 		return &TestFailed{Cause: err}
 	}
-	return s.switchTo(ctx, func(cur row) row {
+	return s.switchTo(ctx, &was.updatedAt, func(cur row) row {
 		cur.provider, cur.localModel, cur.dims = Local, model, len(v[0])
 		return cur
 	})
@@ -246,7 +254,7 @@ func (s *Service) UseLocal(ctx context.Context, model string) error {
 
 // TurnOff turns embedding off: recall goes back to its two paths.
 func (s *Service) TurnOff(ctx context.Context) error {
-	return s.switchTo(ctx, func(cur row) row {
+	return s.switchTo(ctx, nil, func(cur row) row {
 		cur.provider = Off
 		return cur
 	})
@@ -254,8 +262,9 @@ func (s *Service) TurnOff(ctx context.Context) error {
 
 // switchTo changes the settings as change says; when what embeds changed
 // (another provider, API or model), the generation goes up and every
-// vector so far is stale.
-func (s *Service) switchTo(ctx context.Context, change func(row) row) error {
+// vector so far is stale. With tested set, the settings must still be the
+// ones read (at that time) before the slow test ran, or nothing changes.
+func (s *Service) switchTo(ctx context.Context, tested *time.Time, change func(row) row) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -265,12 +274,15 @@ func (s *Service) switchTo(ctx context.Context, change func(row) row) error {
 	if err != nil {
 		return err
 	}
+	if tested != nil && !was.updatedAt.Equal(*tested) {
+		return ErrSettingsChanged
+	}
 	now := change(was)
 	if now.provider != Off && (now.provider != was.provider || now.baseURL != was.baseURL || now.model != was.model || now.localModel != was.localModel) {
 		now.generation = was.generation + 1
 	}
 	if _, err := tx.Exec(ctx, `UPDATE embedding_settings SET provider = $1, base_url = $2, model = $3, api_key = $4, rate = $5, local_model = $6,
-		generation = $7, dims = $8, updated_at = now() WHERE id = 1`,
+		generation = $7, dims = $8, updated_at = clock_timestamp() WHERE id = 1`,
 		now.provider, now.baseURL, now.model, now.key, now.rate, now.localModel, now.generation, now.dims); err != nil {
 		return err
 	}
@@ -284,7 +296,7 @@ func (s *Service) SetMirror(ctx context.Context, mirror string) error {
 	if !strings.HasPrefix(mirror, "https://") && !strings.HasPrefix(mirror, "http://") {
 		return ErrBadSettings
 	}
-	_, err := s.db.Exec(ctx, "UPDATE embedding_settings SET mirror = $1, updated_at = now() WHERE id = 1", mirror)
+	_, err := s.db.Exec(ctx, "UPDATE embedding_settings SET mirror = $1, updated_at = clock_timestamp() WHERE id = 1", mirror)
 	return err
 }
 

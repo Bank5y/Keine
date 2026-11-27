@@ -193,7 +193,6 @@ func (s *Server) Close() {
 	s.db.Close()
 }
 
-// sweepPeriodically runs SweepDrafts every SweepInterval until Close.
 // cutPassagesInBackground starts the passage cutter (#223): it cuts the
 // passages of every course version that has none, once now (versions from
 // before passages were) and again each time newVersion asks.
@@ -225,6 +224,7 @@ func (s *Server) newVersion() {
 	}
 }
 
+// sweepPeriodically runs SweepDrafts every SweepInterval until Close.
 func (s *Server) sweepPeriodically() {
 	every := s.opts.SweepInterval
 	if every <= 0 {

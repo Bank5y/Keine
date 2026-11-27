@@ -203,6 +203,8 @@ func writeEmbeddingError(w http.ResponseWriter, r *http.Request, err error) bool
 		writeError(w, http.StatusBadRequest, "embedding_test_failed", "试着嵌入一句话失败了, 设置没有保存: "+failed.Cause.Error())
 	case errors.Is(err, embedding.ErrMasterKeyMissing):
 		writeError(w, http.StatusConflict, "master_key_missing", "部署没有配置主密钥 (KEINE_MASTER_KEY), 不能保存嵌入 API 的 Key")
+	case errors.Is(err, embedding.ErrSettingsChanged):
+		writeError(w, http.StatusConflict, "settings_changed", "嵌入设置刚被改过, 刷新后再试")
 	case errors.Is(err, embedding.ErrNotDownloaded):
 		writeError(w, http.StatusConflict, "model_not_downloaded", "这个本地模型还没有下载完")
 	case errors.Is(err, embedding.ErrUnknownModel):

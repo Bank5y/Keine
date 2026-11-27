@@ -83,10 +83,6 @@ func (s *Server) showConceptIndex(w http.ResponseWriter, r *http.Request) {
 // path's ranking. It calls no model; with embedding on, it embeds the
 // text, charged to the site like any query.
 func (s *Server) recallConceptIndex(w http.ResponseWriter, r *http.Request) {
-	id, ok := courseIDParam(w, r)
-	if !ok {
-		return
-	}
 	var req struct {
 		Text          string `json:"text"`
 		ExcludeLesson string `json:"excludeLesson"`
@@ -94,15 +90,11 @@ func (s *Server) recallConceptIndex(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	c, err := s.courses.Get(r.Context(), currentUser(r), id)
-	if errors.Is(err, course.ErrNotFound) || err == nil && c.Visibility != course.Public {
-		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
+	c, ok := s.libraryCourse(w, r)
+	if !ok {
 		return
 	}
-	if err != nil {
-		writeInternal(w, r, err)
-		return
-	}
+	id := c.ID
 	rc, err := s.recallOf(r.Context(), id, c.FilesDir)
 	if err != nil {
 		writeInternal(w, r, err)

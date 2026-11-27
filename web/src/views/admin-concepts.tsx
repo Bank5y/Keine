@@ -284,7 +284,7 @@ function IndexConcepts({ id, version }: { id: number; version: string | null }) 
   const [excluding, setExcluding] = useState(false);
   const loadRevisions = useCallback(() => api<{ revisions: Revision[] }>('GET', `${base}/revisions`).then((r) => setRevisions(r.revisions)).catch((e) => toast.error(e.message)), [base]);
   useEffect(() => { void loadRevisions(); }, [loadRevisions]);
-  useEffect(() => { api<{ lessons: LessonSections[] }>('GET', `${base}/sections`).then((r) => setLessons(r.lessons)).catch(() => {}); }, [base]);
+  useEffect(() => { api<{ lessons: LessonSections[] }>('GET', `${base}/sections`).then((r) => setLessons(r.lessons)).catch((e) => toast.error(`读不到各讲的小节: ${e.message}`)); }, [base]);
 
   async function act(method: string, url: string, body: unknown, done: string) {
     try {

@@ -149,22 +149,22 @@ func mergeEntries(entries []ConceptEntry, lessons int) []merged {
 		}
 		m.Lessons = len(inLessons)
 		m.Generic = m.Lessons >= genericFloor && float64(m.Lessons) > genericShare*float64(lessons)
-		m.Primary = primaryOf(m.Occurrences, m.Name, "")
+		m.Primary = primaryOf(m.Occurrences, m.Name, nil)
 		m.Summary = m.Primary.Summary
 	}
 	return out
 }
 
-// primaryOf is the occurrence that explains concept name best, outside the
-// lesson keyed except: one whose lesson defines it and whose lesson title
-// names it, then one that defines it, then one whose lesson title names
-// it, the first in course order of those. With every occurrence in except,
-// it is the first.
-func primaryOf(occ []ConceptOccurrence, name, except string) ConceptOccurrence {
+// primaryOf is the occurrence that explains concept name best, of those
+// skip leaves (nil: all): one whose lesson defines it and whose lesson
+// title names it, then one that defines it, then one whose lesson title
+// names it, the first in course order of those. With every occurrence
+// skipped, it is the first.
+func primaryOf(occ []ConceptOccurrence, name string, skip func(ConceptOccurrence) bool) ConceptOccurrence {
 	n := NormalizeConcept(name)
 	best, bestScore := -1, -1
 	for i, o := range occ {
-		if o.Lesson.Key == except {
+		if skip != nil && skip(o) {
 			continue
 		}
 		score := 0
