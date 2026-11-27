@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { indexAction, indexError, indexState, stillBuilding } from '@/lib/concept-index';
+import { hitPlace, indexAction, indexError, indexState, pathScore, sourceName, stillBuilding } from '@/lib/concept-index';
 
 describe('indexState', () => {
   it('names each status', () => {
@@ -34,5 +34,37 @@ describe('indexError', () => {
     expect(indexError('malformed_output')).toBe('模型的输出格式不对');
     expect(indexError('interrupted')).toBe('服务重启, 建立被中断');
     expect(indexError('something_new')).toBe('模型调用失败');
+  });
+});
+
+describe('pathScore', () => {
+  it('shows where the concept path found the concept', () => {
+    expect(pathScore('concept', 12)).toBe('第 12 字');
+  });
+
+  it('shows the other paths their scores', () => {
+    expect(pathScore('passage', 14.237)).toBe('14.2');
+    expect(pathScore('vector', 0.83127)).toBe('0.831');
+  });
+});
+
+describe('hitPlace', () => {
+  const lesson = { id: 1, key: 'l08', title: '领导者选举' };
+  it('names the lesson and the section', () => {
+    expect(hitPlace({ lesson, section: { id: 'h-1', title: '选举超时' } })).toBe('领导者选举 › 选举超时');
+  });
+  it('names the lesson alone at its top', () => {
+    expect(hitPlace({ lesson, section: null })).toBe('领导者选举');
+  });
+  it('names the lesson alone when its section is headed like it', () => {
+    expect(hitPlace({ lesson, section: { id: 'h-0', title: '领导者选举' } })).toBe('领导者选举');
+  });
+});
+
+describe('sourceName', () => {
+  it('names the passage path shorter on a candidate', () => {
+    expect(sourceName('passage')).toBe('段落 BM25');
+    expect(sourceName('passage', true)).toBe('段落');
+    expect(sourceName('concept', true)).toBe('概念');
   });
 });

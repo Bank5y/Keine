@@ -46,6 +46,39 @@ func (s *Server) showConceptIndex(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, x)
 }
 
+// recallConceptIndex is the recall test (#222): what the linking step
+// would be offered for a text in the current version of a library
+// course, leaving out a lesson (the selection's own), with each recall
+// path's ranking. It calls no model and records no usage.
+func (s *Server) recallConceptIndex(w http.ResponseWriter, r *http.Request) {
+	id, ok := courseIDParam(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Text          string `json:"text"`
+		ExcludeLesson string `json:"excludeLesson"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	c, err := s.courses.Get(r.Context(), currentUser(r), id)
+	if errors.Is(err, course.ErrNotFound) || err == nil && c.Visibility != course.Public {
+		writeError(w, http.StatusNotFound, "course_not_found", "课程不存在")
+		return
+	}
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	x, err := s.courses.ConceptIndexOf(r.Context(), id, c.FilesDir)
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, x.Trace(req.Text, req.ExcludeLesson))
+}
+
 // buildConceptIndex starts building the index of a library course's
 // current version, from none or after it failed. The lessons are
 // extracted one by one in the background, on the concept index's model,

@@ -98,6 +98,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
         tools = [t["function"]["name"] for t in req.get("tools") or []]
+        if "建立概念索引" in (req["messages"][0].get("content") or ""):
+            self.concepts(req)
+            return
         if "<rep_title>" in (req["messages"][0].get("content") or ""):
             time.sleep(0.4)
             for i in range(0, len(REPORT), 4):
@@ -127,6 +130,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         body = "".join(chunk({"content": t}) for t in REPLY) + chunk({}, "stop")
         usage = {"prompt_tokens": 120, "completion_tokens": 8, "prompt_tokens_details": {"cached_tokens": 64}}
+        body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
+        self.wfile.write(body.encode())
+
+    def concepts(self, req):
+        """A concept index extraction: one concept for each section of the lesson, named by its heading."""
+        lesson = req["messages"][-1]["content"]
+        toc = lesson.split("## 小节目录", 1)[-1].split("## 全文", 1)[0]
+        found = []
+        for line in toc.splitlines():
+            if line.startswith("- "):
+                h = line[2:].strip()
+                if h == "小结":
+                    continue
+                # a lesson's own heading "07｜短期记忆与上下文窗口" names the concept 短期记忆与上下文窗口
+                name, _, alias = h.split("｜")[-1].partition("：")
+                found.append({"name": name, "aliases": [alias] if alias else [], "section": h, "summary": f"这一讲里「{h}」一节讲的内容。"})
+        body = chunk({"content": json.dumps(found, ensure_ascii=False)}) + chunk({}, "stop")
+        usage = {"prompt_tokens": 900, "completion_tokens": 120}
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
         self.wfile.write(body.encode())
 

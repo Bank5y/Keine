@@ -2224,3 +2224,36 @@ a.rn:hover .t { color: var(--ink-accent); }
 .exp-page-menu b { display: block; font-size: 14px; font-weight: 500; }
 .exp-page-menu small { display: block; font-size: 12px; color: var(--text-3); }
 .exp-page-menu-full { padding: 6px 10px 4px; font-size: 12px; color: var(--danger); }
+
+/* ---------- concept index: one course (admin) ---------- */
+.concept-head { display: flex; align-items: baseline; gap: 14px; margin: 12px 0 20px; flex-wrap: wrap; }
+.concept-head h2 { margin: 0; font-family: var(--serif); font-size: 22px; font-weight: 600; line-height: 1.3; }
+.concept-head .meta { font-family: var(--mono); font-size: 11px; color: var(--text-3); white-space: pre; }
+.concept-tabs { margin-bottom: 24px; }
+.recall-test .field { margin-bottom: 16px; }
+.recall-go { display: flex; gap: 12px; align-items: center; }
+.recall-go .select { max-width: 380px; }
+.recall-test .usage-h { margin-top: 32px; }
+.recall-fused { list-style: none; margin: 0; }
+.recall-fused .ledger-row { grid-template-columns: 20px 1fr 220px 80px; }
+.recall-fused .ledger-row + .ledger-row { border-top: 1px solid var(--line); }
+.recall-fused .rank, .recall-path .rank { font-family: var(--mono); font-size: 13px; color: var(--text-3); }
+.recall-fused .name { display: block; }
+.recall-fused small { display: block; font-size: 12px; color: var(--text-3); }
+.recall-fused .meta { text-align: right; color: var(--text-2); }
+.recall-fused .sources { display: flex; gap: 6px; }
+.src { padding: 1px 8px; border-radius: 3px; font-size: 11px; line-height: 18px; }
+.src.concept { background: color-mix(in srgb, var(--brand) 12%, transparent); color: var(--ink-accent); }
+.src.passage { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
+.src.vector { background: color-mix(in srgb, var(--explore) 14%, transparent); color: var(--explore); }
+.recall-paths-h { margin-top: 40px; }
+.recall-paths { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+@media (max-width: 960px) { .recall-paths { grid-template-columns: 1fr; } }
+.recall-path h4 { display: flex; align-items: baseline; gap: 10px; margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--text); font-size: 13px; font-weight: 600; }
+.recall-path h4 small { font-size: 11px; font-weight: 400; color: var(--text-3); }
+.recall-path ol { list-style: none; margin: 6px 0 0; padding: 0; }
+.recall-path li { display: grid; grid-template-columns: 20px 1fr 110px 64px; gap: 6px; padding: 5px 0; font-size: 13px; align-items: baseline; }
+.recall-path .where { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recall-path .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recall-path .score { font-family: var(--mono); font-size: 12px; color: var(--text-2); text-align: right; }
+.recall-path .usage-note { margin-top: 12px; }

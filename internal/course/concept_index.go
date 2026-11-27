@@ -125,16 +125,23 @@ func (x ConceptIndex) Find(term string) []ConceptEntry {
 // and still be looked for in a text: a single character matches anywhere.
 const minMentionRunes = 2
 
+// Mention is an entry a text names, and where it first names it: in
+// characters of the text normalized (NormalizeConcept).
+type Mention struct {
+	Entry ConceptEntry
+	At    int
+}
+
 // Mentioned is the entries a text names, by name or alias, compared
-// normalized (NormalizeConcept), in the order the text first names them,
-// at most max of them (ADR 0011). Entries of the lesson keyed exceptLesson
-// are left out, but still hide the shorter names they overlap.
+// normalized (NormalizeConcept), in the order the text first names them
+// (ADR 0011). Entries of the lesson keyed exceptLesson are left out, but
+// still hide the shorter names they overlap.
 //
 // A name's letters and digits only match a whole word: "4C" is not named
 // in "G4C" (#177). Where two entries' names overlap in the text, only the
 // longer name is named there: "日志复制" names no "日志"; of names as long
 // as each other, both are.
-func (x ConceptIndex) Mentioned(text, exceptLesson string, max int) []ConceptEntry {
+func (x ConceptIndex) Mentioned(text, exceptLesson string) []Mention {
 	t, breaks := normalizeWithBreaks(text)
 	type span struct{ entry, start, end, runes int }
 	var spans []span
@@ -181,9 +188,9 @@ func (x ConceptIndex) Mentioned(text, exceptLesson string, max int) []ConceptEnt
 		}
 		return a - b
 	})
-	var out []ConceptEntry
-	for _, ei := range named[:min(len(named), max)] {
-		out = append(out, x.Entries[ei])
+	out := make([]Mention, len(named))
+	for i, ei := range named {
+		out[i] = Mention{Entry: x.Entries[ei], At: utf8.RuneCountInString(t[:first[ei]])}
 	}
 	return out
 }
