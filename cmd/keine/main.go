@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -51,6 +52,7 @@ func run() error {
 		MaxRuns:          int(cfg.MaxRuns),
 		OwnModels:        cfg.OwnModels,
 		OwnModelNetworks: cfg.OwnModelNetworks,
+		ModelsDir:        filepath.Join(cfg.DataDir, "models"),
 	})
 	if err != nil {
 		return err

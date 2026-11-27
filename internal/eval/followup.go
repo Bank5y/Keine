@@ -99,7 +99,7 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 		var x course.ConceptIndex
 		if t.Fork != "" {
 			q.Note = assistant.NodeNote(string(t.Fork))
-			rc, err := r.Courses.RecallOf(ctx, c.Course, c.Version)
+			rc, err := r.Courses.RecallOf(ctx, c.Course, c.Version, 0, nil)
 			if err != nil {
 				return err
 			}

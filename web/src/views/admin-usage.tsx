@@ -147,7 +147,7 @@ function ReadersUsage({ range }: { range: DateRange }) {
   );
 }
 
-const KINDS: Record<string, string> = TURN_NAMES;
+const KINDS: Record<string, string> = { ...TURN_NAMES, embedding: '嵌入' };
 const n = (v: number | null) => (v === null ? '—' : tokens(v));
 const at = (s: string) => new Date(s).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 

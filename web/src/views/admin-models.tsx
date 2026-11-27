@@ -9,6 +9,7 @@ import { api, ApiError, type Problem } from '@/lib/api';
 import { chooseFormat, chooseProvider, keepRoute, routeChoice, searchLabel, searchRoutes, type Format, type Preset, type SearchRoute } from '@/lib/provider';
 import { problemText, TURN_NAMES, type AIProblem, type TurnKind } from '@/lib/ai';
 import { Link } from '@/lib/router';
+import { AdminEmbedding } from '@/views/admin-embedding';
 import { cn } from '@/lib/utils';
 
 interface Rates { input: number; cacheRead: number; cacheWrite: number; output: number; search: number }
@@ -37,7 +38,7 @@ const contextLabel = (m: SiteModel) => `${Math.round((m.contextWindow ?? 128000)
 const problemsOf = (ex: ApiError): Problem[] => ex.problems.map((p) => (typeof p === 'string' ? { message: p } : p));
 
 // the three views of the models tab, each at its own address
-const VIEWS: ['models' | 'turns' | 'web', string, string][] = [['models', '/admin/models', '模型'], ['turns', '/admin/models/turns', '轮次'], ['web', '/admin/models/web', '联网']];
+const VIEWS: ['models' | 'turns' | 'web' | 'embedding', string, string][] = [['models', '/admin/models', '模型'], ['turns', '/admin/models/turns', '轮次'], ['web', '/admin/models/web', '联网'], ['embedding', '/admin/models/embedding', '嵌入']];
 
 export function AdminModels({ path }: { path: string }) {
   const [st, setSt] = useState<State | null>(null);
@@ -68,7 +69,7 @@ export function AdminModels({ path }: { path: string }) {
   }
 
 
-  const view = path.startsWith('/admin/models/turns') ? 'turns' : path.startsWith('/admin/models/web') ? 'web' : 'models';
+  const view = path.startsWith('/admin/models/turns') ? 'turns' : path.startsWith('/admin/models/web') ? 'web' : path.startsWith('/admin/models/embedding') ? 'embedding' : 'models';
   return (
     <>
       <nav className="seg models-seg" aria-label="模型设置">
@@ -174,6 +175,7 @@ export function AdminModels({ path }: { path: string }) {
           </div>
         </>
       ) : null}
+      {view === 'embedding' ? <AdminEmbedding /> : null}
       <ModelDialog
         target={editing} masterKey={st?.masterKey ?? false} presets={st?.providers ?? []} formats={st?.formats ?? []}
         onClose={() => setEditing(null)} onDone={() => { setEditing(null); void load(); }}

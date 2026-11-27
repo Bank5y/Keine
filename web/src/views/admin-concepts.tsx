@@ -9,6 +9,7 @@ import { useAddressTab } from '@/components/tabs';
 import { api, ApiError } from '@/lib/api';
 import { conceptRows, filterConcepts, hitPlace, splitAliases, WEIGHTS, type ConceptRow, type LessonSections, type Revision, indexAction, indexError, indexState, lessonNote, lessonState, pathScore, roleName, sourceName, sourceNote, stillBuilding, summaryStage, type ConceptFilter, type IndexConcept, type IndexDetail, type IndexedCourse, type IndexLesson, type RecallTrace, type SummaryTree } from '@/lib/concept-index';
 import type { CourseDetail } from '@/lib/courses';
+import { embedState } from '@/lib/embedding';
 import { Link, match } from '@/lib/router';
 import { cn } from '@/lib/utils';
 
@@ -106,7 +107,7 @@ function ConceptCourse({ id }: { id: number }) {
     api<CourseDetail>('GET', `/api/courses/${id}`).then(setCourse).catch((e) => setErr(e.message));
     void load();
   }, [id, load]);
-  const following = index?.status === 'building';
+  const following = index?.status === 'building' || (!!index?.embedding && index.embedding.done < index.embedding.total);
   useEffect(() => {
     if (!following) return;
     const t = setInterval(() => void load(), FOLLOW_MS);
@@ -161,8 +162,14 @@ function ConceptCourse({ id }: { id: number }) {
 // IndexOverview is how the index's build went (#224): how far extraction
 // got, and each lesson's status, with a retry for the ones that failed.
 function IndexOverview({ index, busy, retry }: { index: IndexDetail; busy: boolean; retry: (l: IndexLesson) => void }) {
+  const emb = index.embedding ? (
+    <div className="index-stage embed-stage">
+      <div className="stage-head"><b>嵌入</b><span className="num">{index.embedding.done} / {index.embedding.total} 段</span><span className={cn('st', embedState(index.embedding).tone)}>{embedState(index.embedding).label}</span></div>
+      <div className={cn('stage-bar', embedState(index.embedding).tone === 'warn' && 'running')}><span style={{ width: `${index.embedding.total ? (index.embedding.done / index.embedding.total) * 100 : 0}%` }} /></div>
+    </div>
+  ) : null;
   if (index.status === 'none') {
-    return <Empty title="还没有建立概念索引">建立后, 这里显示每一讲的抽取进度和结果。没有概念索引时, 探索对话仍会用段落关联课程内容。</Empty>;
+    return <>{emb}<Empty title="还没有建立概念索引">建立后, 这里显示每一讲的抽取进度和结果。没有概念索引时, 探索对话仍会用段落{index.embedding ? '和向量' : ''}关联课程内容。</Empty></>;
   }
   const p = index.progress;
   const through = p.done + p.failed;
@@ -193,6 +200,7 @@ function IndexOverview({ index, busy, retry }: { index: IndexDetail; busy: boole
           {'  ·  费用记在站点上'}
         </p>
       </div>
+      {emb}
       <h3 className="usage-h">各讲<small>失败的讲可以单独重试; 正文、提示词和模型都没变的讲沿用之前的条目。</small></h3>
       <div className="ledger index-lessons">
         {index.lessons.map((l) => {
@@ -501,7 +509,7 @@ function RecallTest({ course }: { course: CourseDetail }) {
 
   return (
     <div className="recall-test">
-      <p className="tab-intro">粘贴一段回答, 选它所在的讲 (这一讲不参与召回), 看各路召回的排名和分数, 以及融合后的前 5 个候选。不调用模型, 不计用量。</p>
+      <p className="tab-intro">粘贴一段回答, 选它所在的讲 (这一讲不参与召回), 看各路召回的排名和分数, 以及融合后的前 5 个候选。不调用对话模型; 开启嵌入时会嵌入这段文本, 用量记在站点上。</p>
       <div className="field">
         <label htmlFor="recall-text">回答文本</label>
         <textarea id="recall-text" className="textarea" rows={4} value={text} onChange={(e) => setText(e.target.value)} />
@@ -539,7 +547,12 @@ function RecallTest({ course }: { course: CourseDetail }) {
           ) : null}
           <h3 className="usage-h recall-paths-h">分路排名</h3>
           <div className="recall-paths">
-            {trace.paths.map((p) => (
+            {[...trace.paths, ...(trace.paths.some((p) => p.source === 'vector') ? [] : [null])].map((p) => !p ? (
+              <section key="vector" className="recall-path">
+                <h4>{sourceName('vector')}</h4>
+                <p className="usage-note">嵌入未开启。在「<Link href="/admin/models/embedding">模型 › 嵌入</Link>」里开启后, 这里显示向量召回的排名。</p>
+              </section>
+            ) : (
               <section key={p.source} className="recall-path">
                 <h4>{sourceName(p.source)}<small>{sourceNote(p.source)}</small></h4>
                 {p.hits.length ? (

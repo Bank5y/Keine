@@ -75,6 +75,9 @@ export interface IndexDetail {
   finishedAt: string | null;
   progress: { total: number; done: number; failed: number };
   lessons: IndexLesson[];
+  // embedding is how far the version's passages are embedded, while
+  // embedding is on (#227).
+  embedding?: { done: number; total: number };
 }
 
 const LESSON_STATES: Record<LessonStatus, { label: string; tone: '' | 'ok' | 'warn' | 'off' }> = {

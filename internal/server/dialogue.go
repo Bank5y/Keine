@@ -316,7 +316,7 @@ func (s *Server) linksFor(viewer auth.User, d course.ExplorationDetail) *courseL
 // by the concept index of the version the reader reads and its passages
 // (ADR 0015).
 func (l *courseLinks) linker(ctx context.Context, c course.Detail) assistant.Linker {
-	rc, err := l.s.courses.RecallOf(ctx, l.d.CourseID, c.FilesDir)
+	rc, err := l.s.recallOf(ctx, l.d.CourseID, c.FilesDir)
 	if err != nil {
 		slog.Error("course recall not read", "course", l.d.CourseID, "err", err)
 		return nil

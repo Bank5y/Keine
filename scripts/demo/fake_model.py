@@ -85,6 +85,9 @@ def chunk(delta, finish=None):
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        if self.path.endswith("/embeddings"):
+            self.embeddings(req)
+            return
         if not self.path.endswith("/chat/completions"):
             self.send_error(404)
             return
@@ -164,6 +167,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         usage = {"prompt_tokens": 900, "completion_tokens": 120}
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
         self.wfile.write(body.encode())
+
+    def embeddings(self, req):
+        """An OpenAI-compatible embeddings API: each text's character pairs hashed into 64 slots."""
+        data = []
+        for i, text in enumerate(req.get("input") or []):
+            v = [0.0] * 64
+            for a, b in zip(text, text[1:]):
+                v[hash(a + b) % 64] += 1
+            data.append({"index": i, "embedding": v})
+        body = json.dumps({"data": data, "usage": {"prompt_tokens": 8 * len(data)}}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def summary(self, req):
         """A summary of the concept index's tree: names the parts it covers."""

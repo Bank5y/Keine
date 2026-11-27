@@ -35,10 +35,13 @@ const HitPassage HitSource = "passage"
 type SectionPassage struct {
 	Lesson EntryLesson
 	// Section is nil for the text above the lesson's first heading.
-	Section *EntrySection
-	Body    string
-	terms   map[string]int
-	length  int
+	Section  *EntrySection
+	Body     string
+	position int
+	terms    map[string]int
+	length   int
+	// vector is its embedding of the current generation, if any (#227)
+	vector []float32
 }
 
 // Passages are a course version's passages, in course order, ready to be
@@ -218,7 +221,7 @@ func (s *Service) PassagesOf(ctx context.Context, courseID int64, filesDir strin
 		}
 	}
 	rows, err := s.db.Query(ctx, `
-		SELECT l.id, l.key, l.title, p.section_id, p.section_title, p.body
+		SELECT l.id, l.key, l.title, p.position, p.section_id, p.section_title, p.body
 		FROM passages p
 		JOIN lessons l ON l.course_id = p.course_id AND l.key = p.lesson_key
 		JOIN chapters ch ON ch.id = l.chapter_id
@@ -230,7 +233,7 @@ func (s *Service) PassagesOf(ctx context.Context, courseID int64, filesDir strin
 	var list []SectionPassage
 	var ps SectionPassage
 	var sectionID, sectionTitle string
-	_, err = pgx.ForEachRow(rows, []any{&ps.Lesson.ID, &ps.Lesson.Key, &ps.Lesson.Title, &sectionID, &sectionTitle, &ps.Body}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&ps.Lesson.ID, &ps.Lesson.Key, &ps.Lesson.Title, &ps.position, &sectionID, &sectionTitle, &ps.Body}, func() error {
 		p := ps
 		if sectionID != "" {
 			p.Section = &EntrySection{ID: sectionID, Title: sectionTitle}

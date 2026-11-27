@@ -12,6 +12,7 @@ import (
 	"github.com/Bank5y/keine/internal/anchor"
 	"github.com/Bank5y/keine/internal/assistant"
 	"github.com/Bank5y/keine/internal/course"
+	"github.com/Bank5y/keine/internal/embedding"
 )
 
 // indexExtractor is what extracts the concept index now: the concept
@@ -65,13 +66,22 @@ func (s *Server) showConceptIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	_, cur, _ := s.indexExtractor(r.Context())
 	x.Stale = course.StaleFor(x.Status, x.Extractor, cur)
+	if emb, err := s.embedding.Current(r.Context()); err == nil && emb.Provider != embedding.Off {
+		p, err := s.courses.EmbeddingProgressFor(r.Context(), id, c.FilesDir, emb.Generation)
+		if err != nil {
+			writeInternal(w, r, err)
+			return
+		}
+		x.Embedding = &p
+	}
 	writeJSON(w, http.StatusOK, x)
 }
 
 // recallConceptIndex is the recall test (#222): what the linking step
 // would be offered for a text in the current version of a library
 // course, leaving out a lesson (the selection's own), with each recall
-// path's ranking. It calls no model and records no usage.
+// path's ranking. It calls no model; with embedding on, it embeds the
+// text, charged to the site like any query.
 func (s *Server) recallConceptIndex(w http.ResponseWriter, r *http.Request) {
 	id, ok := courseIDParam(w, r)
 	if !ok {
@@ -93,12 +103,12 @@ func (s *Server) recallConceptIndex(w http.ResponseWriter, r *http.Request) {
 		writeInternal(w, r, err)
 		return
 	}
-	rc, err := s.courses.RecallOf(r.Context(), id, c.FilesDir)
+	rc, err := s.recallOf(r.Context(), id, c.FilesDir)
 	if err != nil {
 		writeInternal(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rc.Trace(req.Text, req.ExcludeLesson))
+	writeJSON(w, http.StatusOK, rc.Trace(r.Context(), req.Text, req.ExcludeLesson))
 }
 
 // buildConceptIndex starts building the index of a library course's

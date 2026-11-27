@@ -183,6 +183,9 @@ type ConceptIndex struct {
 	// Concepts are the entries merged (#225), which recall uses once there
 	// are some; none before the first build that merged them.
 	Concepts []IndexConcept `json:"-"`
+	// Embedding is how far the version's passages are embedded, while
+	// embedding is on (#227); the server sets it.
+	Embedding *EmbeddingProgress `json:"embedding,omitempty"`
 }
 
 // ConceptIndexOf is the index of a version of a course (its files folder,

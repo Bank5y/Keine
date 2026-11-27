@@ -2,6 +2,7 @@ package course
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"strconv"
 )
@@ -89,11 +90,16 @@ type CourseRecall struct {
 	Concepts  ConceptIndex
 	Passages  Passages
 	Revisions []Revision
+	// Embed embeds an answer for the vector path (#227); nil while
+	// embedding is off, and then there is no vector path.
+	Embed func(ctx context.Context, text string) ([]float32, error)
 }
 
 // RecallOf is what recalls from a version of a course: its concept index
-// (no entries until built) and its passages.
-func (s *Service) RecallOf(ctx context.Context, courseID int64, filesDir string) (CourseRecall, error) {
+// (no entries until built), its passages and the course's revisions. With
+// generation above 0, the passages have their vectors of it, for embed
+// to recall by (#227).
+func (s *Service) RecallOf(ctx context.Context, courseID int64, filesDir string, generation int64, embed func(context.Context, string) ([]float32, error)) (CourseRecall, error) {
 	x, err := s.ConceptIndexOf(ctx, courseID, filesDir)
 	if err != nil {
 		return CourseRecall{}, err
@@ -102,13 +108,18 @@ func (s *Service) RecallOf(ctx context.Context, courseID int64, filesDir string)
 	if err != nil {
 		return CourseRecall{}, err
 	}
+	if embed != nil && generation > 0 {
+		if err := s.withVectors(ctx, &p, courseID, filesDir, generation); err != nil {
+			return CourseRecall{}, err
+		}
+	}
 	revs, err := s.revisions(ctx, courseID)
-	return CourseRecall{Concepts: x, Passages: p, Revisions: revs}, err
+	return CourseRecall{Concepts: x, Passages: p, Revisions: revs, Embed: embed}, err
 }
 
 // Trace is the recall of an answer, path by path, leaving out the lesson
 // keyed selectionLesson, with the course's revisions laid over it (#226).
-func (r CourseRecall) Trace(answer, selectionLesson string) RecallTrace {
+func (r CourseRecall) Trace(ctx context.Context, answer, selectionLesson string) RecallTrace {
 	var effects []RevisionEffect
 	effect := func(rev *Revision, label, what string) {
 		if !slices.ContainsFunc(effects, func(e RevisionEffect) bool { return e.ID == rev.ID }) {
@@ -135,6 +146,16 @@ func (r CourseRecall) Trace(answer, selectionLesson string) RecallTrace {
 	}
 	passages := PathRanking{Source: HitPassage, Hits: r.Passages.rank(answer, selectionLesson)}
 	paths := []PathRanking{concepts, passages}
+	if r.Embed != nil {
+		// an embedding that fails leaves the vector path empty, not the recall
+		vectors := PathRanking{Source: HitVector, Hits: []PathHit{}}
+		if q, err := r.Embed(ctx, answer); err == nil {
+			vectors.Hits = r.Passages.rankVector(q, selectionLesson)
+		} else if ctx.Err() == nil {
+			slog.Warn("answer not embedded", "err", err)
+		}
+		paths = append(paths, vectors)
+	}
 	for i := range paths {
 		kept := paths[i].Hits[:0]
 		for _, h := range paths[i].Hits {
@@ -231,8 +252,8 @@ func (x ConceptIndex) recallable(except string, revs []Revision) (ConceptIndex, 
 }
 
 // Recall is the fused candidates of Trace.
-func (r CourseRecall) Recall(_ context.Context, answer, selectionLesson string) ([]SectionCandidate, error) {
-	return r.Trace(answer, selectionLesson).Candidates, nil
+func (r CourseRecall) Recall(ctx context.Context, answer, selectionLesson string) ([]SectionCandidate, error) {
+	return r.Trace(ctx, answer, selectionLesson).Candidates, nil
 }
 
 // fuse merges the paths' rankings by section with reciprocal rank fusion
