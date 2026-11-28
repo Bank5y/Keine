@@ -99,16 +99,14 @@ func (r *Runner) dialogue(ctx context.Context, res *Result, c Case, pinned assis
 		var x course.ConceptIndex
 		if t.Fork != "" {
 			q.Note = assistant.NodeNote(string(t.Fork))
-			var err error
-			x, err = r.Courses.ConceptIndexOf(ctx, c.Course, c.Version)
+			rc, err := r.Courses.RecallOf(ctx, c.Course, c.Version, 0, nil)
 			if err != nil {
 				return err
 			}
-			tr.Linking = &Linking{Index: x.Status, Candidates: []LinkEntry{}, Chosen: []LinkEntry{}}
-			if x.Status == course.ConceptIndexBuilt {
-				links = lessonctx.NewLinks(lib, x, c.Lesson)
-				linker = links.Find
-			}
+			x = rc.Concepts
+			tr.Linking = &Linking{Index: rc.Concepts.Status, Candidates: []LinkEntry{}, Chosen: []LinkEntry{}}
+			links = lessonctx.NewLinks(lib, rc, c.Lesson)
+			linker = links.Find
 		}
 		msgs := pinned.Messages(q)
 		if n, limit := assistant.EstimateMessages(msgs), assistant.LimitsOf(turn).Input; n > limit {

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,9 @@ import (
 // for the call to be cancelled. before runs as the call starts (to move a
 // clock).
 type step struct {
+	// lesson, when set, keeps the step for the extraction of the lesson of
+	// that title: extractions run side by side, in no set order (#224)
+	lesson string
 	events []assistant.Event
 	result assistant.Result
 	err    error
@@ -30,12 +34,16 @@ type step struct {
 
 // scriptedModel is the model every site model resolves to: each call takes
 // the next step of the script and is kept for inspection. Connection tests
-// (the admin saving a model) always pass and are not kept.
+// (the admin saving a model) always pass and are not kept; nor do the
+// concept index's summaries (#225) take a step: they answer summary (by
+// default "摘要。" and the request's title line) and are kept apart.
 type scriptedModel struct {
 	mu        sync.Mutex
 	steps     []step
 	requests  []assistant.Request
 	cancelled chan struct{}
+	summary   func(req assistant.Request) (string, error)
+	summaries []assistant.Request
 }
 
 func newScriptedModel(steps ...step) *scriptedModel {
@@ -46,14 +54,26 @@ func (m *scriptedModel) Stream(ctx context.Context, req assistant.Request, emit 
 	if len(req.Tools) == 1 && req.Tools[0].Name == "connection_check" {
 		return assistant.Result{Finish: assistant.FinishStop}, nil
 	}
+	if len(req.Messages) > 0 && req.Messages[0].Content == assistant.SummaryPrompt.System {
+		return m.summarize(req, emit)
+	}
 	m.mu.Lock()
 	m.requests = append(m.requests, req)
 	if len(m.steps) == 0 {
 		m.mu.Unlock()
 		return assistant.Result{}, &assistant.Error{Category: assistant.ErrUnavailable, Detail: "script ran out"}
 	}
-	s := m.steps[0]
-	m.steps = m.steps[1:]
+	at := 0
+	if len(req.Messages) > 0 {
+		last := req.Messages[len(req.Messages)-1].Content
+		at = slices.IndexFunc(m.steps, func(s step) bool { return s.lesson == "" || strings.Contains(last, "› "+s.lesson+"\n") })
+		if at < 0 {
+			m.mu.Unlock()
+			return assistant.Result{}, &assistant.Error{Category: assistant.ErrUnavailable, Detail: "no step for the lesson"}
+		}
+	}
+	s := m.steps[at]
+	m.steps = slices.Delete(m.steps, at, at+1)
 	m.mu.Unlock()
 	if s.before != nil {
 		s.before()
@@ -75,6 +95,31 @@ func (m *scriptedModel) Stream(ctx context.Context, req assistant.Request, emit 
 		s.result.Finish = assistant.FinishStop
 	}
 	return s.result, nil
+}
+
+func (m *scriptedModel) summarize(req assistant.Request, emit func(assistant.Event) error) (assistant.Result, error) {
+	m.mu.Lock()
+	m.summaries = append(m.summaries, req)
+	write := m.summary
+	m.mu.Unlock()
+	text, err := "摘要。", error(nil)
+	if write != nil {
+		text, err = write(req)
+	}
+	if err != nil {
+		return assistant.Result{}, err
+	}
+	if err := emit(assistant.Event{Kind: assistant.EventText, Text: text}); err != nil {
+		return assistant.Result{}, err
+	}
+	return assistant.Result{Finish: assistant.FinishStop}, nil
+}
+
+// summaryCalls are the summary requests the model was sent.
+func (m *scriptedModel) summaryCalls() []assistant.Request {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]assistant.Request(nil), m.summaries...)
 }
 
 func (m *scriptedModel) calls() []assistant.Request {

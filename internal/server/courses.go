@@ -121,6 +121,7 @@ func (s *Server) uploadCourse(w http.ResponseWriter, r *http.Request) {
 	if !writePackageError(w, r, err) {
 		return
 	}
+	s.newVersion()
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
@@ -135,6 +136,7 @@ func (s *Server) updateCoursePackage(w http.ResponseWriter, r *http.Request) {
 	if !writePackageError(w, r, err) {
 		return
 	}
+	s.newVersion()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -197,8 +199,12 @@ func writeCourseError(w http.ResponseWriter, r *http.Request, err error) bool {
 		writeError(w, http.StatusForbidden, "forbidden", "没有权限进行这个操作")
 	case errors.Is(err, course.ErrConceptIndexBuilding):
 		writeError(w, http.StatusConflict, "index_building", "这个版本的概念索引正在建立。")
-	case errors.Is(err, course.ErrConceptIndexBuilt):
-		writeError(w, http.StatusConflict, "index_built", "这个版本的概念索引已经建立。")
+	case errors.Is(err, course.ErrRevisionNotFound):
+		writeError(w, http.StatusNotFound, "revision_not_found", "这条修订不存在")
+	case errors.Is(err, course.ErrSectionNotFound):
+		writeError(w, http.StatusBadRequest, "section_not_found", "课程当前的版本里没有这一讲或这个小节")
+	case errors.Is(err, course.ErrIndexLessonNotFound):
+		writeError(w, http.StatusNotFound, "index_lesson_not_found", "这一讲不在这个版本的概念索引里。")
 	default:
 		writeInternal(w, r, err)
 	}

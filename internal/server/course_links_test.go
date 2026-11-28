@@ -3,6 +3,7 @@ package server_test
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,13 +26,13 @@ func linkedFiles() map[string]string {
 // linkedLessons are the extractions of linkedFiles' lessons, l00 with
 // extra entries when given.
 func linkedLessons(more ...map[string]any) []step {
-	l00 := append([]map[string]any{
+	l00s := append([]map[string]any{
 		concept("工具调用", "工具调用", "让模型执行动作。", "Function Calling"),
 	}, more...)
 	return []step{
-		concepts(l00...),
-		concepts(concept("目标拆解", "一个最小的例子", "把目标拆成步骤。")),
-		concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent")),
+		of(l00, concepts(l00s...)),
+		of(l01, concepts(concept("目标拆解", "一个最小的例子", "把目标拆成步骤。"))),
+		of(l02, concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"))),
 	}
 }
 
@@ -213,9 +214,31 @@ func TestOnlyTheForkTurnIsLinked(t *testing.T) {
 	}
 }
 
-func TestWithoutAnIndexTheForkTurnEndsWithItsAnswer(t *testing.T) {
+func TestWithoutAnIndexTheForkAnswerIsLinkedByItsPassages(t *testing.T) {
 	t.Parallel()
-	m := newScriptedModel(texts(goodAnswer), texts(mentioning))
+	const answer = "子节点的回答：意图识别要分领域、意图、槽位。"
+	m := newScriptedModel(texts(goodAnswer), texts(answer), linkCall(link("s1", "三层意图正是这里说的分法。")))
+	a := aiApp(t, m)
+	bob, _, exp := linkedExploration(t, a, false)
+
+	n := openNode(t, bob, exp, firstTurn(t, bob, exp), "child", "往深处讲讲")
+
+	calls := m.calls()
+	if len(calls) != 3 {
+		t.Fatalf("the analysis, the answer, then linking: %d calls", len(calls))
+	}
+	if got := candidateNames(lastQuestion(t, contents(calls[2]))); len(got) == 0 || got[0] != "三层意图" {
+		t.Fatalf("the section sharing the answer's words comes first, labelled by its heading: %v", got)
+	}
+	links := turnsOf(n)[0]["courseLinks"].([]any)
+	if len(links) != 1 || links[0].(map[string]any)["label"] != "三层意图" {
+		t.Fatalf("the section picked is linked: %v", links)
+	}
+}
+
+func TestAForkAnswerSharingNoWordsWithTheCourseEndsWithItsAnswer(t *testing.T) {
+	t.Parallel()
+	m := newScriptedModel(texts(goodAnswer), texts("Raft 选举超时要随机化。"))
 	a := aiApp(t, m)
 	bob, _, exp := linkedExploration(t, a, false)
 
@@ -390,7 +413,7 @@ func manyLessons() []step {
 	out := linkedLessons()
 	for _, n := range "甲乙丙丁戊己" {
 		name := "概念" + string(n)
-		out = append(out, concepts(concept(name, name, "一个概念。")))
+		out = append(out, of("第"+string(n)+"讲", concepts(concept(name, name, "一个概念。"))))
 	}
 	return out
 }
@@ -442,11 +465,12 @@ func TestANameOfLettersAndDigitsIsOnlyMatchedAsAWholeWord(t *testing.T) {
 		answer string
 		want   []string
 	}{
-		{"回答：G4C 讲的是任务规划，TCP Nagle 算法另说，先做意图识别。", []string{"Nagle", "意图识别"}},
+		{"回答：G4C 讲的是任务规划，TCP Nagle 算法另说，先做意图识别。", []string{"Nagle", "意图识别"}}, // sorted
 		{"回答：G4C 和用户画像的 4C 不是一回事，先做意图识别。", []string{"4C", "意图识别"}},
 	}
 	for _, c := range cases {
 		got := forkCandidates(t, c.answer, more...)
+		slices.Sort(got)
 		if strings.Join(got, "|") != strings.Join(c.want, "|") {
 			t.Fatalf("%q: candidates %v, want %v", c.answer, got, c.want)
 		}
@@ -457,7 +481,7 @@ func TestOfTwoEntriesNamedAtTheSamePlaceOnlyTheLongerNameIsACandidate(t *testing
 	t.Parallel()
 	// 日志复制 in l00, 日志 in l02 after its 意图识别
 	lessons := linkedLessons(concept("日志复制", "为什么学 Agent", "领导者把日志发给跟随者。"))
-	lessons[2] = concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"), concept("日志", "三层意图", "按时间记下的事件。"))
+	lessons[2] = of(l02, concepts(concept("意图识别", "三层意图", "分领域、意图、槽位三层。", "Intent"), concept("日志", "三层意图", "按时间记下的事件。")))
 	got := forkCandidatesOf(t, "回答：Raft 靠日志复制保持一致。", lessons)
 	if want := "日志复制"; strings.Join(got, "|") != want {
 		t.Fatalf("candidates %v, want %s", got, want)

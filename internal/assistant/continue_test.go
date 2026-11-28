@@ -78,10 +78,11 @@ func TestExtractConceptsContinuesWhatTheCapCutOff(t *testing.T) {
 		{conceptsMiddle, assistant.FinishLength, 100},
 		{conceptsTail, assistant.FinishStop, 50},
 	}}
-	got, meta, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
+	x, meta, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := x.Concepts
 	var names []string
 	for _, c := range got {
 		names = append(names, c.Name)
@@ -186,10 +187,11 @@ func TestAModelThatContinuesAsWrittenKeepsWhatLooksRepeated(t *testing.T) {
 	// a rule of dashes cut in the middle: its second half is no repetition
 	head, rest := `[{"name": "极限", "aliases": [], "section": "", "summary": "---------`, "---------\"}]"
 	s := &script{exact: true, calls: []call{{head, assistant.FinishLength, 10}, {rest, assistant.FinishStop, 10}}}
-	got, _, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
+	x, _, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := x.Concepts
 	if len(got) != 1 || got[0].Summary != "------------------" {
 		t.Fatalf("concepts = %+v", got)
 	}
@@ -204,8 +206,8 @@ func TestAContinuationThatFailsBeforeWritingIsTriedAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 || len(s.requests) != 3 {
-		t.Fatalf("%d concepts in %d calls", len(got), len(s.requests))
+	if len(got.Concepts) != 3 || len(s.requests) != 3 {
+		t.Fatalf("%d concepts in %d calls", len(got.Concepts), len(s.requests))
 	}
 }
 
@@ -220,5 +222,29 @@ func TestACutOffAnswerIsNotContinuedPastTheWindow(t *testing.T) {
 	}
 	if len(s.requests) != 1 {
 		t.Fatalf("%d calls", len(s.requests))
+	}
+}
+
+func TestAnExtractionGivesTheLessonsSummaryAndEachConceptsRole(t *testing.T) {
+	reply := `{"summary": "这一讲讲导数。", "concepts": [{"name": "导数", "aliases": [], "section": "", "role": "define", "summary": "变化率"}, {"name": "极限", "aliases": [], "section": "", "role": "use", "summary": "趋近的值"}, {"name": "连续", "aliases": [], "section": "", "summary": "没有断点"}]}`
+	s := &script{calls: []call{{reply, assistant.FinishStop, 50}}}
+	x, _, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x.Summary != "这一讲讲导数。" || len(x.Concepts) != 3 {
+		t.Fatalf("extraction = %+v", x)
+	}
+	// a role left out is taken as defined there
+	if x.Concepts[0].Role != assistant.RoleDefine || x.Concepts[1].Role != assistant.RoleUse || x.Concepts[2].Role != assistant.RoleDefine {
+		t.Fatalf("roles = %+v", x.Concepts)
+	}
+}
+
+func TestAnExtractionObjectWithoutConceptsIsMalformed(t *testing.T) {
+	s := &script{calls: []call{{`{"summary": "这一讲讲导数。"}`, assistant.FinishStop, 50}}}
+	_, _, err := assistant.ExtractConcepts(context.Background(), assistant.Run{Turn: turn(s)}, lesson)
+	if re, ok := errors.AsType[*assistant.RunError](err); !ok || re.Code != assistant.CodeMalformedOutput {
+		t.Fatalf("err = %v", err)
 	}
 }

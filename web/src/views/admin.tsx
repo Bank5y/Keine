@@ -40,12 +40,13 @@ const GROUPS: [string, AdminSection[]][] = [
 ];
 const SECTIONS = GROUPS.flatMap(([, items]) => items);
 
-const SIMPLE: Record<string, ComponentType> = { '/admin/reviews': AdminReviews, '/admin/plans': AdminPlans, '/admin/concepts': AdminConcepts, '/admin/site': SiteSettings, '/admin/storage': AdminStorage };
+const SIMPLE: Record<string, ComponentType> = { '/admin/reviews': AdminReviews, '/admin/plans': AdminPlans, '/admin/site': SiteSettings, '/admin/storage': AdminStorage };
 
 function SectionView({ href, path, user }: { href: string; path: string; user: User }) {
   if (href === '/admin/users') return <AdminUsers me={user} />;
   if (href === '/admin/usage') return <AdminUsage path={path} />;
   if (href === '/admin/models') return <AdminModels path={path} />;
+  if (href === '/admin/concepts') return <AdminConcepts path={path} />;
   return createElement(SIMPLE[href]);
 }
 

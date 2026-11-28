@@ -8,13 +8,17 @@ import { cn } from '@/lib/utils';
 import { videosInZip } from '@/lib/videos';
 import { useVideoNotice } from '@/components/video-notice';
 
-const PROMPT_URL = '/api/manifest/prompt';
+export const PROMPT_URL = '/api/manifest/prompt';
 
-// UploadDialog sends a course package and shows its progress, then either
-// reports success or lists every problem the server found. Without a
-// courseId it imports a new course; with one it updates that course, or
-// (request) asks for the update in an update request.
-export function UploadDialog({ open, onClose, onUploaded, courseId, request }: { open: boolean; onClose: () => void; onUploaded: (id: number) => void; courseId?: number; request?: boolean }) {
+// ManifestHint follows a package's problems: the prompt template lets an
+// AI write course.json again.
+export const ManifestHint = () => <div className="mt-2">不确定怎么写? <a className="link" href={PROMPT_URL} download>下载提示词模板</a>, 交给 AI 重新生成 course.json。</div>;
+
+// UploadDialog sends a course package for an existing course and shows its
+// progress, then either reports success or lists every problem the server
+// found. It updates the course, or (request) asks for the update in an
+// update request. New courses come in through ImportDialog.
+export function UploadDialog({ open, onClose, onUploaded, courseId, request }: { open: boolean; onClose: () => void; onUploaded: (id: number) => void; courseId: number; request?: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [err, setErr] = useState<{ message: string; problems: Problem[] } | null>(null);
@@ -37,18 +41,14 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
     if (!(await confirmVideos(videos))) return;
     setProgress(0);
     try {
-      if (courseId && request) {
+      if (request) {
         await upload(`/api/courses/${courseId}/update-requests`, 'package', file, setProgress);
         toast.success('已提交更新申请, 等待管理员审核');
         onUploaded(courseId);
-      } else if (courseId) {
+      } else {
         await upload(`/api/courses/${courseId}/package`, 'package', file, setProgress, 'PUT');
         toast.success('课程已更新');
         onUploaded(courseId);
-      } else {
-        const r = await upload<{ id: number }>('/api/courses', 'package', file, setProgress);
-        toast.success('课程已导入');
-        onUploaded(r.id);
       }
     } catch (ex) {
       setErr(ex instanceof ApiError ? { message: ex.message, problems: ex.problems } : { message: '上传失败', problems: [] });
@@ -59,25 +59,20 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
 
   const busy = progress !== null || checking;
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v && !busy) onClose(); }} title={request ? '提交更新申请' : (courseId ? '更新课程' : '上传课程')} wide>
+    <Dialog open={open} onOpenChange={(v) => { if (!v && !busy) onClose(); }} title={request ? '提交更新申请' : '更新课程'} wide>
       {request ? (
         <p className="mt-2">
           上传完整的新课程包。管理员批准前, 课程库里仍是原来的内容。章和讲按 <code>course.json</code> 里的 id 对应, 请保持已有讲的 id 不变, 这样大家的学习记录才能保留。
           <a className="link ml-1" href={PROMPT_URL} download>下载提示词模板</a>
         </p>
-      ) : courseId ? (
-        <p className="mt-2">
-          上传新的课程包替换这门课的内容。章和讲按 <code>course.json</code> 里的 id 对应: id 不变的讲保留学习记录, 新增的讲为未学习, 清单里去掉的讲会被移除。
-        </p>
       ) : (
         <p className="mt-2">
-          上传一个 zip 课程包, 根目录必须包含 <code>course.json</code> 课程清单。上传后它是只有你能看到的私有课程。
-          还没有清单? <a className="link" href={PROMPT_URL} download>下载提示词模板</a>, 交给 AI 帮你生成。
+          上传新的课程包替换这门课的内容。章和讲按 <code>course.json</code> 里的 id 对应: id 不变的讲保留学习记录, 新增的讲为未学习, 清单里去掉的讲会被移除。
         </p>
       )}
       {err ? (
         <ErrorBox message={err.message} problems={err.problems}>
-          {err.problems.length ? <div className="mt-2">不确定怎么写? <a className="link" href={PROMPT_URL} download>下载提示词模板</a>, 交给 AI 重新生成 course.json。</div> : null}
+          {err.problems.length ? <ManifestHint /> : null}
         </ErrorBox>
       ) : null}
       <div
@@ -102,7 +97,7 @@ export function UploadDialog({ open, onClose, onUploaded, courseId, request }: {
       ) : null}
       <div className="head-actions mt-5">
         <Button onClick={onClose} disabled={busy}>取消</Button>
-        <Button variant="default" onClick={send} disabled={!file || busy}>{request ? '提交' : (courseId ? '更新' : '上传')}</Button>
+        <Button variant="default" onClick={send} disabled={!file || busy}>{request ? '提交' : '更新'}</Button>
       </div>
       {notice}
     </Dialog>

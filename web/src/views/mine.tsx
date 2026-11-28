@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookmarkMinus, Ellipsis, FileUp, Trash2, Upload } from 'lucide-react';
+import { BookmarkMinus, Ellipsis, FileUp, Globe, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/confirm';
@@ -10,14 +10,16 @@ import { FilterBar, FilterButton } from '@/components/filter-button';
 import { ProgressBar } from '@/components/progress';
 import { Sheet } from '@/components/sheet';
 import { Shelf } from '@/components/shelf';
-import { UploadDialog } from '@/components/upload-dialog';
+import { ImportDialog } from '@/components/import-dialog';
+import { PublishDialog } from '@/components/publish-dialog';
 import { api, ApiError } from '@/lib/api';
-import { RETENTION_LABEL, canUnsubscribe, type CourseSummary } from '@/lib/courses';
+import { RETENTION_LABEL, canUnsubscribe, publishTargets, type CourseSummary } from '@/lib/courses';
 import { COMPLETION_OPTIONS, COURSE_TYPE_OPTIONS } from '@/lib/course-filter';
 import { MINE_STATES, STUDY_LABEL, mineParams, readMineFilter } from '@/lib/mine-filter';
 import { SearchEnd } from '@/components/page-search';
 import { filterMine } from '@/lib/page-search';
 import { setParam, useSearch } from '@/lib/router';
+import { useUser } from '@/lib/session';
 import { usePageSearch } from '@/lib/top-search';
 import { useNarrow } from '@/lib/use-narrow';
 
@@ -35,12 +37,22 @@ export function MineView() {
   const [courses, setCourses] = useState<CourseSummary[] | null>(null);
   const [err, setErr] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const admin = useUser()?.role === 'admin';
   const [deleting, setDeleting] = useState<CourseSummary | null>(null);
   const [removing, setRemoving] = useState<CourseSummary | null>(null);
 
-  const load = () =>
-    api<{ courses: CourseSummary[] }>('GET', '/api/my/courses?' + mineParams({ state, type, completion })).then((r) => { setCourses(r.courses); setErr(''); }).catch((e) => setErr(e.message));
-  useEffect(() => { void load(); }, [state, type, completion]); // eslint-disable-line react-hooks/exhaustive-deps
+  // the private courses of the reader's own that may go to the library
+  // together, from the whole of my courses whatever the filter shows
+  const [targets, setTargets] = useState<CourseSummary[]>([]);
+  const load = () => {
+    const get = (params: string) => api<{ courses: CourseSummary[] }>('GET', '/api/my/courses?' + params).then((r) => r.courses);
+    const params = mineParams({ state, type, completion }).toString();
+    return Promise.all([get(params), params ? get('') : null]).then(([list, all]) => {
+      setCourses(list); setTargets(publishTargets(all ?? list, admin)); setErr('');
+    }).catch((e) => setErr(e.message));
+  };
+  useEffect(() => { void load(); }, [state, type, completion, admin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const act = async (method: string, path: string, done: string) => {
     try { await api(method, path); toast.success(done); setDeleting(null); setRemoving(null); void load(); } catch (ex) { toast.error(ex instanceof ApiError ? ex.message : '操作失败'); }
@@ -50,12 +62,16 @@ export function MineView() {
   // courses whose name or author has the words (see page-search.ts)
   const { q } = usePageSearch(narrow);
   const shown = courses && q ? filterMine(courses, q) : courses;
+  const publishLabel = admin ? '批量公开' : '批量申请公开';
 
   return (
     <div className="page enter">
       {narrow ? (
         <>
-          <PageHead title="我的课程" actions={<Button size="sm" onClick={() => setUploading(true)}><FileUp />上传课程</Button>} />
+          <PageHead title="我的课程" actions={<>
+            {targets.length ? <Button size="sm" variant="ghost" onClick={() => setPublishing(true)}><Globe />{publishLabel}</Button> : null}
+            <Button size="sm" onClick={() => setUploading(true)}><FileUp />上传课程</Button>
+          </>} />
           <FilterBar count={null} unit="门课程">
             <FilterButton label="学习" value={state} options={stateOptions} onChange={(v) => setParam('state', v)} />
             <FilterButton label="类型" value={type} options={COURSE_TYPE_OPTIONS} onChange={(v) => setParam('type', v)} />
@@ -68,7 +84,10 @@ export function MineView() {
             kicker="My courses"
             title="我的课程"
             sub="你订阅的课程, 以及你上传的私有课程。"
-            actions={<Button variant="default" onClick={() => setUploading(true)}><Upload />上传课程</Button>}
+            actions={<>
+              {targets.length ? <Button onClick={() => setPublishing(true)}><Globe />{publishLabel}</Button> : null}
+              <Button variant="default" onClick={() => setUploading(true)}><Upload />上传课程</Button>
+            </>}
           />
           <div className="facets">
             <Facet label="学习" value={state} onPick={(v) => setParam('state', v)} items={facetItems(stateOptions)} />
@@ -105,7 +124,8 @@ export function MineView() {
       ) : null}
       {courses && courses.length && q ? <SearchEnd q={q} none={shown?.length ? null : `你订阅的课程里没有「${q}」`} /> : null}
       {courses && courses.length && !narrow ? <Shelf courses={courses} hrefOf={(c) => `/courses/${c.id}`} onDelete={setDeleting} onRemove={setRemoving} showProgress /> : null}
-      <UploadDialog open={uploading} onClose={() => setUploading(false)} onUploaded={() => { setUploading(false); void load(); }} />
+      <ImportDialog open={uploading} onClose={() => setUploading(false)} onImported={() => void load()} />
+      <PublishDialog open={publishing} courses={targets} admin={admin} onClose={() => setPublishing(false)} onPublished={() => void load()} />
       <Confirm open={!!deleting} title="删除课程" confirm="删除" onClose={() => setDeleting(null)}
         onConfirm={() => act('DELETE', `/api/courses/${deleting!.id}`, `已删除「${deleting!.title}」`)}>
         确定删除「{deleting?.title}」吗? 删除后无法恢复; 如果有人订阅过它, 他们仍可阅读各自保留的讲 (已学完或有标注的讲)。

@@ -19,6 +19,7 @@ import (
 	"github.com/Bank5y/keine/internal/course"
 	"github.com/Bank5y/keine/internal/credits"
 	"github.com/Bank5y/keine/internal/db"
+	"github.com/Bank5y/keine/internal/embedding"
 	"github.com/Bank5y/keine/internal/filestore"
 	"github.com/Bank5y/keine/internal/netguard"
 	"github.com/Bank5y/keine/internal/notify"
@@ -73,6 +74,8 @@ type Options struct {
 	// OwnModelNetworks are the CIDRs a reader's own model may be at besides
 	// the public internet, over http too (a model on the local network).
 	OwnModelNetworks []string
+	// ModelsDir is where local embedding models are downloaded to (#227).
+	ModelsDir string
 }
 
 type Server struct {
@@ -105,6 +108,11 @@ type Server struct {
 	buildCtx   context.Context
 	stopBuilds context.CancelFunc
 	building   sync.WaitGroup
+	// embedding embeds passages and answers for the vector path (#227)
+	embedding *embedding.Service
+	// cutting asks the passage cutter to cut the versions that have no
+	// passages yet; asks while it is busy fold into one more round
+	cutting chan struct{}
 }
 
 // New connects to the database, migrates it and makes sure the deployment's
@@ -166,6 +174,9 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		return nil, err
 	}
 	s.buildCtx, s.stopBuilds = context.WithCancel(context.Background())
+	s.embedding = embedding.New(pool, box, opts.ModelsDir)
+	s.embedInBackground()
+	s.cutPassagesInBackground()
 	s.routes()
 	s.sweepPeriodically()
 	return s, nil
@@ -180,6 +191,37 @@ func (s *Server) Close() {
 		s.filestore.Close()
 	}
 	s.db.Close()
+}
+
+// cutPassagesInBackground starts the passage cutter (#223): it cuts the
+// passages of every course version that has none, once now (versions from
+// before passages were) and again each time newVersion asks.
+func (s *Server) cutPassagesInBackground() {
+	s.cutting = make(chan struct{}, 1)
+	s.cutting <- struct{}{}
+	s.building.Add(1)
+	go func() {
+		defer s.building.Done()
+		for {
+			select {
+			case <-s.buildCtx.Done():
+				return
+			case <-s.cutting:
+				if err := s.courses.CutMissingPassages(s.buildCtx); err != nil && s.buildCtx.Err() == nil {
+					slog.Warn("passages not cut", "err", err)
+				}
+				s.embedSoon()
+			}
+		}
+	}()
+}
+
+// newVersion tells the passage cutter a course may have a new version.
+func (s *Server) newVersion() {
+	select {
+	case s.cutting <- struct{}{}:
+	default: // a round is asked for already
+	}
 }
 
 // sweepPeriodically runs SweepDrafts every SweepInterval until Close.
@@ -308,6 +350,22 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/admin/concept-indexes", s.adminOnly(s.listConceptIndexes))
 	s.mux.HandleFunc("GET /api/admin/courses/{id}/concept-index", s.adminOnly(s.showConceptIndex))
 	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index", s.adminOnly(s.buildConceptIndex))
+	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index/recall", s.adminOnly(s.recallConceptIndex))
+	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index/lessons/{key}", s.adminOnly(s.retryConceptLesson))
+	s.mux.HandleFunc("GET /api/admin/courses/{id}/concept-index/concepts", s.adminOnly(s.showIndexConcepts))
+	s.mux.HandleFunc("GET /api/admin/courses/{id}/concept-index/tree", s.adminOnly(s.showIndexTree))
+	s.mux.HandleFunc("GET /api/admin/courses/{id}/concept-index/sections", s.adminOnly(s.listIndexSections))
+	s.mux.HandleFunc("GET /api/admin/embedding", s.adminOnly(s.showEmbedding))
+	s.mux.HandleFunc("PUT /api/admin/embedding/external", s.adminOnly(s.saveExternalEmbedding))
+	s.mux.HandleFunc("PUT /api/admin/embedding/local", s.adminOnly(s.useLocalEmbedding))
+	s.mux.HandleFunc("PUT /api/admin/embedding/off", s.adminOnly(s.turnOffEmbedding))
+	s.mux.HandleFunc("POST /api/admin/embedding/download", s.adminOnly(s.downloadEmbeddingModel))
+	s.mux.HandleFunc("GET /api/admin/courses/{id}/concept-index/revisions", s.adminOnly(s.listRevisions))
+	s.mux.HandleFunc("PUT /api/admin/courses/{id}/concept-index/revisions/concept", s.adminOnly(s.reviseConcept))
+	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index/revisions/new", s.adminOnly(s.addConcept))
+	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index/revisions/exclude", s.adminOnly(s.excludeFromRecall))
+	s.mux.HandleFunc("DELETE /api/admin/courses/{id}/concept-index/revisions/{rid}", s.adminOnly(s.deleteRevision))
+	s.mux.HandleFunc("POST /api/admin/courses/{id}/concept-index/revisions/{rid}/confirm", s.adminOnly(s.confirmRevision))
 	s.mux.HandleFunc("GET /api/library", s.signedIn(s.library))
 	s.mux.HandleFunc("POST /api/courses/{id}/subscribe", s.signedIn(s.courseAction(s.subscribe)))
 	s.mux.HandleFunc("DELETE /api/courses/{id}/subscribe", s.signedIn(s.courseAction(s.unsubscribe)))

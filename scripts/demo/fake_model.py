@@ -85,6 +85,9 @@ def chunk(delta, finish=None):
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+        if self.path.endswith("/embeddings"):
+            self.embeddings(req)
+            return
         if not self.path.endswith("/chat/completions"):
             self.send_error(404)
             return
@@ -98,6 +101,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
         tools = [t["function"]["name"] for t in req.get("tools") or []]
+        if "建立概念索引" in (req["messages"][0].get("content") or ""):
+            self.concepts(req)
+            return
+        if "摘要树" in (req["messages"][0].get("content") or ""):
+            self.summary(req)
+            return
         if "<rep_title>" in (req["messages"][0].get("content") or ""):
             time.sleep(0.4)
             for i in range(0, len(REPORT), 4):
@@ -128,6 +137,60 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = "".join(chunk({"content": t}) for t in REPLY) + chunk({}, "stop")
         usage = {"prompt_tokens": 120, "completion_tokens": 8, "prompt_tokens_details": {"cached_tokens": 64}}
         body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
+        self.wfile.write(body.encode())
+
+    failed_once = set()
+
+    def concepts(self, req):
+        """A concept index extraction: one concept for each section of the lesson, named by its heading.
+        The first extraction of 短期记忆 answers no JSON, so the demo shows a partial index and its retry."""
+        lesson = req["messages"][-1]["content"]
+        if "短期记忆" in lesson.split("## 小节目录", 1)[0] and "l07" not in Handler.failed_once:
+            Handler.failed_once.add("l07")
+            body = chunk({"content": "这一讲没有概念可言。"}) + chunk({}, "stop") + "data: [DONE]\n\n"
+            self.wfile.write(body.encode())
+            return
+        toc = lesson.split("## 小节目录", 1)[-1].split("## 全文", 1)[0]
+        found = []
+        for line in toc.splitlines():
+            if line.startswith("- "):
+                h = line[2:].strip()
+                if h == "小结":
+                    continue
+                # a lesson's own heading "07｜短期记忆与上下文窗口" names the concept 短期记忆与上下文窗口
+                name, _, alias = h.split("｜")[-1].partition("：")
+                found.append({"name": name, "aliases": [alias] if alias else [], "section": h,
+                              "role": "define" if "｜" in h else "use", "summary": f"这一讲里「{h}」一节讲的内容。"})
+        title = lesson.split("## 这一讲", 1)[-1].split("## 小节目录", 1)[0].strip()
+        reply = {"summary": f"{title}：这一讲的要点。", "concepts": found}
+        body = chunk({"content": json.dumps(reply, ensure_ascii=False)}) + chunk({}, "stop")
+        usage = {"prompt_tokens": 900, "completion_tokens": 120}
+        body += "data: " + json.dumps({"choices": [], "usage": usage}) + "\n\ndata: [DONE]\n\n"
+        self.wfile.write(body.encode())
+
+    def embeddings(self, req):
+        """An OpenAI-compatible embeddings API: each text's character pairs hashed into 64 slots."""
+        data = []
+        for i, text in enumerate(req.get("input") or []):
+            v = [0.0] * 64
+            for a, b in zip(text, text[1:]):
+                v[hash(a + b) % 64] += 1
+            data.append({"index": i, "embedding": v})
+        body = json.dumps({"data": data, "usage": {"prompt_tokens": 8 * len(data)}}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def summary(self, req):
+        """A summary of the concept index's tree: names the parts it covers."""
+        asked = req["messages"][-1]["content"]
+        parts = [line[4:] for line in asked.splitlines() if line.startswith("### ")]
+        what = "这一章" if "一章：" in asked else "这门课程"
+        text = f"{what}依次讲了{'、'.join(parts[:4])}{'等' if len(parts) > 4 else ''}，从概念讲到做法，最后落到工程上的取舍。"
+        body = chunk({"content": text}) + chunk({}, "stop")
+        body += "data: " + json.dumps({"choices": [], "usage": {"prompt_tokens": 400, "completion_tokens": 60}}) + "\n\ndata: [DONE]\n\n"
         self.wfile.write(body.encode())
 
     def look_up(self, req):
