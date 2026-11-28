@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { NotebookPen, Pencil, Sparkles, Telescope, Trash2, Underline } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,7 +8,8 @@ import { ANNOTATION_HASH, COLOR_LABEL, HIGHLIGHT_COLORS, TextMap, lookName, type
 import { ExplorationCard } from '@/components/exploration-card';
 import { ENTRY, ExplorationSheet, useSheet } from '@/components/exploration-sheet';
 import { listExplorations, overlapping, OVERLAP_TEXT, type Exploration } from '@/lib/explorations';
-import { useKeyboardInset } from '@/lib/use-keyboard-inset';
+import { Floating, spotOf, useFinishedSelection, type Spot } from '@/components/selection-bar';
+import { useMedia } from '@/lib/use-media';
 import { claimTap } from '@/lib/use-lesson-bar';
 import { unavailableText } from '@/lib/ai';
 import { useUser } from '@/lib/session';
@@ -36,18 +37,6 @@ const PASSAGE_PAD_Y = 2;
 
 const failed = (ex: unknown) => toast.error(ex instanceof ApiError ? ex.message : '操作失败');
 
-function useMedia(query: string) {
-  const [on, setOn] = useState(() => matchMedia(query).matches);
-  useEffect(() => {
-    const m = matchMedia(query);
-    const onChange = () => setOn(m.matches);
-    onChange();
-    m.addEventListener('change', onChange);
-    return () => m.removeEventListener('change', onChange);
-  }, [query]);
-  return on;
-}
-
 // useTextMap maps the rendered text under root, afresh whenever React
 // re-renders nodes inside it
 export function useTextMap(root: HTMLElement | null) {
@@ -60,22 +49,6 @@ export function useTextMap(root: HTMLElement | null) {
   }, [root]);
   return useMemo(() => (root ? new TextMap(root) : null), [root, version]); // eslint-disable-line react-hooks/exhaustive-deps
 }
-
-// A tap on a bar may clear the selection on a touch screen before the tap
-// lands, and a bar that follows the selection would go before its button
-// is pressed. barTaps listens for touches on the bar: recent() tells whether
-// one began within TAP_GRACE ms, so the bar stays for it; stop() ends it.
-const TAP_GRACE = 600;
-export function barTaps(bar: RefObject<HTMLElement | null>) {
-  let at = -Infinity;
-  const onDown = (e: PointerEvent) => { if (e.pointerType !== 'mouse' && bar.current?.contains(e.target as Node)) at = performance.now(); };
-  document.addEventListener('pointerdown', onDown, true);
-  return { recent: () => performance.now() - at < TAP_GRACE, stop: () => document.removeEventListener('pointerdown', onDown, true) };
-}
-
-// a spot on the page, in document coordinates, that a floating bar points at
-export interface Spot { x: number; top: number; bottom: number }
-export const spotOf = (r: DOMRect): Spot => ({ x: r.left + r.width / 2 + scrollX, top: r.top + scrollY, bottom: r.bottom + scrollY });
 
 // the first line box an annotation's text sits on
 export const firstLine = (ranges: Range[]) => ranges.flatMap((r) => Array.from(r.getClientRects())).find((c) => c.width > 0 && c.height > 0) ?? null;
@@ -242,42 +215,19 @@ export function Annotator({ courseId, lessonId, root, rail, barSlot, onPending }
   }, [flash]);
 
   // a finished selection inside the text offers the toolbar
-  useEffect(() => {
-    if (!map || !root) return undefined;
-    let down = false;
-    let t = 0;
-    const taps = barTaps(bar);
-    const read = () => {
-      // while an analysis is open, a new selection only asks to close it
-      if (analyzing.current) return;
-      const s = getSelection();
-      if (!s || s.isCollapsed || !s.rangeCount) { setPick(null); return; }
-      const range = s.getRangeAt(0);
-      const quote = root.contains(range.commonAncestorContainer) ? map.quote(range) : null;
-      if (!quote) { setPick(null); return; }
-      setOpen(null);
-      setEditing(null);
-      sheetDispatch({ type: 'tapText' });
-      setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange(), overlaps: !!overlapping(map.rangeOf(range), expsRef.current) });
-    };
-    const onChange = () => { clearTimeout(t); if (!down && !taps.recent()) t = window.setTimeout(read, 120); };
-    const onDown = (e: PointerEvent) => { if (!bar.current?.contains(e.target as Node)) down = true; };
-    const onUp = () => { if (down) { down = false; clearTimeout(t); t = window.setTimeout(read, 0); } };
-    document.addEventListener('selectionchange', onChange);
-    document.addEventListener('pointerdown', onDown);
-    document.addEventListener('pointerup', onUp);
-    // a phone takes a long press over for its own selection and cancels the
-    // pointer: no pointerup follows, so the cancel ends the press instead
-    document.addEventListener('pointercancel', onUp);
-    return () => {
-      clearTimeout(t);
-      taps.stop();
-      document.removeEventListener('selectionchange', onChange);
-      document.removeEventListener('pointerdown', onDown);
-      document.removeEventListener('pointerup', onUp);
-      document.removeEventListener('pointercancel', onUp);
-    };
-  }, [map, root, sheetDispatch]);
+  useFinishedSelection(bar, () => {
+    // while an analysis is open, a new selection only asks to close it
+    if (!map || !root || analyzing.current) return;
+    const s = getSelection();
+    if (!s || s.isCollapsed || !s.rangeCount) { setPick(null); return; }
+    const range = s.getRangeAt(0);
+    const quote = root.contains(range.commonAncestorContainer) ? map.quote(range) : null;
+    if (!quote) { setPick(null); return; }
+    setOpen(null);
+    setEditing(null);
+    sheetDispatch({ type: 'tapText' });
+    setPick({ spot: spotOf(range.getBoundingClientRect()), quote, range: range.cloneRange(), overlaps: !!overlapping(map.rangeOf(range), expsRef.current) });
+  }, !!map && !!root);
 
   // a click on annotated text opens what lies under it, and picks its card
   useEffect(() => {
@@ -681,37 +631,3 @@ function Looks({ current, onPick }: { current?: string; onPick: (look: Look) => 
   );
 }
 
-// Touch screens dock the bar to the bottom of the screen: there the
-// browser's own menu for a selection (copy, share, select all…) takes the
-// space above it, where a floating bar would go, and covers it.
-const DOCK_MEDIA = '(pointer: coarse)';
-
-// Floating sits above the spot, or below it when there is no room above; on
-// a touch screen it docks to the bottom of the screen instead, above the
-// keyboard while one is up and above the page's bottom bar, if any.
-export function Floating({ spot, ref, label, stacked, children }: { spot: Spot; ref: RefObject<HTMLDivElement | null>; label: string; stacked?: boolean; children: ReactNode }) {
-  const docked = useMedia(DOCK_MEDIA);
-  const keyboard = useKeyboardInset(docked);
-  const [below, setBelow] = useState(false);
-  const [shift, setShift] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || docked) return;
-    const h = el.offsetHeight, w = el.offsetWidth;
-    setBelow(spot.top - scrollY - h - 10 < 64);
-    const left = spot.x - scrollX - w / 2;
-    setShift(left < 8 ? 8 - left : (left + w > innerWidth - 8 ? innerWidth - 8 - (left + w) : 0));
-  }, [spot, ref, children, docked]);
-  const style: CSSProperties = docked
-    ? (keyboard ? { '--keyboard': `${keyboard}px` } as CSSProperties : {})
-    : { left: spot.x + shift, top: below ? spot.bottom + 8 : spot.top - 8, transform: below ? 'translateX(-50%)' : 'translate(-50%, -100%)' };
-  return createPortal(
-    // clicks keep the selection, except in the note's own field
-    <div ref={ref} role="toolbar" aria-label={label} className={cn('ann-bar', stacked && 'stacked', docked && 'docked', docked && keyboard > 0 && 'over-keyboard')}
-      onMouseDown={(e) => { if (!(e.target instanceof HTMLTextAreaElement)) e.preventDefault(); }} style={style}>
-      {children}
-    </div>,
-    // in the shell, a docked bar reads the height of the page's bottom bar
-    (docked && document.querySelector('.shell')) || document.body,
-  );
-}
