@@ -846,8 +846,9 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 ::highlight(ann-green) { background-color: var(--mark-green); }
 ::highlight(ann-blue) { background-color: var(--mark-blue); }
 ::highlight(ann-pink) { background-color: var(--mark-pink); }
+/* above the exploration zoom (60), which a docked bar, portaled into the shell, would otherwise sit under */
 .ann-bar {
-  position: absolute; z-index: 60; display: flex; align-items: center; gap: 2px; padding: 4px;
+  position: absolute; z-index: 61; display: flex; align-items: center; gap: 2px; padding: 4px;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card); font-family: var(--sans); font-size: 13px; color: var(--text-2);
   box-shadow: var(--shadow-float);
   animation: fade .12s ease-out both; white-space: nowrap; max-width: calc(100vw - 16px); flex-wrap: wrap;
@@ -2209,8 +2210,6 @@ a.rn:hover .t { color: var(--ink-accent); }
 .exp-page-acts > button.on { background: var(--info-soft); color: var(--explore); }
 .exp-page-acts > button:disabled { opacity: .35; cursor: default; }
 .exp-page-forks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.exp-page-take { position: absolute; z-index: 3; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border: 0; border-radius: 99px; background: var(--text); color: var(--bg); font-size: 13px; box-shadow: var(--shadow-float); cursor: pointer; }
-.exp-page-take svg { width: 14px; height: 14px; }
 ::highlight(exp-carried) { background-color: var(--surface-2); color: var(--text-2); }
 /* the box: ＋ for the kinds of node, the tags the question carries */
 .exp-page-plus { flex: none; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 99px; background: none; color: var(--text-2); cursor: pointer; transition: transform .2s, background .2s; }

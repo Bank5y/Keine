@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ImgHTMLAttributes } from 'react';
 import { ArrowLeft, Archive, MapPin, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Floating, barTaps, firstLine, spotOf, supported, useTextMap, type Spot } from '@/components/annotator';
+import { firstLine, supported, useTextMap } from '@/components/annotator';
+import { Floating, barTaps, spotOf, type Spot } from '@/components/selection-bar';
 import { Empty } from '@/components/common';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { Skeleton } from '@/components/skeleton';
@@ -264,7 +265,11 @@ export function MigrateView({ courseId, lessonId }: { courseId: number; lessonId
     if (line && oldRoot?.offsetParent) window.scrollTo({ top: line.top + scrollY - innerHeight / 3, behavior: 'smooth' });
   };
 
-  // a selection in the new text offers to put the chosen annotation there
+  // a selection in the new text offers to put the chosen annotation there.
+  // Deprecated: this reads the selection on its own timing (150ms after it
+  // stops changing), so the bar can show in the middle of a drag; it is to
+  // move to useFinishedSelection (components/selection-bar.tsx), which the
+  // lesson's text and the exploration dialogue use.
   useEffect(() => {
     if (!newMap || !newRoot) return undefined;
     let t = 0;

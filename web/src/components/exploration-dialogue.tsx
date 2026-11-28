@@ -7,6 +7,7 @@ import { ReportView } from '@/components/exploration-report';
 import { CitedMarkdown } from '@/components/cited-markdown';
 import { LazyMarkdown } from '@/components/lazy-markdown';
 import { QuotedWords, QuoteField, type FieldHandle, type TurnNo } from '@/components/quote-field';
+import { SelectionBar } from '@/components/selection-bar';
 import { ApiError } from '@/lib/api';
 import { citationTable, type Cited } from '@/lib/citations';
 import {
@@ -558,43 +559,30 @@ export function Refusal({ refused }: { refused: Refused }) {
 export type Taken = { turn: number; text: string; range: Range; start: number; end: number };
 
 // TakeSelection offers a button (label) under a selection made in a reply
-// of the node, to take it into the next question: carried with it on a
-// narrow screen, quoted in its words on a wide one.
+// of the node, once the selection is finished (see SelectionBar), to take
+// it into the next question: carried with it on a narrow screen, quoted in
+// its words on a wide one.
 export function TakeSelection({ scroller, label, icon, onTake }: {
   scroller: RefObject<HTMLDivElement | null>; label: string; icon: ReactNode; onTake: (t: Taken) => void;
 }) {
-  const [pick, setPick] = useState<(Taken & { top: number; left: number }) | null>(null);
-  useEffect(() => {
-    const on = () => {
-      const box = scroller.current;
-      const sel = getSelection();
-      const raw = sel?.toString() ?? '';
-      const text = raw.trim().slice(0, 2000);
-      const at = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
-      const reply = at ? (at.commonAncestorContainer instanceof Element ? at.commonAncestorContainer : at.commonAncestorContainer.parentElement)?.closest('.dlg-reply') : null;
-      const turn = reply?.closest<HTMLElement>('[data-turn]');
-      if (!box || !text || !at || !reply || !turn || !box.contains(turn)) { setPick(null); return; }
-      // where it starts in the reply's text
-      const before = document.createRange();
-      before.selectNodeContents(reply);
-      before.setEnd(at.startContainer, at.startOffset);
-      const start = before.toString().length + raw.length - raw.trimStart().length;
-      const r = at.getBoundingClientRect();
-      const b = box.getBoundingClientRect();
-      setPick({ turn: Number(turn.dataset.turn), text, range: at.cloneRange(), start, end: start + text.length,
-        top: r.bottom - b.top + box.scrollTop + 8, left: Math.min(Math.max(r.left - b.left + r.width / 2 - 44, 8), b.width - 96) });
-    };
-    document.addEventListener('selectionchange', on);
-    return () => document.removeEventListener('selectionchange', on);
-  }, [scroller]);
-  if (!pick) return null;
+  const read = (at: Range): Taken | null => {
+    const box = scroller.current;
+    const raw = at.toString();
+    const text = raw.trim().slice(0, 2000);
+    const reply = (at.commonAncestorContainer instanceof Element ? at.commonAncestorContainer : at.commonAncestorContainer.parentElement)?.closest('.dlg-reply');
+    const turn = reply?.closest<HTMLElement>('[data-turn]');
+    if (!box || !text || !reply || !turn || !box.contains(turn)) return null;
+    // where it starts in the reply's text
+    const before = document.createRange();
+    before.selectNodeContents(reply);
+    before.setEnd(at.startContainer, at.startOffset);
+    const start = before.toString().length + raw.length - raw.trimStart().length;
+    return { turn: Number(turn.dataset.turn), text, range: at.cloneRange(), start, end: start + text.length };
+  };
   return (
-    <button type="button" className="exp-page-take" style={{ top: pick.top, left: pick.left }}
-      // the press keeps the selection until the tap lands
-      onPointerDown={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}
-      onClick={() => { const { top: _t, left: _l, ...t } = pick; getSelection()?.removeAllRanges(); setPick(null); onTake(t); }}>
-      {icon}{label}
-    </button>
+    <SelectionBar read={read} label={label} scroller={scroller}>
+      {(t, done) => <button type="button" className="ann-btn" onClick={() => { done(); onTake(t); }}>{icon}{label}</button>}
+    </SelectionBar>
   );
 }
 
