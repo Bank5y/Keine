@@ -694,6 +694,19 @@ html body[data-scroll-locked] { margin-right: 0 !important; --removed-body-scrol
 .drop .t { font-family: var(--serif); font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
 .bar { height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; margin: 14px 0 6px; }
 .bar > i { display: block; height: 100%; background: var(--brand); transition: width .2s; }
+/* several course packages, or several courses to publish, each on its own line */
+.import-list, .publish-list { margin: 14px 0 0; padding: 0; list-style: none; max-height: 50vh; overflow-y: auto; }
+.import-list li, .publish-list li { border-bottom: 1px solid var(--rule); padding: 8px 0; }
+.import-list .row { display: flex; align-items: center; gap: 12px; min-height: 32px; }
+.import-list .name, .publish-list .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-list .size { color: var(--text-3); font-size: 12px; }
+.import-list .state, .publish-list .state { color: var(--text-3); font-size: 13px; }
+.import-list .done .state { color: var(--ink-accent); }
+.import-list .failed .state, .publish-list .fail { color: var(--danger); }
+.import-list .error-box { margin: 8px 0 0; }
+.import-list .bar { margin: 6px 0 0; }
+.publish-list .check { display: flex; width: 100%; }
+.publish-list .fail { font-size: 13px; margin: 4px 0 0 24px; }
 
 
 /* ---------- course detail (colophon + table of contents) ---------- */

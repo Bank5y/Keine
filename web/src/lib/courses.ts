@@ -39,6 +39,14 @@ export const PUBLISH_LABEL: Record<PublishState, string> = { unpublished: 'æœªå…
 // only be deleted.
 export const canUnsubscribe = (c: CourseSummary) => !!c.retention || (c.visibility !== 'private' && !c.isUploader);
 
+// publishTargets are the courses of My Courses the viewer may publish
+// together: their own private courses. An admin publishes them directly,
+// settling a publish request under review; anyone else asks for each one
+// to be published, which a course already under review cannot be again.
+export function publishTargets(courses: CourseSummary[], admin: boolean): CourseSummary[] {
+  return courses.filter((c) => c.visibility === 'private' && c.isUploader && !c.retention && (admin || c.publishState !== 'pending'));
+}
+
 export const coverURL = (id: number) => `/api/courses/${id}/cover`;
 
 export type LessonState = 'unstarted' | 'done';
